@@ -13,6 +13,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Webauthn\Exception\WebauthnException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -22,7 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [VerifyTenantMembership::class], prepend: [InitializeTenancy::class]);
+        $middleware->web(append: [VerifyTenantMembership::class, AuthenticateSession::class], prepend: [InitializeTenancy::class]);
         // Before route-model binding (and so before can:): a tenant model bound on the wrong host
         // gives a 404, not a strict-mode error.
         $middleware->prependToPriorityList(SubstituteBindings::class, VerifyTenantMembership::class);
