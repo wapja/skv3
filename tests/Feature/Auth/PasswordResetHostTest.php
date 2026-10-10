@@ -7,9 +7,12 @@ declare(strict_types=1);
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Testing\TestResponse;
 
 it('sends a member the reset link for their own host, wherever it was requested (R1)', function (string $host): void {
     Notification::fake();
@@ -59,6 +62,22 @@ it('answers every reset-link request the same way', function (): void {
     }
 });
 
+it('sends the reset link only after the response is handled', function (): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $sentWhenHandled = null;
+    Event::listen(RequestHandled::class, function () use ($member, &$sentWhenHandled): void {
+        $sentWhenHandled = Notification::sent($member, ResetPassword::class)->count();
+    });
+
+    $this->post(route('password.email'), ['email' => $member->email]);
+
+    expect($sentWhenHandled)->toBe(0)
+        ->and(Notification::sent($member, ResetPassword::class))->toHaveCount(1);
+});
+
 it('throttles reset-link requests', function (): void {
     Notification::fake();
     onApex();
@@ -85,6 +104,38 @@ it('refuses a reset token on a host the user does not belong to', function (): v
 
     expect(Hash::check('password', (string) $member->fresh()?->password))->toBeTrue();
 });
+
+it('answers a bad reset token the same way for known and unknown addresses (R1)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach ([$member->email, 'nobody@example.com'] as $email) {
+        $this->post(route('password.update'), [
+            'token' => 'not-a-valid-token',
+            'email' => $email,
+            'password' => 'new-password-1',
+            'password_confirmation' => 'new-password-1',
+        ])->assertSessionHasErrors(['email' => __('passwords.token')]);
+    }
+});
+
+it('throttles password resets per address and per IP address', function (string $limit): void {
+    onApex();
+    $attempt = fn (int $number): TestResponse => $this->post(route('password.update'), [
+        'token' => 'not-a-valid-token',
+        'email' => $limit === 'address' ? 'someone@example.com' : "someone-{$number}@example.com",
+        'password' => 'new-password-1',
+        'password_confirmation' => 'new-password-1',
+    ]);
+    $allowed = $limit === 'address' ? 5 : 20;
+
+    foreach (range(1, $allowed) as $number) {
+        $attempt($number)->assertRedirect();
+    }
+
+    $attempt($allowed + 1)->assertTooManyRequests();
+})->with(['address', 'IP address']);
 
 it('has a neutral Dutch reset message', function (): void {
     app()->setLocale('nl');

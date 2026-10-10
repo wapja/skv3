@@ -15,10 +15,13 @@ use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\FailedPasswordResetResponse as FailedPasswordResetResponseContract;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Http\Responses\FailedPasswordResetResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -28,7 +31,11 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // R1: an unknown address gets the same error as a bad token, so password.update reveals no addresses.
+        $this->app->bind(
+            FailedPasswordResetResponseContract::class,
+            fn (): FailedPasswordResetResponse => new FailedPasswordResetResponse(Password::INVALID_TOKEN),
+        );
     }
 
     /**
@@ -123,6 +130,11 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('password-email', fn (Request $request): array => [
             Limit::perMinute(5)->by('password-email:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
             Limit::perMinute(20)->by('password-email-ip:'.$request->ip()),
+        ]);
+
+        RateLimiter::for('password-reset', fn (Request $request): array => [
+            Limit::perMinute(5)->by('password-reset:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(20)->by('password-reset-ip:'.$request->ip()),
         ]);
 
         RateLimiter::for('handoff', fn (Request $request): Limit => Limit::perMinute(10)->by('handoff:'.$request->ip()));

@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
+use Laravel\Fortify\Http\Controllers\NewPasswordController;
 
 Route::get('/', fn (): RedirectResponse => to_route(auth()->check() ? 'dashboard' : 'login'))->name('home');
 
@@ -22,5 +23,10 @@ Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'sto
 Route::post('forgot-password', SendPasswordResetLinkController::class)
     ->middleware(['guest:web', 'throttle:password-email'])
     ->name('password.email');
+
+// §4.2 / R1: throttled, so reset tokens and addresses cannot be probed. Same method, URI and name as Fortify's route.
+Route::post('reset-password', [NewPasswordController::class, 'store'])
+    ->middleware(['guest:web', 'throttle:password-reset'])
+    ->name('password.update');
 
 require __DIR__.'/settings.php';
