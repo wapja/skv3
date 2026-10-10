@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Sleep;
 
 /** Switch to one of the test hosts; 'other tenant' is an organisation the user does not belong to. */
 function useLoginHost(string $host, Organisation $own): void
@@ -73,6 +74,26 @@ it('answers a correct password on the wrong host exactly like a wrong password',
         ->assertSessionHasErrors(['email' => __('auth.failed')]);
 
     expect($wrongHost->getStatusCode())->toBe($wrongPassword->getStatusCode());
+});
+
+it('pads every failed sign-in to the same minimum time and lets a success return at once', function (): void {
+    Sleep::fake();
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onApex();
+
+    $this->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'password'])
+        ->assertSessionHasErrors(['email' => __('auth.failed')]);
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])
+        ->assertSessionHasErrors(['email' => __('auth.failed')]);
+
+    Sleep::assertSleptTimes(2);
+
+    onTenant($organisation);
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])
+        ->assertRedirect(route('dashboard'));
+
+    Sleep::assertSleptTimes(2);
 });
 
 it('never starts a two-factor challenge on a host the user does not belong to', function (): void {
