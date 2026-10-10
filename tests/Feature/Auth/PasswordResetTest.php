@@ -23,6 +23,7 @@ test('reset password link can be requested', function (): void {
     Notification::fake();
 
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
@@ -33,6 +34,7 @@ test('reset password screen can be rendered', function (): void {
     Notification::fake();
 
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
@@ -49,6 +51,7 @@ test('password can be reset with valid token', function (): void {
     Notification::fake();
 
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->post(route('password.request'), ['email' => $user->email]);
 

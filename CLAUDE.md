@@ -24,6 +24,13 @@ skv3 is a multi-tenant Laravel starter kit (successor of skv2). The design spec 
 - `livewire/flux-pro` must never be added to the committed `composer.json` or `composer.lock`; Pro features are an optional layer.
 - UI copy defaults to Dutch (`nl`) with English (`en`); code, comments and docs are English.
 
+## Route × host matrix
+
+- Tenant routes (`Route::tenant()`) answer 404 on central hosts (`{apex}`, `admin.{apex}`), and central routes (`Route::central()`) answer 404 on tenant hosts.
+- A signed-in user who does not belong to the host is logged out and sent to login; super admins pass on every host.
+- Every new named GET route goes into `matrixRoutes()` in `tests/Feature/Tenancy/RouteHostMatrixTest.php` or its exclusions.
+- The detailed tenancy and authorization rules come from `@AGENTS.md`.
+
 ## Safety
 
 - Never run `herd sites` or the Herd MCP `get_all_sites`: they print every local site's `.env`, including secrets.

@@ -24,6 +24,7 @@ it('has no email verification', function (): void {
 
 it('offers no self-service account deletion', function (): void {
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->actingAs($user)->get(route('profile.edit'))
         ->assertOk()
@@ -42,17 +43,16 @@ it('registers no DELETE route other than disabling 2FA and removing a passkey', 
         ->sortKeys()
         ->all();
 
-    // Route::redirect() registers "any" routes, so the two redirects also accept DELETE.
+    // Route::redirect() registers an "any" route, so the settings redirect also accepts DELETE.
     expect($deleteRoutes)->toBe([
-        '/' => RedirectController::class,
         'settings' => RedirectController::class,
         'user/passkeys/{passkey}' => PasskeyRegistrationController::class.'@destroy',
         'user/two-factor-authentication' => TwoFactorAuthenticationController::class.'@destroy',
     ]);
 });
 
-it('redirects the root url to the dashboard', function (): void {
-    $this->get('/')->assertRedirect('/dashboard');
+it('sends guests from the root url to the login page', function (): void {
+    $this->get('/')->assertRedirect(route('login'));
 });
 
 it('sends guests from the dashboard to the login page', function (): void {

@@ -48,8 +48,8 @@ trait ProfileValidationRules
             'lowercase',
             'max:255',
             $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
+                ? Rule::unique(User::class)->withoutTrashed()
+                : Rule::unique(User::class)->withoutTrashed()->ignore($userId),
         ];
     }
 }
