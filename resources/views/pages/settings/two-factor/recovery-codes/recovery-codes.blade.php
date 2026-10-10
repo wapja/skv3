@@ -40,14 +40,25 @@
             </flux:button>
 
             @if (filled($recoveryCodes))
-                <flux:button
-                    x-show="showRecoveryCodes"
-                    icon="arrow-path"
-                    variant="filled"
-                    wire:click="regenerateRecoveryCodes"
-                >
-                    {{ __('Regenerate codes') }}
-                </flux:button>
+                <div x-show="showRecoveryCodes" class="flex flex-wrap gap-2">
+                    <flux:button
+                        icon="clipboard"
+                        variant="filled"
+                        x-data="{ copied: false }"
+                        x-on:click="navigator.clipboard.writeText(@js(implode(PHP_EOL, $recoveryCodes))); copied = true; setTimeout(() => copied = false, 2000)"
+                    >
+                        <span x-show="! copied">{{ __('Copy') }}</span>
+                        <span x-show="copied" x-cloak>{{ __('Copied') }}</span>
+                    </flux:button>
+
+                    <flux:button icon="arrow-down-tray" variant="filled" wire:click="downloadRecoveryCodes">
+                        {{ __('Download') }}
+                    </flux:button>
+
+                    <flux:modal.trigger name="confirm-regenerate-recovery-codes">
+                        <flux:button icon="arrow-path" variant="filled">{{ __('Regenerate codes') }}</flux:button>
+                    </flux:modal.trigger>
+                </div>
             @endif
         </div>
 
@@ -86,4 +97,20 @@
             </div>
         </div>
     </div>
+
+    <flux:modal name="confirm-regenerate-recovery-codes" class="max-w-md">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">{{ __('Regenerate recovery codes?') }}</flux:heading>
+                <flux:text class="mt-2">{{ __('Your current recovery codes stop working. Store the new codes before you leave this page.') }}</flux:text>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button variant="ghost">{{ __('Cancel') }}</flux:button>
+                </flux:modal.close>
+                <flux:button variant="danger" wire:click="regenerateRecoveryCodes">{{ __('Regenerate codes') }}</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>
