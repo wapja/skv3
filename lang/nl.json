@@ -3,6 +3,7 @@
     "Active": "Actief",
     "Activity log": "Activiteitenlog",
     "Add new organisations": "Nieuwe organisaties toevoegen",
+    "An organisation needs at least one active organisation admin.": "Een organisatie heeft minstens één actieve organisatiebeheerder nodig.",
     "Archive, restore and purge organisations": "Organisaties archiveren, herstellen en definitief verwijderen",
     "Assign roles": "Rollen toewijzen",
     "At least one active super admin must remain.": "Er moet minstens één actieve superbeheerder overblijven.",
@@ -22,6 +23,7 @@
     "Invite new users by email": "Nieuwe gebruikers per e-mail uitnodigen",
     "Invite users": "Gebruikers uitnodigen",
     "Manage roles": "Rollen beheren",
+    "One or more roles are not available for this organisation.": "Een of meer rollen zijn niet beschikbaar voor deze organisatie.",
     "Organisation admin": "Organisatiebeheerder",
     "Organisation not found": "Organisatie niet gevonden",
     "Organisations": "Organisaties",
@@ -43,6 +45,8 @@
     "View roles": "Rollen bekijken",
     "View system health": "Systeemstatus bekijken",
     "View users": "Gebruikers bekijken",
+    "You can only give or take away roles whose permissions you have yourself.": "Je kunt alleen rollen geven of afnemen waarvan je zelf alle rechten hebt.",
+    "You cannot remove your own organisation admin role.": "Je kunt je eigen rol als organisatiebeheerder niet verwijderen.",
     "Your account does not have access to this address. Sign in at your own organisation.": "Je account heeft geen toegang tot dit adres. Log in bij je eigen organisatie.",
     "Your account is not active. Contact your administrator.": "Je account is niet actief. Neem contact op met je beheerder."
 }

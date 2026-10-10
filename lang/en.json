@@ -3,6 +3,7 @@
     "Active": "Active",
     "Activity log": "Activity log",
     "Add new organisations": "Add new organisations",
+    "An organisation needs at least one active organisation admin.": "An organisation needs at least one active organisation admin.",
     "Archive, restore and purge organisations": "Archive, restore and purge organisations",
     "Assign roles": "Assign roles",
     "At least one active super admin must remain.": "At least one active super admin must remain.",
@@ -22,6 +23,7 @@
     "Invite new users by email": "Invite new users by email",
     "Invite users": "Invite users",
     "Manage roles": "Manage roles",
+    "One or more roles are not available for this organisation.": "One or more roles are not available for this organisation.",
     "Organisation admin": "Organisation admin",
     "Organisation not found": "Organisation not found",
     "Organisations": "Organisations",
@@ -43,6 +45,8 @@
     "View roles": "View roles",
     "View system health": "View system health",
     "View users": "View users",
+    "You can only give or take away roles whose permissions you have yourself.": "You can only give or take away roles whose permissions you have yourself.",
+    "You cannot remove your own organisation admin role.": "You cannot remove your own organisation admin role.",
     "Your account does not have access to this address. Sign in at your own organisation.": "Your account does not have access to this address. Sign in at your own organisation.",
     "Your account is not active. Contact your administrator.": "Your account is not active. Contact your administrator."
 }
