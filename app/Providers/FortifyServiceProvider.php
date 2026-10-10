@@ -7,14 +7,17 @@ namespace App\Providers;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
 use App\Tenancy\Auth\AuthenticateOnThisHost;
+use Closure;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
+use Symfony\Component\HttpFoundation\Response;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -58,24 +61,68 @@ class FortifyServiceProvider extends ServiceProvider
     }
 
     /**
-     * Configure rate limiting.
+     * §4.2: login, two-factor and passkey limiters count failed attempts only (a response of 400 or more,
+     * or validation errors flashed by this request); password confirmation, password-reset and handoff
+     * limiters count every request (DEC-27).
      */
     private function configureRateLimiting(): void
     {
-        RateLimiter::for('two-factor', fn (Request $request) => Limit::perMinute(5)->by($request->session()->get('login.id')));
+        RateLimiter::for('login', function (Request $request): array {
+            $email = Str::transliterate(Str::lower((string) $request->input(Fortify::username())));
 
-        RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
-
-            return Limit::perMinute(5)->by($throttleKey);
+            return [
+                Limit::perMinute(5)->by('login:'.$email.'|'.$request->ip())
+                    ->after($this->failedAttempt($request))
+                    ->response($this->loginThrottled(...)),
+                Limit::perMinute(20)->by('login-ip:'.$request->ip())
+                    ->after($this->failedAttempt($request))
+                    ->response($this->loginThrottled(...)),
+            ];
         });
 
-        RateLimiter::for('passkeys', function (Request $request) {
+        RateLimiter::for('two-factor', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('two-factor:'.$request->session()->get('login.id'))
+            ->after($this->failedAttempt($request)));
+
+        RateLimiter::for('password-confirm', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('password-confirm:'.$request->user()?->getAuthIdentifier()));
+
+        RateLimiter::for('passkeys', function (Request $request): Limit {
             $credentialId = $request->input('credential.id');
 
-            return Limit::perMinute(10)->by(
-                ($credentialId ?: $request->session()->getId()).'|'.$request->ip(),
-            );
+            return Limit::perMinute(10)
+                ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
+                ->after($this->failedAttempt($request));
         });
+
+        RateLimiter::for('password-email', fn (Request $request): array => [
+            Limit::perMinute(5)->by('password-email:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(20)->by('password-email-ip:'.$request->ip()),
+        ]);
+
+        RateLimiter::for('handoff', fn (Request $request): Limit => Limit::perMinute(10)->by('handoff:'.$request->ip()));
+    }
+
+    /** @return Closure(Response): bool */
+    private function failedAttempt(Request $request): Closure
+    {
+        return fn (Response $response): bool => $response->getStatusCode() >= 400
+            || in_array('errors', (array) $request->session()->get('_flash.new', []), true);
+    }
+
+    /** @param  array<string, mixed>  $headers */
+    private function loginThrottled(Request $request, array $headers): Response
+    {
+        $seconds = (int) ($headers['Retry-After'] ?? 60);
+        $message = __('auth.throttle', ['seconds' => $seconds, 'minutes' => (int) ceil($seconds / 60)]);
+
+        if ($request->expectsJson()) {
+            return new JsonResponse(['message' => $message, 'errors' => [Fortify::username() => [$message]]], 429, $headers);
+        }
+
+        return back()
+            ->withInput($request->only(Fortify::username()))
+            ->withErrors([Fortify::username() => $message])
+            ->withHeaders($headers);
     }
 }
