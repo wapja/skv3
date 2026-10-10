@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
+use App\Tenancy\Auth\AuthenticateOnThisHost;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -39,6 +42,7 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureActions(): void
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+        Fortify::authenticateUsing(fn (Request $request): ?User => app(AuthenticateOnThisHost::class)($request));
     }
 
     /**
@@ -46,11 +50,11 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureViews(): void
     {
-        Fortify::loginView(fn (): Factory|\Illuminate\Contracts\View\View => view('pages::auth.login'));
-        Fortify::twoFactorChallengeView(fn (): Factory|\Illuminate\Contracts\View\View => view('pages::auth.two-factor-challenge'));
-        Fortify::confirmPasswordView(fn (): Factory|\Illuminate\Contracts\View\View => view('pages::auth.confirm-password'));
-        Fortify::resetPasswordView(fn (): Factory|\Illuminate\Contracts\View\View => view('pages::auth.reset-password'));
-        Fortify::requestPasswordResetLinkView(fn (): Factory|\Illuminate\Contracts\View\View => view('pages::auth.forgot-password'));
+        Fortify::loginView(fn (): Factory|View => view('pages::auth.login'));
+        Fortify::twoFactorChallengeView(fn (): Factory|View => view('pages::auth.two-factor-challenge'));
+        Fortify::confirmPasswordView(fn (): Factory|View => view('pages::auth.confirm-password'));
+        Fortify::resetPasswordView(fn (): Factory|View => view('pages::auth.reset-password'));
+        Fortify::requestPasswordResetLinkView(fn (): Factory|View => view('pages::auth.forgot-password'));
     }
 
     /**
