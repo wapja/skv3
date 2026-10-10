@@ -79,17 +79,21 @@ it('sends the reset link only after the response is handled', function (): void 
         ->and(Notification::sent($member, ResetPassword::class))->toHaveCount(1);
 });
 
-it('throttles reset-link requests', function (): void {
+it('throttles reset-link requests per address and per IP address', function (string $limit): void {
     Sleep::fake(); // counts requests, not time
     Notification::fake();
     onApex();
+    $request = fn (int $number): TestResponse => $this->post(route('password.email'), [
+        'email' => $limit === 'address' ? 'someone@example.com' : "someone-{$number}@example.com",
+    ]);
+    $allowed = $limit === 'address' ? 5 : 20;
 
-    foreach (range(1, 5) as $attempt) {
-        $this->post(route('password.email'), ['email' => 'someone@example.com']);
+    foreach (range(1, $allowed) as $number) {
+        $request($number)->assertRedirect();
     }
 
-    $this->post(route('password.email'), ['email' => 'someone@example.com'])->assertTooManyRequests();
-});
+    $request($allowed + 1)->assertTooManyRequests();
+})->with(['address', 'IP address']);
 
 it('refuses a reset token on a host the user does not belong to', function (): void {
     $organisation = Organisation::factory()->create();
@@ -106,6 +110,22 @@ it('refuses a reset token on a host the user does not belong to', function (): v
 
     expect(Hash::check('password', (string) $member->fresh()?->password))->toBeTrue();
 });
+
+it('refuses a reset token for a user who may not sign in', function (string $state): void {
+    $organisation = Organisation::factory()->create();
+    $user = User::factory()->for($organisation)->{$state}()->create();
+    $token = Password::broker()->createToken($user);
+    onTenant($organisation);
+
+    $this->post(route('password.update'), [
+        'token' => $token,
+        'email' => $user->email,
+        'password' => 'new-password-1',
+        'password_confirmation' => 'new-password-1',
+    ])->assertSessionHasErrors('email');
+
+    expect(Hash::check('password', (string) $user->fresh()?->password))->toBeTrue();
+})->with(['pending', 'disabled']);
 
 it('answers a bad reset token the same way for known and unknown addresses (R1)', function (): void {
     $organisation = Organisation::factory()->create();

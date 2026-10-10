@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Tests\Fixtures\DeletedFailingJob;
 use Tests\Fixtures\FailingCountUsersJob;
 use Tests\Fixtures\RecordTenantJob;
 use Tests\Fixtures\RecordUsersJob;
@@ -130,6 +131,14 @@ it('runs the failed() hook of a synchronous tenantless job centrally and stays s
 
     expect(Cache::get('failed-hook.users'))->toBeInt()
         ->and(fn () => User::query()->count())->toThrow(TenantNotResolvedException::class);
+});
+
+it('stays strict after a deleted, failing synchronous tenantless job', function (): void {
+    config(['queue.default' => 'sync', 'tenancy.strict' => true]);
+
+    expect(fn () => Bus::dispatch(new DeletedFailingJob))->toThrow(RuntimeException::class, 'boom after delete');
+
+    expect(fn () => User::query()->count())->toThrow(TenantNotResolvedException::class);
 });
 
 it('resumes the surrounding bypass after a failing synchronous tenant job', function (): void {

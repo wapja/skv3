@@ -14,6 +14,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 
 it('signs a super admin in on another host with a single-use link', function (): void {
     Event::fake([HandoffConsumed::class]);
@@ -22,7 +23,9 @@ it('signs a super admin in on another host with a single-use link', function ():
 
     $url = app(IssueHandoff::class)->handle($superAdmin, Hosts::tenant('acme'), '/settings/profile');
 
-    expect($url)->toStartWith('http://acme.localhost/auth/handoff/');
+    expect($url)->toStartWith('http://acme.localhost/auth/handoff/')
+        ->and(HandoffToken::query()->sole()->token_hash)->toBe(hash('sha256', Str::afterLast($url, '/')))
+        ->not->toBe(Str::afterLast($url, '/'));
     $this->get($url)
         ->assertRedirect('http://acme.localhost/settings/profile')
         ->assertHeader('Referrer-Policy', 'no-referrer');
@@ -89,6 +92,16 @@ it('signs out a different user and starts a clean session', function (): void {
 
     $this->assertAuthenticatedAs($superAdmin);
     expect(session()->has('auth.password_confirmed_at'))->toBeFalse();
+});
+
+it('throttles handoff attempts per IP address', function (): void {
+    onApex();
+
+    foreach (range(1, 10) as $attempt) {
+        $this->get(route('auth.handoff', ['token' => Str::random(64)]))->assertRedirect(route('login'));
+    }
+
+    $this->get(route('auth.handoff', ['token' => Str::random(64)]))->assertTooManyRequests();
 });
 
 it('prunes tokens that expired more than a day ago', function (): void {
