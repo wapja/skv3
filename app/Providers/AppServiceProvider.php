@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureDevCommands();
     }
 
     /**
@@ -48,5 +50,17 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Configure `php artisan dev`: Herd already serves the site, and the scheduler must run locally.
+     */
+    protected function configureDevCommands(): void
+    {
+        DevCommands::artisan('schedule:work', 'schedule');
+
+        if (is_dir((getenv('HOME') ?: '').'/Library/Application Support/Herd')) {
+            DevCommands::except('server');
+        }
     }
 }

@@ -45,35 +45,41 @@
     },
     "scripts": {
         "setup": [
+            "Composer\\Config::disableProcessTimeout",
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
-            "@php artisan key:generate",
-            "@php artisan migrate --force",
-            "npm install",
+            "@php artisan key:generate --ansi",
+            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
+            "@php artisan migrate --force --ansi",
+            "@php -r \"is_dir('.git') && exec('git config core.hooksPath .githooks');\"",
+            "npm ci",
             "npm run build"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
             "@php artisan dev"
         ],
-        "lint": [
+        "fix": [
+            "rector process --no-progress-bar",
             "pint --parallel"
         ],
-        "lint:check": [
-            "pint --parallel --test"
-        ],
-        "ci:check": [
+        "check": [
             "Composer\\Config::disableProcessTimeout",
-            "@test"
-        ],
-        "types:check": [
-            "phpstan analyse"
-        ],
-        "test": [
             "@php artisan config:clear --ansi",
-            "@lint:check",
-            "@types:check",
-            "@php artisan test"
+            "pint --parallel --test",
+            "rector process --dry-run --no-progress-bar",
+            "phpstan analyse --memory-limit=1G --no-progress",
+            "pest --parallel --exclude-group=browser"
+        ],
+        "test:pgsql": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan config:clear --ansi",
+            "@php scripts/create-pgsql-test-database.php",
+            "DB_CONNECTION=pgsql DB_HOST=${DB_HOST:-127.0.0.1} DB_PORT=${DB_PORT:-5432} DB_DATABASE=${DB_TEST_DATABASE:-$(basename \"$PWD\")_test} DB_USERNAME=${DB_USERNAME:-root} DB_PASSWORD=${DB_PASSWORD:-} pest --parallel --exclude-group=browser"
+        ],
+        "test:browser": [
+            "Composer\\Config::disableProcessTimeout",
+            "pest --group=browser"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
