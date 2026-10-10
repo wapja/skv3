@@ -13,6 +13,7 @@ use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Queue\Jobs\SyncJob;
 
 /**
  * Queue tenant context (§6.2). JobProcessing runs before the command is unserialized, so model
@@ -60,6 +61,13 @@ final class JobTenancy
 
     public function end(JobProcessed|JobFailed|JobExceptionOccurred $event): void
     {
+        // SyncQueue (and the deferred queue built on it) raises JobExceptionOccurred and then fails the job,
+        // so the job's failed() hook still needs its context; JobFailed (fired after the hook) restores it.
+        // A deleted job is not failed again (no JobFailed), so restore on JobExceptionOccurred then.
+        if ($event instanceof JobExceptionOccurred && $event->job instanceof SyncJob && ! $event->job->isDeleted()) {
+            return;
+        }
+
         $key = spl_object_id($event->job);
 
         if (! array_key_exists($key, $this->previous)) {

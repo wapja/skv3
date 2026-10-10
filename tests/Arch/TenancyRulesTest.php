@@ -18,8 +18,13 @@ it('bypasses or removes the tenant scope only in the allowed places', function (
         fn (string $path): bool => ! Str::startsWith($path, $allowed),
     ));
 
-    // Removing TenantScope through Eloquent reads across organisations just like a bypass.
-    $pattern = '/Tenant::bypass\s*\(|->bypass\s*\(|withoutGlobalScope\s*\(\s*(\\\\?[\w\\\\]*\\\\)?TenantScope::class|withoutGlobalScopes\s*\(|newQueryWithoutScopes\s*\(/';
+    // Removing TenantScope through Eloquent (by class, by name or by instance) reads across organisations
+    // just like a bypass, and suspending or resuming one changes the bypass state directly.
+    $pattern = '/Tenant::bypass\s*\(|->bypass\s*\(|\b(suspend|resume)Bypass\s*\('
+        .'|withoutGlobalScope\s*\(\s*(\\\\?[\w\\\\]*\\\\)?TenantScope::class'
+        .'|withoutGlobalScope\s*\(\s*[\'"](\\\\?[\w\\\\]*\\\\)?TenantScope[\'"]'
+        .'|withoutGlobalScope\s*\(\s*new\s+(\\\\?[\w\\\\]*\\\\)?TenantScope\b'
+        .'|withoutGlobalScopes\s*\(|newQueryWithoutScopes\s*\(/';
 
     expect(filesMatching($candidates, $pattern))->toBe([]);
 });

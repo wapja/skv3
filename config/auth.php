@@ -116,4 +116,18 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Timebox Duration
+    |--------------------------------------------------------------------------
+    |
+    | The minimum time, in microseconds, that a failed sign-in, a password
+    | reset and a reset-link request take, so the response time does not
+    | reveal which addresses exist. It must stay above one password hash at
+    | BCRYPT_ROUNDS on the production hardware (DEC-27).
+    |
+    */
+
+    'timebox_duration' => (int) env('AUTH_TIMEBOX_DURATION', 500_000),
+
 ];

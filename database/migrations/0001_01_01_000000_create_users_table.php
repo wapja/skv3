@@ -21,7 +21,6 @@ return new class extends Migration
             $table->string('status')->default('pending_activation')->index();
             $table->string('name');
             $table->string('email');
-            $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();

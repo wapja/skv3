@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tenancy;
 
+use App\Models\User;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Host names and absolute URLs (§4.1, §6.2). Scheme and port come from the current request;
@@ -25,6 +27,43 @@ final class Hosts
     public static function tenant(string $slug): string
     {
         return Str::lower($slug).'.'.self::apex();
+    }
+
+    /** The host a user signs in on: the admin host for super admins, their organisation's host otherwise. */
+    public static function homeOf(User $user): string
+    {
+        if ($user->isSuperAdmin()) {
+            return self::admin();
+        }
+
+        $organisation = $user->organisation ?? throw new LogicException("User [{$user->id}] has no organisation.");
+
+        return self::tenant($organisation->slug);
+    }
+
+    /**
+     * The organisation slug a host names, or null when it is not {slug}.{apex} with a valid,
+     * unreserved slug (§6.2): one label of 3–63 characters [a-z0-9-] without a leading or
+     * trailing hyphen. Expects a lower-cased host. Whether the organisation exists is not checked.
+     */
+    public static function slugOf(string $host): ?string
+    {
+        $suffix = '.'.self::apex();
+
+        if (! str_ends_with($host, $suffix)) {
+            return null;
+        }
+
+        $slug = substr($host, 0, -strlen($suffix));
+
+        if (preg_match('/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/', $slug) !== 1) {
+            return null;
+        }
+
+        /** @var list<string> $reserved */
+        $reserved = config('tenancy.reserved_slugs', []);
+
+        return in_array($slug, $reserved, true) ? null : $slug;
     }
 
     public static function origin(string $host): string

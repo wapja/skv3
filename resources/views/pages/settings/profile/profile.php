@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Actions\Settings\RequestEmailChange;
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
 use Flux\Flux;
@@ -31,9 +32,9 @@ new #[Title('Profile settings')] class extends Component
     }
 
     /**
-     * Update the profile information for the currently authenticated user.
+     * Save the name; a new email address only applies after it is confirmed through the mailed link (E1).
      */
-    public function updateProfileInformation(): void
+    public function updateProfileInformation(RequestEmailChange $requestEmailChange): void
     {
         $user = $this->user();
 
@@ -41,9 +42,18 @@ new #[Title('Profile settings')] class extends Component
 
         $validated = $this->validate($this->profileRules($user->id));
 
-        $user->fill($validated);
+        $user->fill(['name' => $validated['name']])->save();
 
-        $user->save();
+        $email = (string) $validated['email'];
+
+        if ($email !== $user->email) {
+            $requestEmailChange->handle($user, $email);
+            $this->email = $user->email;
+
+            Flux::toast(variant: 'success', text: __('We sent a confirmation link to :email.', ['email' => $email]));
+
+            return;
+        }
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
     }

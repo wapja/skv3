@@ -17,3 +17,7 @@
 - Permissions: use the `App\Authorization\Permission` enum (`$user->can(Permission::UsersView)`, `->can(Permission::UsersView)` on routes); never a permission string. Switch teams only with `withPermissionsTeam($teamId, fn () => …)`.
 - Super admin = `users.is_super_admin`, changed only by `App\Authorization\SetSuperAdmin`. Organisation roles change only through `App\Actions\Users\UpdateUserRoles`.
 - Tests: `onTenant($organisation)`, `onApex()`, `onAdminHost()`, `asSuperAdmin()`, `asOrgAdmin($organisation)`, `asMember($organisation)`. `Livewire::test()` skips all middleware, so test host rules with HTTP requests. Tests that use `Event::fake()` must keep the tenancy events real (`Event::fake()->except([TenantResolved::class, TenantForgotten::class])`), or the permissions team stays null.
+- Sign-in rules live in `App\Tenancy\Auth\HostLoginRule`; never re-implement "may this user sign in here".
+- Links that leave the current request (mails, redirects to another host) are built for `Hosts::homeOf($user)`; signed links use `URL::temporarySignedRoute(..., absolute: false)` with `signed:relative`.
+- Moving a signed-in user to another host goes through `App\Actions\Auth\IssueHandoff`; sessions are host-only.
+- `password.confirm` on a route does not cover Livewire updates: a Livewire action that changes or reveals a second factor starts with `if ($this->passwordConfirmationRequired()) { return; }` (`App\Concerns\ConfirmsPasswords`).

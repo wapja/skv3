@@ -10,8 +10,11 @@ use App\Tenancy\Http\Middleware\VerifyTenantMembership;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\AuthenticateSession;
+use Webauthn\Exception\WebauthnException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -20,7 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [VerifyTenantMembership::class], prepend: [InitializeTenancy::class]);
+        $middleware->web(append: [VerifyTenantMembership::class, AuthenticateSession::class], prepend: [InitializeTenancy::class]);
         // Before route-model binding (and so before can:): a tenant model bound on the wrong host
         // gives a 404, not a strict-mode error.
         $middleware->prependToPriorityList(SubstituteBindings::class, VerifyTenantMembership::class);
@@ -33,4 +36,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // A failed WebAuthn ceremony (origin, challenge, signature, counter) is a client error, not a 500.
+        $exceptions->render(fn (WebauthnException $exception): JsonResponse => new JsonResponse([
+            'message' => __('This passkey could not be verified.'),
+            'errors' => ['credential' => [__('This passkey could not be verified.')]],
+        ], 422));
     })->create();

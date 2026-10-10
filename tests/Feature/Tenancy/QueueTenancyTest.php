@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Tests\Fixtures\DeletedFailingJob;
+use Tests\Fixtures\FailingCountUsersJob;
 use Tests\Fixtures\RecordTenantJob;
 use Tests\Fixtures\RecordUsersJob;
 
@@ -119,5 +121,41 @@ it('scopes a synchronous job dispatched inside a bypass to its tenant', function
     });
 
     expect(Cache::get('job.users'))->toBe([$mine->id])
+        ->and(Tenant::isBypassed())->toBeFalse();
+});
+
+it('runs the failed() hook of a synchronous tenantless job centrally and stays strict afterwards', function (): void {
+    config(['queue.default' => 'sync', 'tenancy.strict' => true]);
+
+    expect(fn () => Bus::dispatch(new FailingCountUsersJob))->toThrow(RuntimeException::class, 'boom');
+
+    expect(Cache::get('failed-hook.users'))->toBeInt()
+        ->and(fn () => User::query()->count())->toThrow(TenantNotResolvedException::class);
+});
+
+it('stays strict after a deleted, failing synchronous tenantless job', function (): void {
+    config(['queue.default' => 'sync', 'tenancy.strict' => true]);
+
+    expect(fn () => Bus::dispatch(new DeletedFailingJob))->toThrow(RuntimeException::class, 'boom after delete');
+
+    expect(fn () => User::query()->count())->toThrow(TenantNotResolvedException::class);
+});
+
+it('resumes the surrounding bypass after a failing synchronous tenant job', function (): void {
+    config(['queue.default' => 'sync']);
+    [$organisation, $other] = Organisation::factory()->count(2)->create()->all();
+    User::factory()->for($organisation)->create();
+    User::factory()->for($other)->create();
+    Tenant::set($organisation);
+
+    $bypassedAfterFailure = Tenant::bypass(function (): bool {
+        expect(fn () => Bus::dispatch(new FailingCountUsersJob))->toThrow(RuntimeException::class, 'boom');
+
+        return Tenant::isBypassed();
+    });
+
+    expect(Cache::get('failed-hook.users'))->toBe(1)
+        ->and($bypassedAfterFailure)->toBeTrue()
+        ->and(Tenant::current()?->id)->toBe($organisation->id)
         ->and(Tenant::isBypassed())->toBeFalse();
 });

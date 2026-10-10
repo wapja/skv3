@@ -6,10 +6,13 @@ use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Notifications\ConfirmEmailChange;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Hosts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -115,4 +118,25 @@ function filesMatching(array $paths, string $pattern): array
         $paths,
         fn (string $path): bool => preg_match($pattern, (string) file_get_contents(base_path($path))) === 1,
     ));
+}
+
+/** The email-change confirmation link sent to an address (requires Notification::fake()). */
+function confirmationLinkFor(string $address): string
+{
+    $link = null;
+
+    Notification::assertSentOnDemand(
+        ConfirmEmailChange::class,
+        function (ConfirmEmailChange $notification, array $channels, AnonymousNotifiable $notifiable) use ($address, &$link): bool {
+            if (($notifiable->routes['mail'] ?? null) !== $address) {
+                return false;
+            }
+
+            $link = $notification->url;
+
+            return true;
+        },
+    );
+
+    return is_string($link) ? $link : throw new RuntimeException("No confirmation link was sent to [{$address}].");
 }
