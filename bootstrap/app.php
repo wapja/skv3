@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use App\Tenancy\Exceptions\TenantNotFoundException;
+use App\Tenancy\Http\Middleware\EnsureCentralHost;
+use App\Tenancy\Http\Middleware\EnsureTenantHost;
 use App\Tenancy\Http\Middleware\InitializeTenancy;
 use App\Tenancy\Http\Middleware\VerifyTenantMembership;
+use Illuminate\Auth\Middleware\Authorize;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [VerifyTenantMembership::class], prepend: [InitializeTenancy::class]);
+        $middleware->prependToPriorityList(Authorize::class, EnsureTenantHost::class);
+        $middleware->prependToPriorityList(Authorize::class, EnsureCentralHost::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontReport([TenantNotFoundException::class]);
