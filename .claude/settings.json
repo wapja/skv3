@@ -4,12 +4,10 @@
         "allow": [
             "Bash(php artisan test:*)",
             "Bash(php artisan route:list:*)",
-            "Bash(php artisan make:*)",
             "Bash(php artisan config:show:*)",
             "Bash(php artisan about:*)",
             "Bash(php artisan view:clear:*)",
             "Bash(php artisan config:clear:*)",
-            "Bash(php artisan livewire:*)",
             "Bash(php artisan boost:update:*)",
             "Bash(php artisan list:*)",
             "Bash(php artisan dev:list:*)",
@@ -62,8 +60,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "f=$(php -r '$i=json_decode(stream_get_contents(STDIN),true); echo $i[\"tool_input\"][\"file_path\"] ?? \"\";'); case \"$f\" in *.blade.php) ;; *.php) vendor/bin/pint \"$f\" >/dev/null 2>&1 ;; esac; exit 0",
-                        "async": true
+                        "command": "f=$(php -r '$i=json_decode(stream_get_contents(STDIN),true); echo $i[\"tool_input\"][\"file_path\"] ?? \"\";'); case \"$f\" in *.blade.php) ;; *.php) \"$CLAUDE_PROJECT_DIR\"/vendor/bin/pint \"$f\" >/dev/null 2>&1 ;; esac; exit 0"
                     }
                 ]
             }

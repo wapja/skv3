@@ -31,3 +31,23 @@ it('targets Claude Code in boost.json', function (): void {
 
     expect($boost['agents'])->toContain('claude_code');
 });
+
+it('runs Pint synchronously from the project dir after PHP edits', function (): void {
+    /** @var array{hooks: array{PostToolUse: list<array{matcher: string, hooks: list<array<string, mixed>>}>}} $settings */
+    $settings = json_decode((string) file_get_contents(base_path('.claude/settings.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    $hook = $settings['hooks']['PostToolUse'][0]['hooks'][0];
+
+    expect($hook)->not->toHaveKey('async')
+        ->and($hook['command'])->toContain('"$CLAUDE_PROJECT_DIR"/vendor/bin/pint')
+        ->and($hook['command'])->toContain('*.blade.php) ;;')
+        ->and($hook['command'])->toEndWith('exit 0');
+});
+
+it('does not list allow rules that can never match colon subcommands', function (): void {
+    /** @var array{permissions: array{allow: list<string>}} $settings */
+    $settings = json_decode((string) file_get_contents(base_path('.claude/settings.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($settings['permissions']['allow'])->not->toContain('Bash(php artisan make:*)')
+        ->and($settings['permissions']['allow'])->not->toContain('Bash(php artisan livewire:*)');
+});
