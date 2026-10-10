@@ -55,7 +55,7 @@ it('serves central routes on central hosts only', function (): void {
 
 it('checks the host before can: middleware', function (): void {
     // As a guest: can:nobody answers 403 if it runs before EnsureTenantHost, and 404 otherwise.
-    // A super admin would pass can:nobody through SuperAdminGate (Task 12) and hide a wrong order.
+    // A super admin would pass can:nobody through SuperAdminGate and hide a wrong order.
     $this->get(Hosts::url(Hosts::apex(), '/_guarded'))->assertNotFound();
 });
 

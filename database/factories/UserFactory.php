@@ -79,7 +79,7 @@ class UserFactory extends Factory
         ]);
     }
 
-    /** Sets the flag only; SetSuperAdmin (Task 4) also attaches the super_admin badge role. */
+    /** Sets the flag only; SetSuperAdmin also attaches the super_admin badge role. */
     public function superAdmin(): static
     {
         return $this->state(fn (array $attributes): array => [
