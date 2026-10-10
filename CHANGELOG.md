@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Composer scripts `setup`, `dev`, `fix`, `check`, `test:pgsql`, `test:browser`; pre-commit hook.
 - CI matrix (PostgreSQL 18, SQLite, PHP 8.5) and Dependabot for actions, composer and npm.
 - Laravel Boost, `CLAUDE.md`, kit guideline and Claude Code settings with the superpowers plugin.
+- Multi-tenancy: organisations on their own subdomain, a strict tenant scope, `Route::tenant()` / `Route::central()` groups, tenant-aware queues and a friendly page for unknown organisations.
+- Roles and permissions: a fixed permission catalogue, `permissions:sync`, a global organisation admin role and a super-admin flag with guards against lock-out and privilege escalation.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
