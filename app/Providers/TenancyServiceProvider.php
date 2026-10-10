@@ -6,10 +6,12 @@ namespace App\Providers;
 
 use App\Tenancy\Auth\UnscopedUserProvider;
 use App\Tenancy\CentralContext;
+use App\Tenancy\Contracts\TenantResolver;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Events\TenantForgotten;
 use App\Tenancy\Events\TenantResolved;
 use App\Tenancy\Listeners\SetPermissionsTeam;
+use App\Tenancy\Resolvers\SubdomainResolver;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Foundation\Application;
@@ -23,6 +25,7 @@ final class TenancyServiceProvider extends ServiceProvider
     {
         $this->app->scoped(CurrentTenant::class);
         $this->app->singleton(CentralContext::class);
+        $this->app->bind(TenantResolver::class, SubdomainResolver::class);
     }
 
     public function boot(): void
