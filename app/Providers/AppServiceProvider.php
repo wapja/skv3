@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Authorization\SuperAdminGate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -28,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureDevCommands();
+        $this->configureAuthorization();
     }
 
     /**
@@ -62,5 +65,13 @@ class AppServiceProvider extends ServiceProvider
         if (is_dir((getenv('HOME') ?: '').'/Library/Application Support/Herd')) {
             DevCommands::except('server');
         }
+    }
+
+    /**
+     * Super admins pass every gate check except the always-checked abilities (§4.6).
+     */
+    protected function configureAuthorization(): void
+    {
+        Gate::before(SuperAdminGate::before(...));
     }
 }
