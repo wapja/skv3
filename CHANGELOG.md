@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Roles and permissions: a fixed permission catalogue, `permissions:sync`, a global organisation admin role and a super-admin flag with guards against lock-out and privilege escalation.
 - Host-aware sign-in: password, two-factor and passkey sign-in only on hosts a user belongs to; failed attempts are rate limited.
 - Passkeys that work on every subdomain, password reset links for the user's own host, email changes confirmed by link, and a single-use cross-host sign-in link.
+- Email changes and security-page actions (disabling 2FA, removing a passkey, viewing or regenerating recovery codes) ask for a fresh password confirmation.
+- Failed sign-ins take at least `AUTH_TIMEBOX_DURATION` (500 ms by default), so response times do not reveal which addresses exist; `TRUSTED_PROXIES` lets rate limits see each visitor's IP behind a load balancer.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.

@@ -56,9 +56,10 @@ function securityPageSnapshot(string $component): array
  * Sends a Livewire update that calls $method on the component, as a forged request would.
  *
  * @param  array<string, mixed>  $snapshot
+ * @param  array<string, string>  $headers
  * @return TestResponse<Response>
  */
-function callOnSecurityPage(array $snapshot, string $method): TestResponse
+function callOnSecurityPage(array $snapshot, string $method, array $headers = []): TestResponse
 {
     Livewire::flushState(); // a new request cycle, as in production
 
@@ -66,7 +67,7 @@ function callOnSecurityPage(array $snapshot, string $method): TestResponse
         'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
         'updates' => [],
         'calls' => [['method' => $method, 'params' => [], 'metadata' => []]],
-    ]]], ['X-Livewire' => '1']);
+    ]]], ['X-Livewire' => '1', ...$headers]);
 }
 
 it('refuses to disable 2FA through a Livewire update once the password confirmation expired', function (): void {
@@ -135,6 +136,16 @@ it('returns to the security page once the password is confirmed again', function
     expirePasswordConfirmation();
 
     callOnSecurityPage($snapshot, 'disable');
+
+    $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect(route('security.edit'));
+});
+
+it('returns to the security page whatever page the update names as its referrer', function (): void {
+    memberOnSecurityPage();
+    $snapshot = securityPageSnapshot('pages::settings.security');
+    expirePasswordConfirmation();
+
+    callOnSecurityPage($snapshot, 'disable', ['Referer' => 'https://evil.test/phish']);
 
     $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect(route('security.edit'));
 });
