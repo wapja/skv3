@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Authorization;
 
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission as PermissionModel;
 use Spatie\Permission\Models\Role as RoleModel;
@@ -31,7 +32,9 @@ final class SyncPermissions
             $this->systemRole(Role::SuperAdmin)->syncPermissions([]);
             $superOnlyDetached = $this->detachSuperOnlyFromTeamRoles();
 
-            return new SyncResult($created, $pruned, $organisationAdminChanged, $superOnlyDetached, 0);
+            $badgesRepaired = $this->repairSuperAdminBadges();
+
+            return new SyncResult($created, $pruned, $organisationAdminChanged, $superOnlyDetached, $badgesRepaired);
         }));
 
         $registrar->forgetCachedPermissions();
@@ -99,6 +102,40 @@ final class SyncPermissions
             ->whereIn('permission_id', PermissionModel::query()->whereIn('name', $superOnly)->select('id'))
             ->whereIn('role_id', RoleModel::query()->whereNotNull('team_id')->select('id'))
             ->delete();
+    }
+
+    /**
+     * The badge mirrors users.is_super_admin (§6.3): attached with a null team to every flagged
+     * user, removed from everyone else and from any non-null team.
+     */
+    private function repairSuperAdminBadges(): int
+    {
+        $badgeId = $this->systemRole(Role::SuperAdmin)->getKey();
+        $morphClass = new User()->getMorphClass();
+        $flagged = DB::table('users')->where('is_super_admin', true)->pluck('id')->map(fn (mixed $id): int => (int) $id);
+
+        $removed = DB::table('model_has_roles')
+            ->where('role_id', $badgeId)
+            ->where('model_type', $morphClass)
+            ->where(fn ($query) => $query->whereNotNull('team_id')->orWhereNotIn('model_id', $flagged->all()))
+            ->delete();
+
+        $present = DB::table('model_has_roles')
+            ->where('role_id', $badgeId)
+            ->where('model_type', $morphClass)
+            ->pluck('model_id')
+            ->map(fn (mixed $id): int => (int) $id);
+
+        $missing = $flagged->diff($present)->values();
+
+        DB::table('model_has_roles')->insert($missing->map(fn (int $id): array => [
+            'role_id' => $badgeId,
+            'model_type' => $morphClass,
+            'model_id' => $id,
+            'team_id' => null,
+        ])->all());
+
+        return $removed + $missing->count();
     }
 
     private function systemRole(Role $role): RoleModel
