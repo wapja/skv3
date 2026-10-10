@@ -10,8 +10,10 @@ use App\Tenancy\Http\Middleware\VerifyTenantMembership;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Webauthn\Exception\WebauthnException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -33,4 +35,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // A failed WebAuthn ceremony (origin, challenge, signature, counter) is a client error, not a 500.
+        $exceptions->render(fn (WebauthnException $exception): JsonResponse => new JsonResponse([
+            'message' => __('This passkey could not be verified.'),
+            'errors' => ['credential' => [__('This passkey could not be verified.')]],
+        ], 422));
     })->create();
