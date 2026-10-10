@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\UserStatus;
+use App\Tenancy\Concerns\BelongsToOrganisation;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -43,7 +43,7 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable, PasskeyAuthenticatable, SoftDeletes, TwoFactorAuthenticatable;
+    use BelongsToOrganisation, HasFactory, HasRoles, Notifiable, PasskeyAuthenticatable, SoftDeletes, TwoFactorAuthenticatable;
 
     /**
      * Get the user's initials
@@ -57,10 +57,10 @@ class User extends Authenticatable implements PasskeyUser
             : $initials;
     }
 
-    /** @return BelongsTo<Organisation, $this> */
-    public function organisation(): BelongsTo
+    /** Super admins are central users without an organisation (§6.3). */
+    public function mayExistWithoutOrganisation(): bool
     {
-        return $this->belongsTo(Organisation::class);
+        return $this->is_super_admin === true;
     }
 
     /** §6.3: the column is the only source of truth; a missing organisation never implies it (W8). */
