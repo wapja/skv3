@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Concerns\ConfirmsPasswords;
 use App\Models\User;
 use Flux\Flux;
 use Illuminate\Auth\AuthenticationException;
@@ -13,6 +14,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 new class extends Component
 {
+    use ConfirmsPasswords;
+
     /**
      * @var list<string>
      */
@@ -32,6 +35,10 @@ new class extends Component
      */
     public function regenerateRecoveryCodes(GenerateNewRecoveryCodes $generateNewRecoveryCodes): void
     {
+        if ($this->passwordConfirmationRequired()) {
+            return;
+        }
+
         $generateNewRecoveryCodes($this->user());
 
         $this->loadRecoveryCodes();
@@ -42,8 +49,12 @@ new class extends Component
     /**
      * Download the recovery codes as a text file, one code per line (§4.2).
      */
-    public function downloadRecoveryCodes(): StreamedResponse
+    public function downloadRecoveryCodes(): ?StreamedResponse
     {
+        if ($this->passwordConfirmationRequired()) {
+            return null;
+        }
+
         $codes = implode(PHP_EOL, $this->recoveryCodes).PHP_EOL;
 
         return response()->streamDownload(function () use ($codes): void {

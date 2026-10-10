@@ -8,12 +8,14 @@ use App\Models\User;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\withSession;
 
 function memberWithRecoveryCodes(): User
 {
     $user = User::factory()->withTwoFactor()->create();
     onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
     actingAs($user);
+    withSession(['auth.password_confirmed_at' => time()]);
 
     return $user;
 }

@@ -42,7 +42,7 @@ it('changes the address when the signed-in user follows the link', function (): 
     DB::table('password_reset_tokens')->insert(['email' => 'old@example.com', 'token' => 'x', 'created_at' => now()]);
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
 
-    $this->actingAs($member)->get(confirmationLinkFor('new@example.com'))
+    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('new@example.com'))
         ->assertRedirect(route('profile.edit'))
         ->assertSessionHas('status', __('Your email address has been changed.'));
 
@@ -79,14 +79,14 @@ it('refuses a link opened by another user', function (): void {
     $colleague = User::factory()->for($organisation)->create();
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
 
-    $this->actingAs($colleague)->get(confirmationLinkFor('new@example.com'))->assertForbidden();
+    $this->actingAs($colleague)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('new@example.com'))->assertForbidden();
 });
 
 it('uses a link only once', function (): void {
     [, $member] = memberChangingEmail();
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
     $link = confirmationLinkFor('new@example.com');
-    $this->actingAs($member)->get($link);
+    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get($link);
     $member->refresh();
 
     $this->actingAs($member)->get($link)
@@ -99,7 +99,7 @@ it('accepts only the newest link', function (): void {
     app(RequestEmailChange::class)->handle($member, 'first@example.com');
     app(RequestEmailChange::class)->handle($member, 'second@example.com');
 
-    $this->actingAs($member)->get(confirmationLinkFor('first@example.com'))
+    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('first@example.com'))
         ->assertSessionHas('status', __('This confirmation link is no longer valid.'));
 
     expect($member->fresh()?->email)->toBe('old@example.com');
@@ -115,7 +115,31 @@ it('refuses an address that was taken in the meantime', function (): void {
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
     User::factory()->for($organisation)->create(['email' => 'new@example.com']);
 
-    $this->actingAs($member)->get(confirmationLinkFor('new@example.com'))->assertRedirect(route('profile.edit'));
+    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('new@example.com'))->assertRedirect(route('profile.edit'));
 
     expect($member->fresh()?->email)->toBe('old@example.com');
+});
+
+it('asks a session without a confirmed password to confirm it before the address changes', function (): void {
+    [, $member] = memberChangingEmail();
+    app(RequestEmailChange::class)->handle($member, 'attacker@example.com');
+
+    $this->actingAs($member)->get(confirmationLinkFor('attacker@example.com'))
+        ->assertRedirect(route('password.confirm'));
+
+    expect($member->fresh()?->email)->toBe('old@example.com');
+});
+
+it('changes the address once the password is confirmed and the link is followed again', function (): void {
+    [, $member] = memberChangingEmail();
+    app(RequestEmailChange::class)->handle($member, 'new@example.com');
+    $link = confirmationLinkFor('new@example.com');
+
+    $this->actingAs($member)->get($link)->assertRedirect(route('password.confirm'));
+    $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect($link);
+    $this->get($link)
+        ->assertRedirect(route('profile.edit'))
+        ->assertSessionHas('status', __('Your email address has been changed.'));
+
+    expect($member->fresh()?->email)->toBe('new@example.com');
 });

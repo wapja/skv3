@@ -44,7 +44,7 @@ test('the email address is stored lower-cased and works for login in any casing'
         ->set('email', 'Foo@Example.COM')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
-    $this->get(confirmationLinkFor('foo@example.com'))->assertRedirect(route('profile.edit'));
+    $this->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('foo@example.com'))->assertRedirect(route('profile.edit'));
     $this->post(route('logout'));
 
     expect($user->refresh()->email)->toBe('foo@example.com');
@@ -77,7 +77,7 @@ test('email address of a deleted user can be reused', function (): void {
         ->set('email', 'former@example.com')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
-    $this->get(confirmationLinkFor('former@example.com'));
+    $this->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('former@example.com'));
 
     expect($user->refresh()->email)->toBe('former@example.com');
 });

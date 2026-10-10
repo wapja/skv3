@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Concerns\ConfirmsPasswords;
 use App\Concerns\PasswordValidationRules;
 use App\Models\User;
 use Flux\Flux;
@@ -19,6 +20,7 @@ use Livewire\Component;
 
 new #[Title('Security settings')] class extends Component
 {
+    use ConfirmsPasswords;
     use PasswordValidationRules;
 
     public string $current_password = '';
@@ -135,6 +137,10 @@ new #[Title('Security settings')] class extends Component
      */
     public function deletePasskey(DeletePasskey $deletePasskey): void
     {
+        if ($this->passwordConfirmationRequired()) {
+            return;
+        }
+
         if (! $this->deletingPasskeyId) {
             return;
         }
@@ -171,6 +177,10 @@ new #[Title('Security settings')] class extends Component
      */
     public function disable(DisableTwoFactorAuthentication $disableTwoFactorAuthentication): void
     {
+        if ($this->passwordConfirmationRequired()) {
+            return;
+        }
+
         $disableTwoFactorAuthentication($this->user());
 
         $this->twoFactorEnabled = false;
