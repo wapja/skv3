@@ -7,7 +7,9 @@ namespace App\Providers;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
 use App\Tenancy\Auth\AuthenticateOnThisHost;
+use App\Tenancy\Hosts;
 use Closure;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
@@ -46,6 +48,12 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::authenticateUsing(fn (Request $request): ?User => app(AuthenticateOnThisHost::class)($request));
+
+        // R1: the reset link points at the user's own host, whichever host the request came from.
+        ResetPassword::createUrlUsing(fn (User $user, string $token): string => Hosts::url(
+            Hosts::homeOf($user),
+            route('password.reset', ['token' => $token, 'email' => $user->getEmailForPasswordReset()], absolute: false),
+        ));
     }
 
     /**

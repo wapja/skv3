@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tenancy;
 
+use App\Models\User;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Host names and absolute URLs (§4.1, §6.2). Scheme and port come from the current request;
@@ -25,6 +27,18 @@ final class Hosts
     public static function tenant(string $slug): string
     {
         return Str::lower($slug).'.'.self::apex();
+    }
+
+    /** The host a user signs in on: the admin host for super admins, their organisation's host otherwise. */
+    public static function homeOf(User $user): string
+    {
+        if ($user->isSuperAdmin()) {
+            return self::admin();
+        }
+
+        $organisation = $user->organisation ?? throw new LogicException("User [{$user->id}] has no organisation.");
+
+        return self::tenant($organisation->slug);
     }
 
     public static function origin(string $host): string
