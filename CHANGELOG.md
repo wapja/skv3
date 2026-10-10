@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Laravel Boost, `CLAUDE.md`, kit guideline and Claude Code settings with the superpowers plugin.
 - Multi-tenancy: organisations on their own subdomain, a strict tenant scope, `Route::tenant()` / `Route::central()` groups, tenant-aware queues and a friendly page for unknown organisations.
 - Roles and permissions: a fixed permission catalogue, `permissions:sync`, a global organisation admin role and a super-admin flag with guards against lock-out and privilege escalation.
+- Host-aware sign-in: password, two-factor and passkey sign-in only on hosts a user belongs to; failed attempts are rate limited.
+- Passkeys that work on every subdomain, password reset links for the user's own host, email changes confirmed by link, and a single-use cross-host sign-in link.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
