@@ -64,6 +64,13 @@ class FortifyServiceProvider extends ServiceProvider
      * §4.2: login, two-factor and passkey limiters count failed attempts only (a response of 400 or more,
      * or validation errors flashed by this request); password confirmation, password-reset and handoff
      * limiters count every request (DEC-27).
+     *
+     * A failure-only limit is checked before the request but counted after the response, so a burst of
+     * parallel requests can pass it while its counter is still 0. Each one therefore has a backstop that
+     * counts every request, set above what a real user ever reaches (DEC-27).
+     *
+     * The IP limits assume that $request->ip() is the client's address: behind a load balancer or CDN,
+     * set TRUSTED_PROXIES (config/trustedproxy.php), or every visitor shares the proxy's buckets.
      */
     private function configureRateLimiting(): void
     {
@@ -77,22 +84,32 @@ class FortifyServiceProvider extends ServiceProvider
                 Limit::perMinute(20)->by('login-ip:'.$request->ip())
                     ->after($this->failedAttempt($request))
                     ->response($this->loginThrottled(...)),
+                Limit::perMinute(30)->by('login-burst:'.$email.'|'.$request->ip())
+                    ->response($this->loginThrottled(...)),
             ];
         });
 
-        RateLimiter::for('two-factor', fn (Request $request): Limit => Limit::perMinute(5)
-            ->by('two-factor:'.$request->session()->get('login.id'))
-            ->after($this->failedAttempt($request)));
+        RateLimiter::for('two-factor', function (Request $request): array {
+            $challenge = $request->session()->get('login.id');
+
+            return [
+                Limit::perMinute(5)->by('two-factor:'.$challenge)->after($this->failedAttempt($request)),
+                Limit::perMinute(10)->by('two-factor-burst:'.$challenge),
+            ];
+        });
 
         RateLimiter::for('password-confirm', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('password-confirm:'.$request->user()?->getAuthIdentifier()));
 
-        RateLimiter::for('passkeys', function (Request $request): Limit {
+        RateLimiter::for('passkeys', function (Request $request): array {
             $credentialId = $request->input('credential.id');
 
-            return Limit::perMinute(10)
-                ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
-                ->after($this->failedAttempt($request));
+            return [
+                Limit::perMinute(10)
+                    ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
+                    ->after($this->failedAttempt($request)),
+                Limit::perMinute(30)->by('passkeys-burst:'.$request->ip()),
+            ];
         });
 
         RateLimiter::for('password-email', fn (Request $request): array => [
