@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Tests\Fixtures\FailingCentralJob;
 use Tests\Fixtures\RecordTenantJob;
 use Tests\Fixtures\RecordUsersJob;
 
@@ -120,4 +121,12 @@ it('scopes a synchronous job dispatched inside a bypass to its tenant', function
 
     expect(Cache::get('job.users'))->toBe([$mine->id])
         ->and(Tenant::isBypassed())->toBeFalse();
+});
+
+it('runs the failed() hook of a synchronous tenantless job centrally', function (): void {
+    config(['queue.default' => 'sync']);
+
+    expect(fn () => Bus::dispatch(new FailingCentralJob))->toThrow(RuntimeException::class, 'boom');
+
+    expect(Cache::get('failed-hook.users'))->toBeInt();
 });
