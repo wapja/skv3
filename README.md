@@ -6,13 +6,13 @@ An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, in
 
 ## Requirements
 
-- PHP 8.4+, Composer 2, Node 20.19+ or 22.12+
+- PHP 8.4+, Composer 2, Node 22.13+ (required by `composer dev`)
 - Laravel Herd (Herd Pro recommended for PostgreSQL and mail)
 
 ## Develop the kit
 
 ```bash
-composer setup          # install, .env, key, SQLite, migrate, git hooks, assets
+composer setup          # install, .env, key (if missing), SQLite, migrate, Boost guidelines, git hooks, assets
 composer dev            # Vite, queue, logs, scheduler (Herd serves the site)
 composer check          # Pint, Rector, Larastan, Pest (SQLite)
 composer test:pgsql     # Pest on PostgreSQL (Herd Pro)

@@ -19,7 +19,7 @@
 - **Vite+ (`vp`) is not used**: scripts call `vite` directly. No `concurrently`, no Sail, no Chisel, no Telescope.
 - `livewire/flux-pro` and `composer.fluxui.dev` must never appear in the committed `composer.json` / `composer.lock`.
 - No hard-coded kit/site name (`skv`) in app-identity values (`APP_NAME`, `APP_URL`, DB names, mail from, seed emails).
-- CI lives in `.github/workflows/ci.yml`; PHP versions only via `matrix.php` (never a quoted `php-version: 'x.y'` literal). No `tests.yml` unless spike S3 proves the installer needs one.
+- CI lives in `.github/workflows/tests.yml` (single workflow, Ruling R6 / DEC-22, recorded in DEC-25); PHP versions only via `matrix.php` (never a quoted `php-version: 'x.y'` literal). No `ci.yml`.
 - Every milestone ends with `composer check` green on SQLite **and** `composer test:pgsql` green on PostgreSQL.
 - Code, comments, docs: English. UI copy: `nl` default with `en`.
 - Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
