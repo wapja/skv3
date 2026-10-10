@@ -71,6 +71,16 @@ it('caches the slug lookup and forgets it on rename', function (): void {
     $this->getJson(tenant_url('after', '/_probe'))->assertExactJson(['tenant' => 'after', 'team' => $organisation->id]);
 });
 
+it('accepts a cached id that the store returns as a numeric string (Redis)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    Cache::put(SubdomainResolver::cacheKey('acme'), (string) $organisation->id, 60);
+
+    $this->getJson(tenant_url('acme', '/_probe'))
+        ->assertExactJson(['tenant' => 'acme', 'team' => $organisation->id]);
+
+    expect(Cache::get(SubdomainResolver::cacheKey('acme')))->toBe((string) $organisation->id);
+});
+
 it('never binds a stale cached id to another slug', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'after']);
     Cache::put(SubdomainResolver::cacheKey('before'), $organisation->id, 60);

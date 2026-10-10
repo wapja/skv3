@@ -37,10 +37,10 @@ final readonly class SubdomainResolver implements TenantResolver
         $slug = $this->slugFrom($host) ?? throw new TenantNotFoundException;
 
         // Verify the cached id still carries this slug, and never cache misses (no cache write per
-        // random subdomain).
+        // random subdomain). Redis returns numeric values as strings, so accept "5" as well as 5.
         $key = self::cacheKey($slug);
-        $id = $this->cache->get($key);
-        $organisation = is_int($id) ? Organisation::query()->find($id) : null;
+        $cachedId = filter_var($this->cache->get($key), FILTER_VALIDATE_INT);
+        $organisation = $cachedId === false ? null : Organisation::query()->find($cachedId);
 
         if ($organisation === null || $organisation->slug !== $slug) {
             $this->cache->forget($key);
