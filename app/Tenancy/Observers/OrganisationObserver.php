@@ -6,6 +6,7 @@ namespace App\Tenancy\Observers;
 
 use App\Models\Organisation;
 use App\Tenancy\Resolvers\SubdomainResolver;
+use App\Tenancy\SoftDeleteCascade;
 use Illuminate\Support\Facades\Cache;
 
 final class OrganisationObserver
@@ -18,6 +19,16 @@ final class OrganisationObserver
     public function deleted(Organisation $organisation): void
     {
         $this->forgetSlugs($organisation);
+    }
+
+    public function trashed(Organisation $organisation): void
+    {
+        app(SoftDeleteCascade::class)->trash($organisation);
+    }
+
+    public function restoring(Organisation $organisation): void
+    {
+        app(SoftDeleteCascade::class)->restore($organisation);
     }
 
     public function restored(Organisation $organisation): void
