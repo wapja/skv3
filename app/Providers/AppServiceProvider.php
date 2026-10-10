@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +41,8 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
+        Model::shouldBeStrict(! app()->isProduction());
+
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
         );
@@ -60,6 +63,10 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureDevCommands(): void
     {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
         DevCommands::artisan('schedule:work', 'schedule');
 
         if (is_dir((getenv('HOME') ?: '').'/Library/Application Support/Herd')) {

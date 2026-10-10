@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Tenancy\Auth\UnscopedPasskey;
+use App\Tenancy\Auth\UnscopedTwoFactorLoginRequest;
 use App\Tenancy\Auth\UnscopedUserProvider;
 use App\Tenancy\CentralContext;
 use App\Tenancy\Contracts\TenantResolver;
@@ -28,6 +30,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Fortify\Http\Requests\TwoFactorLoginRequest;
+use Laravel\Passkeys\Passkeys;
 use Livewire\Livewire;
 
 final class TenancyServiceProvider extends ServiceProvider
@@ -38,6 +42,7 @@ final class TenancyServiceProvider extends ServiceProvider
         $this->app->singleton(CentralContext::class);
         $this->app->singleton(JobTenancy::class);
         $this->app->bind(TenantResolver::class, SubdomainResolver::class);
+        $this->app->bind(TwoFactorLoginRequest::class, UnscopedTwoFactorLoginRequest::class);
     }
 
     public function boot(): void
@@ -46,6 +51,8 @@ final class TenancyServiceProvider extends ServiceProvider
             $app->make('hash'),
             (string) $config['model'],
         ));
+
+        Passkeys::usePasskeyModel(UnscopedPasskey::class);
 
         Event::listen(TenantResolved::class, SetPermissionsTeam::class);
         Event::listen(TenantForgotten::class, SetPermissionsTeam::class);

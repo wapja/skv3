@@ -20,7 +20,7 @@ return [
     | Strict mode (§6.2): querying a tenant model with no tenant bound throws, except in the
     | console (central context) and inside Tenant::bypass().
     */
-    'strict' => (bool) env('TENANCY_STRICT', false),
+    'strict' => (bool) env('TENANCY_STRICT', true),
 
     'slug_cache_ttl' => 3600,
 

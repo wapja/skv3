@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Facades\Tenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -39,5 +40,5 @@ it('has users', function (): void {
     $organisation = Organisation::factory()->create();
     $user = User::factory()->for($organisation)->create();
 
-    expect($organisation->users()->pluck('id')->all())->toBe([$user->id]);
+    expect(Tenant::run($organisation, fn (): array => $organisation->users()->pluck('id')->all()))->toBe([$user->id]);
 });
