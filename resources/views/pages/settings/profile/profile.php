@@ -8,10 +8,12 @@ use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Profile settings')] class extends Component {
+new #[Title('Profile settings')] class extends Component
+{
     use ProfileValidationRules;
 
     public string $name = '';
+
     public string $email = '';
 
     /**
@@ -38,4 +40,4 @@ new #[Title('Profile settings')] class extends Component {
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
     }
-}; 
+};

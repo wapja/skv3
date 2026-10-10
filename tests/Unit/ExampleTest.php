@@ -1,7 +1,10 @@
 <?php
 
-uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
+declare(strict_types=1);
+use Illuminate\Foundation\Testing\RefreshDatabase;
 
-test('that true is true', function () {
+uses(RefreshDatabase::class);
+
+test('that true is true', function (): void {
     expect(true)->toBeTrue();
 });
