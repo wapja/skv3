@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §6.2 */
 
 use App\Models\Organisation;
+use App\Models\User;
 use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
@@ -20,6 +21,7 @@ beforeEach(function (): void {
     Route::middleware('web')->group(function (): void {
         Route::tenant(function (): void {
             Route::get('/_tenant-only', fn (): string => 'tenant');
+            Route::get('/_user/{user}', fn (User $user): string => $user->name);
             Route::get('/_probe', fn (): string => Blade::render('<livewire:tenant-probe />'));
         });
         Route::central(function (): void {
@@ -56,6 +58,19 @@ it('checks the host before can: middleware', function (): void {
     // A super admin would pass can:nobody through SuperAdminGate (Task 12) and hide a wrong order.
     $this->get(Hosts::url(Hosts::apex(), '/_guarded'))->assertNotFound();
 });
+
+it('checks the host before route-model binding', function (bool $signedIn): void {
+    $member = User::factory()->for(Organisation::factory())->create();
+
+    if ($signedIn) {
+        asSuperAdmin();
+    }
+
+    $this->get(Hosts::url(Hosts::apex(), '/_user/'.$member->id))->assertNotFound();
+})->with([
+    'guest' => [false],
+    'super admin' => [true],
+]);
 
 it('keeps the host rule on forged Livewire updates from the wrong host', function (): void {
     asSuperAdmin();
