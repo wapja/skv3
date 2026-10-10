@@ -6,7 +6,10 @@ declare(strict_types=1);
 
 use App\Models\Organisation;
 use App\Models\User;
+use Carbon\CarbonInterval;
+use Illuminate\Hashing\HashManager;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Sleep;
 
 /** Switch to one of the test hosts; 'other tenant' is an organisation the user does not belong to. */
@@ -94,6 +97,36 @@ it('pads every failed sign-in to the same minimum time and lets a success return
         ->assertRedirect(route('dashboard'));
 
     Sleep::assertSleptTimes(2);
+});
+
+it('pads failed sign-ins to auth.timebox_duration, 500 ms unless configured otherwise', function (): void {
+    Sleep::fake();
+    onApex();
+    $failedSignIn = fn () => $this->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'password'])
+        ->assertSessionHasErrors(['email' => __('auth.failed')]);
+
+    $failedSignIn();
+    config(['auth.timebox_duration' => 900_000]);
+    $failedSignIn();
+
+    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMicroseconds > 400_000 && $duration->totalMicroseconds <= 500_000);
+    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMicroseconds > 800_000);
+});
+
+it('hashes the password for an unknown address too, so a failed sign-in costs one hash either way', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $hasher = Mockery::mock(HashManager::class, [app()])->makePartial();
+    Hash::swap($hasher);
+
+    $this->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'wrong'])->assertSessionHasErrors('email');
+    $hasher->shouldHaveReceived('make')->once();
+    $hasher->shouldNotHaveReceived('check');
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+    $hasher->shouldHaveReceived('make')->once();
+    $hasher->shouldHaveReceived('check')->once();
 });
 
 it('never starts a two-factor challenge on a host the user does not belong to', function (): void {

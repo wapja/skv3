@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Sleep;
 use Illuminate\Testing\TestResponse;
 
 it('sends a member the reset link for their own host, wherever it was requested (R1)', function (string $host): void {
@@ -79,6 +80,7 @@ it('sends the reset link only after the response is handled', function (): void 
 });
 
 it('throttles reset-link requests', function (): void {
+    Sleep::fake(); // counts requests, not time
     Notification::fake();
     onApex();
 
@@ -121,6 +123,7 @@ it('answers a bad reset token the same way for known and unknown addresses (R1)'
 });
 
 it('throttles password resets per address and per IP address', function (string $limit): void {
+    Sleep::fake(); // counts requests, not time
     onApex();
     $attempt = fn (int $number): TestResponse => $this->post(route('password.update'), [
         'token' => 'not-a-valid-token',

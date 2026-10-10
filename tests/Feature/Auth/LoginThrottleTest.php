@@ -11,6 +11,7 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Sleep;
 
 /**
  * Sends $size failing requests through the named limiter, each one arriving before the previous one is
@@ -82,6 +83,11 @@ function trustedProxiesConfig(?string $value): mixed
         }
     }
 }
+
+// These tests count requests, not time: the Timebox would add half a second to every failed attempt.
+beforeEach(function (): void {
+    Sleep::fake();
+});
 
 it('does not count successful sign-ins', function (): void {
     $organisation = Organisation::factory()->create();
