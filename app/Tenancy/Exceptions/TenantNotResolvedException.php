@@ -17,4 +17,9 @@ final class TenantNotResolvedException extends RuntimeException
     {
         return new self("Cannot create [{$model}] without an organisation: no tenant is bound and no organisation_id was given.");
     }
+
+    public static function forJob(int $organisationId): self
+    {
+        return new self("The organisation [{$organisationId}] of this queued job no longer exists or is archived.");
+    }
 }
