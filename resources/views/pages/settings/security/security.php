@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Concerns\PasswordValidationRules;
+use App\Models\User;
 use Flux\Flux;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
@@ -34,6 +36,9 @@ new #[Title('Security settings')] class extends Component
     #[Locked]
     public bool $canManagePasskeys;
 
+    /**
+     * @var array<int, array{id: int, name: string, authenticator: string|null, created_at_diff: string|null, last_used_at_diff: string|null}>
+     */
     #[Locked]
     public array $passkeys = [];
 
@@ -53,11 +58,11 @@ new #[Title('Security settings')] class extends Component
         $this->canManageTwoFactor = Features::canManageTwoFactorAuthentication();
 
         if ($this->canManageTwoFactor) {
-            if (Fortify::confirmsTwoFactorAuthentication() && is_null(auth()->user()->two_factor_confirmed_at)) {
-                $disableTwoFactorAuthentication(auth()->user());
+            if (Fortify::confirmsTwoFactorAuthentication() && is_null($this->user()->two_factor_confirmed_at)) {
+                $disableTwoFactorAuthentication($this->user());
             }
 
-            $this->twoFactorEnabled = auth()->user()->hasEnabledTwoFactorAuthentication();
+            $this->twoFactorEnabled = $this->user()->hasEnabledTwoFactorAuthentication();
             $this->requiresConfirmation = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
         }
 
@@ -84,7 +89,7 @@ new #[Title('Security settings')] class extends Component
             throw $e;
         }
 
-        Auth::user()->update([
+        $this->user()->update([
             'password' => $validated['password'],
         ]);
 
@@ -98,7 +103,7 @@ new #[Title('Security settings')] class extends Component
      */
     public function loadPasskeys(): void
     {
-        $this->passkeys = auth()->user()->passkeys()
+        $this->passkeys = $this->user()->passkeys()
             ->select(['id', 'name', 'credential', 'created_at', 'last_used_at'])
             ->latest()
             ->get()
@@ -106,10 +111,11 @@ new #[Title('Security settings')] class extends Component
                 'id' => $passkey->id,
                 'name' => $passkey->name,
                 'authenticator' => $passkey->authenticator,
-                'created_at_diff' => $passkey->created_at->diffForHumans(),
+                'created_at_diff' => $passkey->created_at?->diffForHumans(),
                 'last_used_at_diff' => $passkey->last_used_at?->diffForHumans(),
             ])
-            ->toArray();
+            ->values()
+            ->all();
     }
 
     /**
@@ -117,7 +123,7 @@ new #[Title('Security settings')] class extends Component
      */
     public function confirmDelete(int $passkeyId): void
     {
-        $passkey = auth()->user()->passkeys()->findOrFail($passkeyId);
+        $passkey = $this->user()->passkeys()->findOrFail($passkeyId);
 
         $this->deletingPasskeyId = $passkey->id;
         $this->deletingPasskeyName = $passkey->name;
@@ -133,9 +139,9 @@ new #[Title('Security settings')] class extends Component
             return;
         }
 
-        $passkey = auth()->user()->passkeys()->findOrFail($this->deletingPasskeyId);
+        $passkey = $this->user()->passkeys()->findOrFail($this->deletingPasskeyId);
 
-        $deletePasskey(auth()->user(), $passkey);
+        $deletePasskey($this->user(), $passkey);
 
         $this->closeDeleteModal();
         $this->loadPasskeys();
@@ -165,8 +171,16 @@ new #[Title('Security settings')] class extends Component
      */
     public function disable(DisableTwoFactorAuthentication $disableTwoFactorAuthentication): void
     {
-        $disableTwoFactorAuthentication(auth()->user());
+        $disableTwoFactorAuthentication($this->user());
 
         $this->twoFactorEnabled = false;
+    }
+
+    /**
+     * Get the authenticated user.
+     */
+    private function user(): User
+    {
+        return Auth::user() ?? throw new AuthenticationException;
     }
 };

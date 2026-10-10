@@ -106,6 +106,8 @@ new class extends Component
 
     /**
      * Get the current modal configuration state.
+     *
+     * @return array{title: string, description: string, buttonText: string}
      */
     #[Computed]
     public function modalConfig(): array

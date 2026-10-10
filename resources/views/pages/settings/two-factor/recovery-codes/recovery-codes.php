@@ -2,12 +2,18 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 new class extends Component
 {
+    /**
+     * @var list<string>
+     */
     #[Locked]
     public array $recoveryCodes = [];
 
@@ -24,7 +30,7 @@ new class extends Component
      */
     public function regenerateRecoveryCodes(GenerateNewRecoveryCodes $generateNewRecoveryCodes): void
     {
-        $generateNewRecoveryCodes(auth()->user());
+        $generateNewRecoveryCodes($this->user());
 
         $this->loadRecoveryCodes();
     }
@@ -34,7 +40,7 @@ new class extends Component
      */
     private function loadRecoveryCodes(): void
     {
-        $user = auth()->user();
+        $user = $this->user();
 
         if ($user->hasEnabledTwoFactorAuthentication() && $user->two_factor_recovery_codes) {
             try {
@@ -45,5 +51,13 @@ new class extends Component
                 $this->recoveryCodes = [];
             }
         }
+    }
+
+    /**
+     * Get the authenticated user.
+     */
+    private function user(): User
+    {
+        return Auth::user() ?? throw new AuthenticationException;
     }
 };

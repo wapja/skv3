@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use App\Providers\AppServiceProvider;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 it('uses immutable dates', function (): void {
-    expect(now())->toBeInstanceOf(CarbonImmutable::class);
+    expect(now()::class)->toBe(CarbonImmutable::class);
 });
 
 it('prohibits destructive database commands in production', function (): void {
@@ -16,8 +18,8 @@ it('prohibits destructive database commands in production', function (): void {
     try {
         new AppServiceProvider(app())->boot();
 
-        $this->artisan('db:wipe', ['--force' => true])->assertFailed();
-        $this->artisan('migrate:fresh', ['--force' => true])->assertFailed();
+        expect(Artisan::call('db:wipe', ['--force' => true]))->toBe(Command::FAILURE);
+        expect(Artisan::call('migrate:fresh', ['--force' => true]))->toBe(Command::FAILURE);
     } finally {
         // The prohibition is a process-wide static flag: reset it, or later tests
         // (RefreshDatabase runs migrate:fresh on PostgreSQL) would be refused too.

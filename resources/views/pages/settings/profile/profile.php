@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Concerns\ProfileValidationRules;
+use App\Models\User;
 use Flux\Flux;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -21,8 +23,10 @@ new #[Title('Profile settings')] class extends Component
      */
     public function mount(): void
     {
-        $this->name = Auth::user()->name;
-        $this->email = Auth::user()->email;
+        $user = $this->user();
+
+        $this->name = $user->name;
+        $this->email = $user->email;
     }
 
     /**
@@ -30,7 +34,7 @@ new #[Title('Profile settings')] class extends Component
      */
     public function updateProfileInformation(): void
     {
-        $user = Auth::user();
+        $user = $this->user();
 
         $validated = $this->validate($this->profileRules($user->id));
 
@@ -39,5 +43,13 @@ new #[Title('Profile settings')] class extends Component
         $user->save();
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
+    }
+
+    /**
+     * Get the authenticated user.
+     */
+    private function user(): User
+    {
+        return Auth::user() ?? throw new AuthenticationException;
     }
 };
