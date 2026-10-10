@@ -23,6 +23,7 @@ beforeEach(function (): void {
 
 test('security settings page can be rendered', function (): void {
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $response = $this->actingAs($user)
         ->withSession(['auth.password_confirmed_at' => time()])
@@ -38,6 +39,7 @@ test('security settings page can be rendered', function (): void {
 
 test('security settings page requires password confirmation when enabled', function (): void {
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $response = $this->actingAs($user)
         ->get(route('security.edit'));
@@ -49,6 +51,7 @@ test('security settings page renders without two factor when feature is disabled
     config(['fortify.features' => []]);
 
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->actingAs($user)
         ->withSession(['auth.password_confirmed_at' => time()])
@@ -62,6 +65,7 @@ test('security settings page renders without two factor when feature is disabled
 
 test('two factor authentication disabled when confirmation abandoned between requests', function (): void {
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $user->forceFill([
         'two_factor_secret' => encrypt('test-secret'),
@@ -86,6 +90,7 @@ test('password can be updated', function (): void {
     $user = User::factory()->create([
         'password' => Hash::make('password'),
     ]);
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->actingAs($user);
 
@@ -104,6 +109,7 @@ test('correct password must be provided to update password', function (): void {
     $user = User::factory()->create([
         'password' => Hash::make('password'),
     ]);
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->actingAs($user);
 

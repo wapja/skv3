@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\UserStatus;
 use App\Tenancy\Concerns\BelongsToOrganisation;
+use App\Tenancy\Facades\Tenant;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -72,6 +73,18 @@ class User extends Authenticatable implements PasskeyUser
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    /** Super admins belong on every host; members only on their organisation's host (§4.1). */
+    public function belongsToCurrentHost(): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $organisation = Tenant::current();
+
+        return $organisation !== null && $this->organisation_id === $organisation->id;
     }
 
     /**

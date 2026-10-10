@@ -42,5 +42,7 @@
     "View organisations": "View organisations",
     "View roles": "View roles",
     "View system health": "View system health",
-    "View users": "View users"
+    "View users": "View users",
+    "Your account does not have access to this address. Sign in at your own organisation.": "Your account does not have access to this address. Sign in at your own organisation.",
+    "Your account is not active. Contact your administrator.": "Your account is not active. Contact your administrator."
 }

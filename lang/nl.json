@@ -42,5 +42,7 @@
     "View organisations": "Organisaties bekijken",
     "View roles": "Rollen bekijken",
     "View system health": "Systeemstatus bekijken",
-    "View users": "Gebruikers bekijken"
+    "View users": "Gebruikers bekijken",
+    "Your account does not have access to this address. Sign in at your own organisation.": "Je account heeft geen toegang tot dit adres. Log in bij je eigen organisatie.",
+    "Your account is not active. Contact your administrator.": "Je account is niet actief. Neem contact op met je beheerder."
 }

@@ -24,6 +24,7 @@ it('has no email verification', function (): void {
 
 it('offers no self-service account deletion', function (): void {
     $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->actingAs($user)->get(route('profile.edit'))
         ->assertOk()

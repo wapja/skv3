@@ -24,6 +24,7 @@ test('two factor challenge can be rendered', function (): void {
     ]);
 
     $user = User::factory()->withTwoFactor()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 
     $this->post(route('login.store'), [
         'email' => $user->email,
