@@ -1,0 +1,54 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "permissions": {
+        "allow": [
+            "Bash(php artisan:*)",
+            "Bash(composer check)",
+            "Bash(composer fix)",
+            "Bash(composer test:pgsql)",
+            "Bash(composer test:browser)",
+            "Bash(composer install:*)",
+            "Bash(composer show:*)",
+            "Bash(vendor/bin/pest:*)",
+            "Bash(vendor/bin/pint:*)",
+            "Bash(vendor/bin/rector:*)",
+            "Bash(vendor/bin/phpstan:*)",
+            "Bash(npm run build)",
+            "Bash(npm ci)",
+            "Bash(git status)",
+            "Bash(git diff:*)",
+            "Bash(git log:*)"
+        ],
+        "deny": [
+            "Bash(herd sites:*)",
+            "Bash(php artisan migrate:fresh:*)",
+            "Bash(php artisan db:wipe:*)",
+            "Read(./.env*)"
+        ]
+    },
+    "enabledPlugins": {
+        "superpowers@superpowers-marketplace": true
+    },
+    "extraKnownMarketplaces": {
+        "superpowers-marketplace": {
+            "source": {
+                "source": "github",
+                "repo": "obra/superpowers-marketplace"
+            }
+        }
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "f=$(php -r '$i=json_decode(stream_get_contents(STDIN),true); echo $i[\"tool_input\"][\"file_path\"] ?? \"\";'); case \"$f\" in *.blade.php) ;; *.php) vendor/bin/pint \"$f\" >/dev/null 2>&1 ;; esac; exit 0",
+                        "async": true
+                    }
+                ]
+            }
+        ]
+    }
+}
