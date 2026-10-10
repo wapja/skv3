@@ -24,14 +24,12 @@ skv3 is a multi-tenant Laravel starter kit (successor of skv2). The design spec 
 - `livewire/flux-pro` must never be added to the committed `composer.json` or `composer.lock`; Pro features are an optional layer.
 - UI copy defaults to Dutch (`nl`) with English (`en`); code, comments and docs are English.
 
-## Tenancy and authorization
+## Route × host matrix
 
-- Hosts: `{slug}.{apex}` is an organisation, `{apex}` and `admin.{apex}` are central. Group single-host routes with `Route::tenant()` / `Route::central()`; never use `Route::domain()` or a `{tenant}` route parameter.
-- Models with `organisation_id` use `App\Tenancy\Concerns\BelongsToOrganisation` and `SoftDeletes` and are listed in `config('tenancy.tenant_models')`.
-- Strict mode: reading a tenant model without a bound tenant throws. Bind one with `Tenant::run($organisation, fn () => …)`; read across organisations with `Tenant::bypass(fn () => …)` only in `App\Console`, `App\Setup`, `App\Tenancy`, `App\Actions\Audit`, `Database\Seeders` and central components.
-- Permissions: use the `App\Authorization\Permission` enum (`$user->can(Permission::UsersView)`, `->can(Permission::UsersView)` on routes); never a permission string. Switch teams only with `withPermissionsTeam($teamId, fn () => …)`.
-- Super admin = `users.is_super_admin`, changed only by `App\Authorization\SetSuperAdmin`. Organisation roles change only through `App\Actions\Users\UpdateUserRoles`.
-- Tests: `onTenant($organisation)`, `onApex()`, `onAdminHost()`, `asSuperAdmin()`, `asOrgAdmin($organisation)`, `asMember($organisation)`. `Livewire::test()` skips all middleware, so test host rules with HTTP requests.
+- Tenant routes (`Route::tenant()`) answer 404 on central hosts (`{apex}`, `admin.{apex}`), and central routes (`Route::central()`) answer 404 on tenant hosts.
+- A signed-in user who does not belong to the host is logged out and sent to login; super admins pass on every host.
+- Every new named GET route goes into `matrixRoutes()` in `tests/Feature/Tenancy/RouteHostMatrixTest.php` or its exclusions.
+- The detailed tenancy and authorization rules come from `@AGENTS.md`.
 
 ## Safety
 
