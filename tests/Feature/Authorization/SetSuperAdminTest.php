@@ -34,13 +34,26 @@ it('grants the flag and the badge with a null team', function (): void {
 it('revokes the flag and the badge when another active super admin remains', function (): void {
     $keeper = User::factory()->superAdmin()->create();
     app(SetSuperAdmin::class)->handle($keeper, true);
-    $leaver = User::factory()->superAdmin()->create();
+    $leaver = User::factory()->create();
     app(SetSuperAdmin::class)->handle($leaver, true);
 
     app(SetSuperAdmin::class)->handle($leaver, false);
 
     expect($leaver->fresh()?->isSuperAdmin())->toBeFalse()
         ->and(badgeRows($leaver))->toBe([]);
+});
+
+it('refuses to revoke a super admin who has no organisation', function (): void {
+    $keeper = User::factory()->superAdmin()->create();
+    app(SetSuperAdmin::class)->handle($keeper, true);
+    $central = User::factory()->superAdmin()->create();
+    app(SetSuperAdmin::class)->handle($central, true);
+
+    expect(fn () => app(SetSuperAdmin::class)->handle($central, false))
+        ->toThrow(ValidationException::class, __('Assign an organisation before removing super admin.'));
+
+    expect($central->fresh()?->isSuperAdmin())->toBeTrue()
+        ->and(badgeRows($central))->toBe([null]);
 });
 
 it('refuses to revoke the last active super admin', function (): void {

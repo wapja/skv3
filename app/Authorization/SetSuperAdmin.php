@@ -11,9 +11,10 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * The only writer of users.is_super_admin (§6.3). Sets the flag and attaches or detaches the
- * super_admin badge (null team) in one transaction, and never removes the last active,
- * non-deleted super admin. Authorization is the caller's job (policy ability updateSuperAdmin);
- * console commands and seeders call it directly.
+ * super_admin badge (null team) in one transaction. It never removes the last active,
+ * non-deleted super admin, nor demotes a super admin who has no organisation. Authorization is
+ * the caller's job (policy ability updateSuperAdmin); console commands and seeders call it
+ * directly.
  */
 final class SetSuperAdmin
 {
@@ -22,6 +23,7 @@ final class SetSuperAdmin
     {
         DB::transaction(function () use ($user, $isSuperAdmin): void {
             if (! $isSuperAdmin && $user->isSuperAdmin()) {
+                $this->ensureOrganisation($user);
                 $this->ensureAnotherActiveSuperAdmin($user);
             }
 
@@ -39,6 +41,20 @@ final class SetSuperAdmin
                 $user->unsetRelation('roles');
             });
         });
+    }
+
+    /**
+     * A user without an organisation must stay a super admin: a regular user needs one (W8).
+     *
+     * @throws ValidationException
+     */
+    private function ensureOrganisation(User $user): void
+    {
+        if ($user->organisation_id === null) {
+            throw ValidationException::withMessages([
+                'is_super_admin' => __('Assign an organisation before removing super admin.'),
+            ]);
+        }
     }
 
     /** @throws ValidationException */

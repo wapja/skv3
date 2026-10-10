@@ -5,6 +5,7 @@
     "Add new organisations": "Nieuwe organisaties toevoegen",
     "An organisation needs at least one active organisation admin.": "Een organisatie heeft minstens één actieve organisatiebeheerder nodig.",
     "Archive, restore and purge organisations": "Organisaties archiveren, herstellen en definitief verwijderen",
+    "Assign an organisation before removing super admin.": "Koppel eerst een organisatie voordat je superbeheer intrekt.",
     "Assign roles": "Rollen toewijzen",
     "At least one active super admin must remain.": "Er moet minstens één actieve superbeheerder overblijven.",
     "Change a user's name, email address and status": "Naam, e-mailadres en status van een gebruiker wijzigen",
