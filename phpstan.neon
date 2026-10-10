@@ -1,0 +1,24 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+    - vendor/pestphp/pest-plugin-phpstan/extension.neon
+
+parameters:
+    level: 8
+    tmpDir: storage/framework/cache/phpstan
+    paths:
+        - app/
+        - bootstrap/app.php
+        - config/
+        - database/
+        - routes/
+        - tests/
+        - resources/views/
+    excludePaths:
+        - resources/views/*.blade.php
+    ignoreErrors:
+        # Livewire multi-file components are a bare `new class extends Component {}` expression
+        # that Livewire's compiler evaluates; PHPStan sees an unused expression. Spec §7.1.
+        -
+            identifier: expr.resultUnused
+            path: resources/views/*

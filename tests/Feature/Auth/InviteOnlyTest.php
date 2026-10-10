@@ -1,0 +1,60 @@
+<?php
+
+declare(strict_types=1);
+
+/** covers §4.2, §4.10 */
+
+use App\Models\User;
+use Illuminate\Routing\RedirectController;
+use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\TwoFactorAuthenticationController;
+use Laravel\Passkeys\Http\Controllers\PasskeyRegistrationController;
+
+it('has no registration', function (): void {
+    expect(Route::has('register'))->toBeFalse();
+    $this->get('/register')->assertNotFound();
+});
+
+it('has no email verification', function (): void {
+    expect(Route::has('verification.notice'))->toBeFalse()
+        ->and(Route::has('verification.verify'))->toBeFalse();
+});
+
+it('offers no self-service account deletion', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get(route('profile.edit'))
+        ->assertOk()
+        ->assertDontSee('delete-user', escape: false);
+
+    $deleteViews = collect(File::allFiles(resource_path('views')))
+        ->filter(fn ($file): bool => str_contains($file->getPathname(), 'delete-user'));
+
+    expect($deleteViews)->toBeEmpty();
+});
+
+it('registers no DELETE route other than disabling 2FA and removing a passkey', function (): void {
+    $deleteRoutes = collect(Route::getRoutes()->getRoutes())
+        ->filter(fn (RoutingRoute $route): bool => in_array('DELETE', $route->methods(), true))
+        ->mapWithKeys(fn (RoutingRoute $route): array => [$route->uri() => ltrim($route->getActionName(), '\\')])
+        ->sortKeys()
+        ->all();
+
+    // Route::redirect() registers "any" routes, so the two redirects also accept DELETE.
+    expect($deleteRoutes)->toBe([
+        '/' => RedirectController::class,
+        'settings' => RedirectController::class,
+        'user/passkeys/{passkey}' => PasskeyRegistrationController::class.'@destroy',
+        'user/two-factor-authentication' => TwoFactorAuthenticationController::class.'@destroy',
+    ]);
+});
+
+it('redirects the root url to the dashboard', function (): void {
+    $this->get('/')->assertRedirect('/dashboard');
+});
+
+it('sends guests from the dashboard to the login page', function (): void {
+    $this->get(route('dashboard'))->assertRedirect(route('login'));
+});

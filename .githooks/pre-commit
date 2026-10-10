@@ -1,0 +1,9 @@
+#!/bin/sh
+# Fast checks on staged PHP files. The full suite runs in CI (composer check).
+set -e
+
+FILES=$(git diff --cached --name-only --diff-filter=ACMR -- '*.php' | grep -v '\.blade\.php$' || true)
+[ -z "$FILES" ] && exit 0
+
+vendor/bin/pint --test $FILES
+vendor/bin/phpstan analyse --no-progress --memory-limit=1G $FILES
