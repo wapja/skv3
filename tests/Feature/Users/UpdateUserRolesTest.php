@@ -132,12 +132,32 @@ it('allows demoting an organisation admin when another active one remains', func
     expect(roleNamesOf($leaving, $organisation))->toBe([]);
 });
 
-it('restores the permissions team after a refusal', function (): void {
+it('assigns roles in the target team when a super admin acts from the admin host', function (): void {
     $organisation = Organisation::factory()->create();
-    $admin = asOrgAdmin($organisation);
-    $before = PermissionsTeam::current();
+    $member = User::factory()->for($organisation)->create();
+    $editor = teamRole($organisation, 'editor');
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+    expect(PermissionsTeam::current())->toBeNull();
 
-    rescue(fn () => app(UpdateUserRoles::class)->handle($admin, $admin, []), report: false);
+    app(UpdateUserRoles::class)->handle($superAdmin, $member, [(int) $editor->id, systemRoleId(Role::OrganisationAdmin)]);
 
-    expect(PermissionsTeam::current())->toBe($before);
+    expect(DB::table('model_has_roles')->where('model_id', $member->id)->pluck('team_id')->unique()->map(fn (mixed $id): int => (int) $id)->all())
+        ->toBe([$organisation->id])
+        ->and(roleNamesOf($member, $organisation))->toBe(['editor', 'organisation_admin'])
+        ->and(PermissionsTeam::current())->toBeNull();
+});
+
+it('restores the permissions team after refusing to demote the last admin from the admin host', function (): void {
+    $organisation = Organisation::factory()->create();
+    $onlyAdmin = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn () => $onlyAdmin->assignRole(Role::OrganisationAdmin->value));
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+    expect(PermissionsTeam::current())->toBeNull();
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($superAdmin, $onlyAdmin, []))->toThrow(ValidationException::class);
+
+    expect(PermissionsTeam::current())->toBeNull()
+        ->and(roleNamesOf($onlyAdmin, $organisation))->toBe(['organisation_admin']);
 });
