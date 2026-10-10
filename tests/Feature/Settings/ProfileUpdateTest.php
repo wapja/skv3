@@ -64,3 +64,16 @@ test('the email uniqueness check ignores casing', function (): void {
         ->call('updateProfileInformation')
         ->assertHasErrors(['email' => 'unique']);
 });
+
+test('email address of a deleted user can be reused', function (): void {
+    User::factory()->create(['email' => 'former@example.com'])->delete();
+    $this->actingAs($user = User::factory()->create());
+
+    Livewire::test('pages::settings.profile')
+        ->set('name', $user->name)
+        ->set('email', 'former@example.com')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors();
+
+    expect($user->refresh()->email)->toBe('former@example.com');
+});
