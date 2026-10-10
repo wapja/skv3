@@ -93,3 +93,16 @@ it('finds users of any organisation through the auth provider', function (): voi
     expect(config('auth.providers.users.driver'))->toBe('unscoped-eloquent')
         ->and($found)->toBeInstanceOf(User::class);
 });
+
+it('scopes a Tenant::run() nested inside a bypass', function (): void {
+    [$first, $mine] = twoTenantsWithMembers();
+
+    [$ids, $bypassedAfterRun] = Tenant::bypass(fn (): array => [
+        Tenant::run($first, fn (): array => User::query()->pluck('id')->all()),
+        Tenant::isBypassed(),
+    ]);
+
+    expect($ids)->toBe([$mine->id])
+        ->and($bypassedAfterRun)->toBeTrue()
+        ->and(Tenant::isBypassed())->toBeFalse();
+});

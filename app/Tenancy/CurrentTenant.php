@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tenancy;
 
+use App\Authorization\PermissionsTeam;
 use App\Models\Organisation;
 use App\Tenancy\Events\TenantForgotten;
 use App\Tenancy\Events\TenantResolved;
@@ -46,6 +47,10 @@ final class CurrentTenant
     }
 
     /**
+     * Runs the callback for one organisation. The innermost context wins: a surrounding bypass is
+     * suspended while this tenant is bound. Afterwards the tenant, the bypass and the Spatie team
+     * found on entry are restored (a withPermissionsTeam() team survives a nested run).
+     *
      * @template TReturn
      *
      * @param  Closure(): TReturn  $callback
@@ -54,7 +59,9 @@ final class CurrentTenant
     public function run(Organisation $organisation, Closure $callback): mixed
     {
         $previous = $this->organisation;
+        $previousTeam = PermissionsTeam::current();
         $this->set($organisation);
+        $previousBypass = $this->suspendBypass();
 
         try {
             $result = $callback();
@@ -68,11 +75,15 @@ final class CurrentTenant
 
             return $result;
         } finally {
+            $this->resumeBypass($previousBypass);
+
             if ($previous instanceof Organisation) {
                 $this->set($previous);
             } else {
                 $this->forget();
             }
+
+            PermissionsTeam::set($previousTeam);
         }
     }
 
@@ -99,5 +110,19 @@ final class CurrentTenant
     public function isBypassed(): bool
     {
         return $this->bypassDepth > 0;
+    }
+
+    /** Lifts every surrounding bypass while a tenant is bound; returns the depth for resumeBypass(). */
+    public function suspendBypass(): int
+    {
+        $depth = $this->bypassDepth;
+        $this->bypassDepth = 0;
+
+        return $depth;
+    }
+
+    public function resumeBypass(int $depth): void
+    {
+        $this->bypassDepth = $depth;
     }
 }

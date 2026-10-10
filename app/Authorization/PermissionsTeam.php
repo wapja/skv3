@@ -21,7 +21,11 @@ final class PermissionsTeam
         return $teamId === null ? null : (int) $teamId;
     }
 
-    /** Reserved for the TenantResolved / TenantForgotten listeners. */
+    /**
+     * Reserved for tenancy code: the TenantResolved / TenantForgotten listeners and the tenant
+     * switches (Tenant::run(), queued jobs) that restore the team they found. Everything else
+     * uses run() (enforced by tests/Arch/AuthorizationRulesTest.php).
+     */
     public static function set(?int $teamId): void
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($teamId);
