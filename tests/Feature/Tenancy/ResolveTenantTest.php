@@ -100,5 +100,6 @@ it('forgets the cached slug when the organisation is archived', function (): voi
 
     $organisation->delete();
 
+    expect(Cache::has(SubdomainResolver::cacheKey('gone')))->toBeFalse();
     $this->get(tenant_url('gone', '/_probe'))->assertNotFound();
 });

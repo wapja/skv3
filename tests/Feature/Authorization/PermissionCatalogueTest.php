@@ -8,6 +8,15 @@ use App\Authorization\Permission;
 use App\Authorization\PermissionGroup;
 use App\Authorization\Role;
 
+/** @return list<string> */
+function dutchTranslationKeys(): array
+{
+    /** @var array<string, string> $dutch */
+    $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    return array_keys($dutch);
+}
+
 it('has the fifteen permissions of the catalogue', function (): void {
     expect(Permission::values())->toBe([
         'users.view', 'users.create', 'users.update', 'users.delete', 'users.invite.resend', 'users.impersonate',
@@ -31,13 +40,17 @@ it('gives organisation admins the catalogue minus the super-only permissions', f
 });
 
 it('labels, describes and groups every permission in Dutch', function (Permission $permission): void {
-    app()->setLocale('nl');
+    // In English the strings are the translation keys themselves.
+    app()->setLocale('en');
 
-    expect($permission->label())->not->toBe('')
-        ->and(__($permission->label()))->toBe($permission->label())
-        ->and($permission->description())->not->toBe('')
-        ->and($permission->group())->toBeInstanceOf(PermissionGroup::class);
+    expect(dutchTranslationKeys())->toContain($permission->label(), $permission->description(), $permission->group()->label());
 })->with(Permission::cases());
+
+it('labels every role in Dutch', function (Role $role): void {
+    app()->setLocale('en');
+
+    expect(dutchTranslationKeys())->toContain($role->label());
+})->with(Role::cases());
 
 it('translates permission labels', function (): void {
     app()->setLocale('nl');
