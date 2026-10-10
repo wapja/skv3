@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
@@ -28,5 +29,10 @@ Route::post('forgot-password', SendPasswordResetLinkController::class)
 Route::post('reset-password', [NewPasswordController::class, 'store'])
     ->middleware(['guest:web', 'throttle:password-reset'])
     ->name('password.update');
+
+// §6.4: any host; the token is bound to its target host.
+Route::get('auth/handoff/{token}', HandoffController::class)
+    ->middleware('throttle:handoff')
+    ->name('auth.handoff');
 
 require __DIR__.'/settings.php';

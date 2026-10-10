@@ -55,6 +55,7 @@
     "This link expires in :count minutes.": "Deze link verloopt over :count minuten.",
     "This passkey could not be verified.": "Deze passkey kon niet worden geverifieerd.",
     "This password reset link will expire in :count minutes.": "Deze link verloopt over :count minuten.",
+    "This sign-in link is invalid or has expired.": "Deze inloglink is ongeldig of verlopen.",
     "Users": "Gebruikers",
     "View activity log": "Activiteitenlog bekijken",
     "View organisations": "Organisaties bekijken",

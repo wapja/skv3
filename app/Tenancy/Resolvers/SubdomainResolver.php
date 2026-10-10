@@ -34,7 +34,7 @@ final readonly class SubdomainResolver implements TenantResolver
             return null;
         }
 
-        $slug = $this->slugFrom($host) ?? throw new TenantNotFoundException;
+        $slug = Hosts::slugOf($host) ?? throw new TenantNotFoundException;
 
         // Verify the cached id still carries this slug, and never cache misses (no cache write per
         // random subdomain). Redis returns numeric values as strings, so accept "5" as well as 5.
@@ -49,25 +49,5 @@ final readonly class SubdomainResolver implements TenantResolver
         }
 
         return $organisation;
-    }
-
-    private function slugFrom(string $host): ?string
-    {
-        $suffix = '.'.Hosts::apex();
-
-        if (! str_ends_with($host, $suffix)) {
-            return null;
-        }
-
-        $slug = substr($host, 0, -strlen($suffix));
-
-        if (preg_match('/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/', $slug) !== 1) {
-            return null;
-        }
-
-        /** @var list<string> $reserved */
-        $reserved = config('tenancy.reserved_slugs', []);
-
-        return in_array($slug, $reserved, true) ? null : $slug;
     }
 }

@@ -55,6 +55,7 @@
     "This link expires in :count minutes.": "This link expires in :count minutes.",
     "This passkey could not be verified.": "This passkey could not be verified.",
     "This password reset link will expire in :count minutes.": "This password reset link will expire in :count minutes.",
+    "This sign-in link is invalid or has expired.": "This sign-in link is invalid or has expired.",
     "Users": "Users",
     "View activity log": "View activity log",
     "View organisations": "View organisations",
