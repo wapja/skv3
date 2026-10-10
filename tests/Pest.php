@@ -9,7 +9,9 @@ use App\Models\User;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Hosts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
@@ -84,4 +86,33 @@ function asMember(Organisation $organisation): User
     onTenant($organisation);
 
     return $user;
+}
+
+/**
+ * Base-relative paths of every .php file (Blade included) under the given directories, for
+ * rules that Pest's arch() cannot express: static method calls, string literals, anonymous
+ * migration classes and closure-style test files.
+ *
+ * @return list<string>
+ */
+function kitSourceFiles(string ...$directories): array
+{
+    return array_values(collect($directories)
+        ->filter(fn (string $directory): bool => is_dir(base_path($directory)))
+        ->flatMap(fn (string $directory): array => File::allFiles(base_path($directory)))
+        ->map(fn (SplFileInfo $file): string => Str::after($file->getPathname(), base_path().DIRECTORY_SEPARATOR))
+        ->filter(fn (string $path): bool => str_ends_with($path, '.php'))
+        ->all());
+}
+
+/**
+ * @param  list<string>  $paths
+ * @return list<string>
+ */
+function filesMatching(array $paths, string $pattern): array
+{
+    return array_values(array_filter(
+        $paths,
+        fn (string $path): bool => preg_match($pattern, (string) file_get_contents(base_path($path))) === 1,
+    ));
 }

@@ -14,3 +14,9 @@ arch('no debugging leftovers')
 arch('strict types everywhere in app code')
     ->expect('App')
     ->toUseStrictTypes();
+
+it('has no debugging leftovers in tests and migrations', function (): void {
+    $files = array_values(array_diff(kitSourceFiles('tests', 'database/migrations'), ['tests/Arch/KitRulesTest.php']));
+
+    expect(filesMatching($files, '/(?<![\w$>:\\\\])(dd|dump|ray|var_dump)\s*\(|->(dd|dump)\s*\(/'))->toBe([]);
+});
