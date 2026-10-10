@@ -28,6 +28,7 @@ skv3 is a multi-tenant Laravel starter kit (successor of skv2). The design spec 
 
 - Never run `herd sites` or the Herd MCP `get_all_sites`: they print every local site's `.env`, including secrets.
 - Never run `migrate:fresh` or `db:wipe` against the development database; tests use their own databases.
+- `php artisan tinker`, `migrate` and `db:seed` are not pre-approved; Claude must ask before running them.
 
 ## Superpowers
 

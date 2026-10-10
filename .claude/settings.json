@@ -2,7 +2,17 @@
     "$schema": "https://json.schemastore.org/claude-code-settings.json",
     "permissions": {
         "allow": [
-            "Bash(php artisan:*)",
+            "Bash(php artisan test:*)",
+            "Bash(php artisan route:list:*)",
+            "Bash(php artisan make:*)",
+            "Bash(php artisan config:show:*)",
+            "Bash(php artisan about:*)",
+            "Bash(php artisan view:clear:*)",
+            "Bash(php artisan config:clear:*)",
+            "Bash(php artisan livewire:*)",
+            "Bash(php artisan boost:update:*)",
+            "Bash(php artisan list:*)",
+            "Bash(php artisan dev:list:*)",
             "Bash(composer check)",
             "Bash(composer fix)",
             "Bash(composer test:pgsql)",
@@ -23,7 +33,15 @@
             "Bash(herd sites:*)",
             "Bash(php artisan migrate:fresh:*)",
             "Bash(php artisan db:wipe:*)",
-            "Read(./.env*)"
+            "Bash(php artisan migrate:reset:*)",
+            "Bash(php artisan migrate:refresh:*)",
+            "Bash(php artisan migrate:rollback:*)",
+            "mcp__herd__get_all_sites",
+            "Read(./.env)",
+            "Read(./.env.testing)",
+            "Read(./.env.backup)",
+            "Read(./.env.production)",
+            "Read(./.env.local)"
         ]
     },
     "enabledPlugins": {

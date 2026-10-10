@@ -15,7 +15,14 @@ it('ships Claude settings with superpowers and safety rules', function (): void 
         ->and($settings['permissions']['deny'])->toContain('Bash(herd sites:*)')
         ->and($settings['permissions']['deny'])->toContain('Bash(php artisan migrate:fresh:*)')
         ->and($settings['permissions']['deny'])->toContain('Bash(php artisan db:wipe:*)')
-        ->and($settings['permissions']['deny'])->toContain('Read(./.env*)');
+        ->and($settings['permissions']['deny'])->toContain('Bash(php artisan migrate:reset:*)')
+        ->and($settings['permissions']['deny'])->toContain('Bash(php artisan migrate:refresh:*)')
+        ->and($settings['permissions']['deny'])->toContain('Bash(php artisan migrate:rollback:*)')
+        ->and($settings['permissions']['deny'])->toContain('mcp__herd__get_all_sites')
+        ->and($settings['permissions']['deny'])->toContain('Read(./.env)')
+        ->and($settings['permissions']['deny'])->not->toContain('Read(./.env*)')
+        ->and($settings['permissions']['allow'])->not->toContain('Bash(php artisan:*)')
+        ->and($settings['permissions']['allow'])->toContain('Bash(php artisan test:*)');
 });
 
 it('targets Claude Code in boost.json', function (): void {
