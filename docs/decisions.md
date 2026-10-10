@@ -42,3 +42,10 @@ Owner decisions from the design spec (`docs/superpowers/specs/2026-10-10-skv3-de
 **Consequence:** These names may only be used inside `@if (Skv::hasFluxPro())` branches (spec §6.7). The lint test in M5 uses the free stub folder as its allow-list, so this list is informational.
 
 Appearance persistence: confirmed `flux.appearance` key in `vendor/livewire/flux/src/AssetManager.php`.
+
+### DEC-21 — Organisation admin role model (spike S2)
+
+**Question:** Can `organisation_admin` be one global template role (`team_id = NULL`) assigned per team, with pivot primary keys that exclude `team_id` (skv2 D28), on PostgreSQL?
+**Answer:** Option A (one global template role) — all three `TemplateRoleTest` tests passed on PostgreSQL: one `organisation_admin` row is assigned in team 1 and team 2 independently, a role can be attached with a NULL team, and a permission added to the template is effective in every team.
+**Evidence:** `TemplateRoleTest` on PostgreSQL 18.0 (Herd), spatie/laravel-permission 8.3.0 with `teams => true` and `model_has_roles` / `model_has_permissions` primary keys of (role or permission id, model id, model type) and a nullable `team_id`: all 3 tests passed (9 assertions): assigns one global template role per team; lets a global role be attached with a null team; propagates template permission changes to every team.
+**Consequence:** Spec §6.3 option A applies to `UpdateUserRoles`, `permissions:sync`, the doctor check and the roles index (M2).
