@@ -10,7 +10,10 @@ it('spells permission names only in the Permission enum', function (): void {
     $names = implode('|', array_map(fn (string $name): string => preg_quote($name, '/'), Permission::values()));
     $files = array_values(array_diff(kitSourceFiles('app', 'routes', 'resources/views'), ['app/Authorization/Permission.php']));
 
-    expect(filesMatching($files, "/(['\"])({$names})\\1/"))->toBe([]);
+    // A name as a whole string, after a `prefix:` (can:, permission:) or inside a `|` / `,` list.
+    $pattern = "/(['\"])(?:[^'\"]*[:|,])?(?:{$names})(?:[|,][^'\"]*)?\\1/";
+
+    expect(filesMatching($files, $pattern))->toBe([]);
 });
 
 it('changes the Spatie team id only in PermissionsTeam', function (): void {
