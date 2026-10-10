@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Str;
 
-it('bypasses the tenant scope only in the allowed places', function (): void {
+it('bypasses or removes the tenant scope only in the allowed places', function (): void {
     // §6.2. Central Livewire components are added here from M4 on, one path at a time.
     $allowed = [
         'app/Console/', 'app/Setup/', 'app/Tenancy/', 'app/Actions/Audit/', 'database/seeders/',
@@ -18,7 +18,10 @@ it('bypasses the tenant scope only in the allowed places', function (): void {
         fn (string $path): bool => ! Str::startsWith($path, $allowed),
     ));
 
-    expect(filesMatching($candidates, '/Tenant::bypass\s*\(|->bypass\s*\(/'))->toBe([]);
+    // Removing TenantScope through Eloquent reads across organisations just like a bypass.
+    $pattern = '/Tenant::bypass\s*\(|->bypass\s*\(|withoutGlobalScope\s*\(\s*(\\\\?[\w\\\\]*\\\\)?TenantScope::class|withoutGlobalScopes\s*\(|newQueryWithoutScopes\s*\(/';
+
+    expect(filesMatching($candidates, $pattern))->toBe([]);
 });
 
 it('keeps driver-specific SQL out of the app', function (): void {
