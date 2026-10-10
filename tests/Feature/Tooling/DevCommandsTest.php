@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §7.4 */
+
 use Illuminate\Foundation\DevCommands;
 
 it('runs the scheduler and never artisan serve under Herd', function (): void {

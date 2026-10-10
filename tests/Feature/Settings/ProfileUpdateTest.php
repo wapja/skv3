@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §4.10 */
+
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Livewire;

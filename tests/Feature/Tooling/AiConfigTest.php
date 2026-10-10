@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+/** covers §9 */
 it('imports the Boost guidelines from CLAUDE.md', function (): void {
     expect(file_get_contents(base_path('CLAUDE.md')))->toContain('@AGENTS.md');
 });

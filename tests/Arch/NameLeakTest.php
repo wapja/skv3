@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §7.2 */
+
 use Illuminate\Support\Facades\File;
 
 it('hard-codes no kit or site name in app-identity values', function (): void {

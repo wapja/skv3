@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+/** covers §7.4 */
 it('ships an executable pre-commit hook that checks staged PHP files', function (): void {
     $hook = base_path('.githooks/pre-commit');
 

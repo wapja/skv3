@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §4.0 */
+
 use App\Providers\AppServiceProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;

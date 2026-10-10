@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §6.1, §7.1 */
+
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\Finder\SplFileInfo;

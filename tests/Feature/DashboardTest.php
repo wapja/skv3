@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §4.10 */
+
 use App\Models\User;
 
 test('guests are redirected to the login page', function (): void {

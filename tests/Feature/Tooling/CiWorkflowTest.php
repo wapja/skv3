@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+/** covers §8 */
 it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
     $ci = file_get_contents(base_path('.github/workflows/tests.yml'));
 

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §4.2 */
+
 use App\Models\User;
 
 test('confirm password screen can be rendered', function (): void {

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+/** covers §4.2, §4.10 */
+
 use App\Models\User;
 use Illuminate\Routing\RedirectController;
 use Illuminate\Routing\Route as RoutingRoute;

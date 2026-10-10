@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+/** covers §7.2 */
 arch('app code reads configuration, never the environment')
     ->expect(['App', 'Database'])
     ->not->toUse(['env']);

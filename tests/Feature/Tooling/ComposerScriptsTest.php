@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+/** covers §7.4 */
 it('never rotates an existing APP_KEY during setup', function (): void {
     /** @var array{scripts: array{setup: list<string>}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
