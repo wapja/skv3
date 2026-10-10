@@ -5,7 +5,7 @@ declare(strict_types=1);
 /** covers §4.10 */
 
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 test('profile page is displayed', function (): void {
@@ -16,45 +16,40 @@ test('profile page is displayed', function (): void {
 });
 
 test('profile information can be updated', function (): void {
+    Notification::fake();
     $user = User::factory()->create();
     onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
-
-    $this->actingAs($user);
-
-    $response = Livewire::test('pages::settings.profile')
-        ->set('name', 'Test User')
-        ->set('email', 'test@example.com')
-        ->call('updateProfileInformation');
-
-    $response->assertHasNoErrors();
-
-    $user->refresh();
-
-    expect($user->name)->toEqual('Test User');
-    expect($user->email)->toEqual('test@example.com');
-});
-
-test('the email address is stored lower-cased and works for login in any casing', function (): void {
-    $user = User::factory()->create();
-    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
-
     $this->actingAs($user);
 
     Livewire::test('pages::settings.profile')
-        ->set('email', 'Foo@Example.COM')
+        ->set('name', 'Test User')
+        ->set('email', 'test@example.com')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
 
+    $user->refresh();
+    expect($user->name)->toBe('Test User')
+        ->and($user->email)->not->toBe('test@example.com')
+        ->and(confirmationLinkFor('test@example.com'))->toContain('/settings/email/confirm/');
+});
+
+test('the email address is stored lower-cased and works for login in any casing', function (): void {
+    Notification::fake();
+    $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    $this->actingAs($user);
+
+    Livewire::test('pages::settings.profile')
+        ->set('name', $user->name)
+        ->set('email', 'Foo@Example.COM')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors();
+    $this->get(confirmationLinkFor('foo@example.com'))->assertRedirect(route('profile.edit'));
+    $this->post(route('logout'));
+
     expect($user->refresh()->email)->toBe('foo@example.com');
-
-    Auth::logout();
-
-    $this->post(route('login.store'), [
-        'email' => 'FOO@example.com',
-        'password' => 'password',
-    ])->assertSessionHasNoErrors();
-
-    $this->assertAuthenticatedAs($user);
+    $this->post(route('login.store'), ['email' => 'FOO@example.com', 'password' => 'password'])
+        ->assertRedirect(route('dashboard'));
 });
 
 test('the email uniqueness check ignores casing', function (): void {
@@ -71,15 +66,18 @@ test('the email uniqueness check ignores casing', function (): void {
 });
 
 test('email address of a deleted user can be reused', function (): void {
+    Notification::fake();
     User::factory()->create(['email' => 'former@example.com'])->delete();
-    $this->actingAs($user = User::factory()->create());
+    $user = User::factory()->create();
     onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    $this->actingAs($user);
 
     Livewire::test('pages::settings.profile')
         ->set('name', $user->name)
         ->set('email', 'former@example.com')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
+    $this->get(confirmationLinkFor('former@example.com'));
 
     expect($user->refresh()->email)->toBe('former@example.com');
 });
