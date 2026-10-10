@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 use Throwable;
 
-final class FailingCentralJob implements ShouldQueue
+final class FailingCountUsersJob implements ShouldQueue
 {
     use Queueable;
 

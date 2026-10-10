@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Tests\Fixtures\FailingCentralJob;
+use Tests\Fixtures\FailingCountUsersJob;
 use Tests\Fixtures\RecordTenantJob;
 use Tests\Fixtures\RecordUsersJob;
 
@@ -123,10 +123,30 @@ it('scopes a synchronous job dispatched inside a bypass to its tenant', function
         ->and(Tenant::isBypassed())->toBeFalse();
 });
 
-it('runs the failed() hook of a synchronous tenantless job centrally', function (): void {
+it('runs the failed() hook of a synchronous tenantless job centrally and stays strict afterwards', function (): void {
+    config(['queue.default' => 'sync', 'tenancy.strict' => true]);
+
+    expect(fn () => Bus::dispatch(new FailingCountUsersJob))->toThrow(RuntimeException::class, 'boom');
+
+    expect(Cache::get('failed-hook.users'))->toBeInt()
+        ->and(fn () => User::query()->count())->toThrow(TenantNotResolvedException::class);
+});
+
+it('resumes the surrounding bypass after a failing synchronous tenant job', function (): void {
     config(['queue.default' => 'sync']);
+    [$organisation, $other] = Organisation::factory()->count(2)->create()->all();
+    User::factory()->for($organisation)->create();
+    User::factory()->for($other)->create();
+    Tenant::set($organisation);
 
-    expect(fn () => Bus::dispatch(new FailingCentralJob))->toThrow(RuntimeException::class, 'boom');
+    $bypassedAfterFailure = Tenant::bypass(function (): bool {
+        expect(fn () => Bus::dispatch(new FailingCountUsersJob))->toThrow(RuntimeException::class, 'boom');
 
-    expect(Cache::get('failed-hook.users'))->toBeInt();
+        return Tenant::isBypassed();
+    });
+
+    expect(Cache::get('failed-hook.users'))->toBe(1)
+        ->and($bypassedAfterFailure)->toBeTrue()
+        ->and(Tenant::current()?->id)->toBe($organisation->id)
+        ->and(Tenant::isBypassed())->toBeFalse();
 });
