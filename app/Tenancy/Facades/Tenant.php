@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool check()
  * @method static void set(Organisation $organisation)
  * @method static void forget()
- * @method static mixed run(Organisation $organisation, Closure $callback)
- * @method static mixed bypass(Closure $callback)
+ * @method static TReturn run<TReturn>(Organisation $organisation, Closure(): TReturn $callback)
+ * @method static TReturn bypass<TReturn>(Closure(): TReturn $callback)
  * @method static bool isBypassed()
  *
  * @see CurrentTenant
