@@ -15,13 +15,17 @@ use Stringable;
  * Names and slugs are unique across all organisations, archived ones included: the unique indexes cover
  * soft-deleted rows, so archived names and slugs stay reserved (§4.3, C-14). Only super admins are told that
  * an archived organisation holds a value; everyone else gets the generic message (RK-M2).
+ *
+ * A name is shown in Markdown mails and organisation admins may change it, so it may hold no square or angle
+ * brackets (link, image and autolink syntax) and no control characters such as line breaks, which would let
+ * a name open new Markdown blocks.
  */
 trait OrganisationValidationRules
 {
     /** @return array<int, ValidationRule|Stringable|Closure|array<mixed>|string> */
     protected function organisationNameRules(?int $ignoreId = null, bool $revealArchived = false): array
     {
-        return ['required', 'string', 'max:255', $this->uniqueOrganisationValue('name', $ignoreId, $revealArchived)];
+        return ['bail', 'required', 'string', 'max:255', $this->plainOrganisationName(), $this->uniqueOrganisationValue('name', $ignoreId, $revealArchived)];
     }
 
     /** @return array<int, ValidationRule|Stringable|Closure|array<mixed>|string> */
@@ -34,6 +38,15 @@ trait OrganisationValidationRules
     protected function organisationDescriptionRules(): array
     {
         return ['nullable', 'string', 'max:1000'];
+    }
+
+    private function plainOrganisationName(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (is_string($value) && preg_match('/[\[\]<>\p{Cc}]/u', $value) !== 0) {
+                $fail(__('The name may not contain square brackets, angle brackets or control characters.'));
+            }
+        };
     }
 
     /** @param  'name'|'slug'  $column */

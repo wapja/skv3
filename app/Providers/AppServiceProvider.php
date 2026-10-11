@@ -8,6 +8,7 @@ use App\Authorization\SuperAdminGate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -46,6 +47,9 @@ class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
         );
+
+        // Values echoed into Markdown mails (organisation names, addresses) never become links or HTML.
+        Markdown::withSecuredEncoding();
 
         Password::defaults(fn (): ?Password => app()->isProduction()
             ? Password::min(12)

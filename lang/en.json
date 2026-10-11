@@ -171,6 +171,7 @@
     "The invitation was cancelled.": "The invitation was cancelled.",
     "The invitation was sent again.": "The invitation was sent again.",
     "The link stops working and :email can be invited again later.": "The link stops working and :email can be invited again later.",
+    "The name may not contain square brackets, angle brackets or control characters.": "The name may not contain square brackets, angle brackets or control characters.",
     "There is no organisation at this address. Check the link or go to the main site.": "There is no organisation at this address. Check the link or go to the main site.",
     "This address already has an open invitation.": "This address already has an open invitation.",
     "This address can't be used.": "This address can't be used.",

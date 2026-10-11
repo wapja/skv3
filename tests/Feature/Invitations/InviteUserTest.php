@@ -12,6 +12,7 @@ use App\Enums\ActivityEvent;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Mail\InvitationMail;
+use App\Mail\InvitationReminderMail;
 use App\Models\Activity;
 use App\Models\Invitation;
 use App\Models\Organisation;
@@ -177,6 +178,22 @@ it('marks the invitation mail afterCommit', function (): void {
     expect(class_implements($mail))->toHaveKey(ShouldQueue::class)
         ->and($mail->afterCommit)->toBeTrue();
 });
+
+it('never turns Markdown in an organisation name into a link in the invitation mails', function (string $mailClass): void {
+    // Written past validation, as a row stored before the name rule existed would be.
+    $organisation = Organisation::factory()->create(['slug' => 'acme', 'name' => 'Acme [Reset your password](https://evil.example/x)']);
+    $invitation = inviteMember($organisation, asOrgAdmin($organisation));
+
+    /** @var InvitationMail|InvitationReminderMail $mail */
+    $mail = new $mailClass($invitation);
+    $html = $mail->render();
+
+    expect($html)->not->toContain('href="https://evil.example/x"')
+        ->and($html)->toContain('[Reset your password](https://evil.example/x)');
+})->with([
+    'the invitation' => [InvitationMail::class],
+    'the reminder' => [InvitationReminderMail::class],
+]);
 
 it('keeps the invitation when the mail transport fails in the worker (W10, C-23)', function (): void {
     config([

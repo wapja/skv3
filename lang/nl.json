@@ -171,6 +171,7 @@
     "The invitation was cancelled.": "De uitnodiging is ingetrokken.",
     "The invitation was sent again.": "De uitnodiging is opnieuw verstuurd.",
     "The link stops working and :email can be invited again later.": "De link werkt dan niet meer en :email kan later opnieuw worden uitgenodigd.",
+    "The name may not contain square brackets, angle brackets or control characters.": "De naam mag geen vierkante haken, punthaken of besturingstekens bevatten.",
     "There is no organisation at this address. Check the link or go to the main site.": "Er is geen organisatie op dit adres. Controleer de link of ga naar de hoofdsite.",
     "This address already has an open invitation.": "Voor dit adres staat al een uitnodiging open.",
     "This address can't be used.": "Dit adres kan niet worden gebruikt.",
