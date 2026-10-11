@@ -216,6 +216,11 @@ it('purges invitations already archived by the cascade, users incl. deleted ones
         'path' => '/dashboard',
         'expires_at' => now()->addMinute(),
     ]);
+    // Another organisation's user with a direct permission, a session and a reset token: the purge leaves them.
+    $outsiderUser = User::factory()->for($outsider)->create(['email' => 'outsider-user@example.com']);
+    withPermissionsTeam($outsider->id, fn () => $outsiderUser->givePermissionTo(Permission::UsersView->value));
+    $signIn($outsiderUser, 'outsider-token');
+    DB::table('password_reset_tokens')->insert(['email' => 'outsider-user@example.com', 'token' => 'hashed-outsider', 'created_at' => now()]);
     app(ArchiveOrganisation::class)->handle($superAdmin, $organisation);
     $signIn($member); // a session row written after the archive is purged as well
 
@@ -235,7 +240,14 @@ it('purges invitations already archived by the cascade, users incl. deleted ones
         ->and(RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->exists())->toBeTrue()
         // Bulk deletes filter on the organisation: another organisation's rows are untouched.
         ->and(DB::table('invitations')->where('id', $outsiderInvitation->id)->exists())->toBeTrue()
-        ->and(DB::table('users')->where('id', $outsiderInvitation->user_id)->exists())->toBeTrue();
+        ->and(DB::table('users')->where('id', $outsiderInvitation->user_id)->exists())->toBeTrue()
+        // The pivot deletes filter on the team or on the purged users' ids: other teams' assignments, the
+        // super admin badges (null team) and other users' direct permissions stay.
+        ->and(DB::table('model_has_roles')->where('team_id', $outsider->id)->where('model_id', $outsiderInvitation->user_id)->exists())->toBeTrue()
+        ->and(DB::table('model_has_roles')->whereNull('team_id')->where('model_id', $superAdmin->id)->exists())->toBeTrue()
+        ->and(DB::table('model_has_permissions')->where('team_id', $outsider->id)->where('model_id', $outsiderUser->id)->exists())->toBeTrue()
+        ->and(DB::table('sessions')->where('user_id', $outsiderUser->id)->exists())->toBeTrue()
+        ->and(DB::table('password_reset_tokens')->where('email', 'outsider-user@example.com')->exists())->toBeTrue();
 });
 
 it('detaches promoted super admins, deleted ones included, instead of deleting them (DEC-26)', function () use ($signIn, $fresh): void {
