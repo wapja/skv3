@@ -20,7 +20,7 @@ function matrixRoutes(): array
     return [
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
         'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
-        'users.invite', 'invitations.pending',
+        'users.invite', 'invitations.pending', 'organisations.index',
     ];
 }
 
@@ -28,7 +28,7 @@ dataset('matrix routes', matrixRoutes());
 dataset('matrix actors', ['guest', 'member', 'organisation admin', 'super admin']);
 dataset('matrix hosts', ['tenant', 'apex', 'admin']);
 
-/** @return 'ok'|'login'|'dashboard'|'confirm'|'forbidden' */
+/** @return 'ok'|'login'|'dashboard'|'confirm'|'forbidden'|'organisations' */
 function routeMatrixOutcome(string $route, string $actor, string $host): string
 {
     $signedIn = $actor !== 'guest';
@@ -36,7 +36,11 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
 
     return match (true) {
         $signedIn && ! $belongsHere => 'login',           // membership middleware logs out first
-        $route === 'home' => $signedIn ? 'dashboard' : 'login',
+        $route === 'home' => match (true) {
+            ! $signedIn => 'login',
+            $actor === 'super admin' && $host !== 'tenant' => 'organisations', // TEN-1
+            default => 'dashboard',
+        },
         in_array($route, ['login', 'password.request', 'two-factor.login'], true) => match (true) {
             $signedIn => 'dashboard',                     // guest-only pages
             $route === 'two-factor.login' => 'login',     // no challenge in the session
@@ -44,7 +48,9 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
         },
         ! $signedIn => 'login',
         $route === 'security.edit' => 'confirm',
-        $actor === 'member' && in_array($route, ['users.index', 'users.edit', 'users.invite', 'invitations.pending'], true) => 'forbidden', // the matrix member holds no permission
+        $actor === 'member' && in_array($route, [
+            'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
+        ], true) => 'forbidden',                          // the matrix member holds no permission
         default => 'ok',
     };
 }
@@ -87,6 +93,7 @@ it('answers every route on every host for every role', function (string $route, 
         'dashboard' => $response->assertRedirect(route('dashboard')),
         'confirm' => $response->assertRedirect(route('password.confirm')),
         'forbidden' => $response->assertForbidden(),
+        'organisations' => $response->assertRedirect(route('organisations.index')),
     };
 })->with('matrix routes')->with('matrix actors')->with('matrix hosts');
 

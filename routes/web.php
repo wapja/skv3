@@ -4,12 +4,24 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
+use App\Models\User;
+use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
 use Laravel\Fortify\Http\Controllers\NewPasswordController;
 
-Route::get('/', fn (): RedirectResponse => to_route(auth()->check() ? 'dashboard' : 'login'))->name('home');
+// §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
+// everyone else (and super admins on a tenant host) lands on the dashboard.
+Route::get('/', function (): RedirectResponse {
+    $user = auth()->user();
+
+    if (! $user instanceof User) {
+        return to_route('login');
+    }
+
+    return to_route($user->isSuperAdmin() && ! Tenant::check() ? 'organisations.index' : 'dashboard');
+})->name('home');
 
 Route::middleware(['auth'])->group(function (): void {
     Route::view('dashboard', 'dashboard')->name('dashboard');

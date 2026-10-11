@@ -30,6 +30,11 @@ Route::middleware(['auth'])->group(function (): void {
     Route::livewire('invitations/pending', 'pages::invitations.pending')
         ->can(Permission::UsersView)
         ->name('invitations.pending');
+
+    // §4.3, §6.2: any host. A tenant host shows its own organisation; on central hosts only super admins get here.
+    Route::livewire('organisations', 'pages::organisations.index')
+        ->can(Permission::OrganisationsView)
+        ->name('organisations.index');
 });
 
 // §4.5 / §6.2: guests open the accept link, so it lives outside the auth group, on tenant hosts only.

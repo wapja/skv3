@@ -80,3 +80,17 @@ it('shows the invite button only to users who may create invitations (OR-M7)', f
 
     $this->get(route('users.index'))->assertOk()->assertDontSee('data-test="invite-user-button"', false);
 });
+
+it('shows the organisations link to organisation admins and super admins, not to members', function (): void {
+    $organisation = Organisation::factory()->create();
+
+    asMember($organisation);
+    $this->get(route('dashboard'))->assertOk()->assertDontSee(route('organisations.index'), escape: false);
+
+    asOrgAdmin($organisation);
+    $this->get(route('dashboard'))->assertOk()->assertSee(route('organisations.index'), escape: false);
+
+    asSuperAdmin();
+    onAdminHost();
+    $this->get(route('dashboard'))->assertOk()->assertSee(route('organisations.index'), escape: false);
+});

@@ -17,7 +17,7 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
-                @canany([\App\Authorization\Permission::UsersView])
+                @canany([\App\Authorization\Permission::UsersView, \App\Authorization\Permission::OrganisationsView])
                     <flux:sidebar.group :heading="__('Administration')" class="grid">
                         @can(\App\Authorization\Permission::UsersView)
                             <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>
@@ -28,6 +28,12 @@
                         @can(\App\Authorization\Permission::UsersView)
                             <flux:sidebar.item icon="envelope" :href="route('invitations.pending')" :current="request()->routeIs('invitations.pending')" wire:navigate data-test="nav-pending-invitations">
                                 {{ __('Pending invitations') }}
+                            </flux:sidebar.item>
+                        @endcan
+
+                        @can(\App\Authorization\Permission::OrganisationsView)
+                            <flux:sidebar.item icon="building-office" :href="route('organisations.index')" :current="request()->routeIs('organisations.*')" wire:navigate>
+                                {{ __('Organisations') }}
                             </flux:sidebar.item>
                         @endcan
                     </flux:sidebar.group>
