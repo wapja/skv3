@@ -30,10 +30,14 @@ Route::post('reset-password', [NewPasswordController::class, 'store'])
     ->middleware(['guest:web', 'throttle:password-reset'])
     ->name('password.update');
 
-// §6.4: any host; the token is bound to its target host.
-Route::get('auth/handoff/{token}', HandoffController::class)
+// §6.4: any host; the token is bound to its target host. The GET consumes it for a guest or the same
+// user and asks first when another user is signed in; only the CSRF-protected POST replaces a session.
+Route::get('auth/handoff/{token}', [HandoffController::class, 'show'])
     ->middleware('throttle:handoff')
     ->name('auth.handoff');
+Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
+    ->middleware('throttle:handoff')
+    ->name('auth.handoff.store');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
