@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 /** covers §4.2, §4.10 */
 
+use App\Http\Controllers\ImpersonationController;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Routing\RedirectController;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\File;
@@ -36,7 +38,7 @@ it('offers no self-service account deletion', function (): void {
     expect($deleteViews)->toBeEmpty();
 });
 
-it('registers no DELETE route other than disabling 2FA and removing a passkey', function (): void {
+it('registers no DELETE route other than disabling 2FA, removing a passkey and, with the module on, stopping an impersonation', function (): void {
     $deleteRoutes = collect(Route::getRoutes()->getRoutes())
         ->filter(fn (RoutingRoute $route): bool => in_array('DELETE', $route->methods(), true))
         ->mapWithKeys(fn (RoutingRoute $route): array => [$route->uri() => ltrim($route->getActionName(), '\\')])
@@ -44,11 +46,20 @@ it('registers no DELETE route other than disabling 2FA and removing a passkey', 
         ->all();
 
     // Route::redirect() registers an "any" route, so the settings redirect also accepts DELETE.
-    expect($deleteRoutes)->toBe([
+    $expected = [
         'settings' => RedirectController::class,
         'user/passkeys/{passkey}' => PasskeyRegistrationController::class.'@destroy',
         'user/two-factor-authentication' => TwoFactorAuthenticationController::class.'@destroy',
-    ]);
+    ];
+
+    // §6.8: routes/web.php registers the impersonation module's stop route only while the module is on.
+    if (Impersonation::enabled()) {
+        $expected['impersonation'] = ImpersonationController::class.'@destroy';
+    }
+
+    ksort($expected);
+
+    expect($deleteRoutes)->toBe($expected);
 });
 
 it('sends guests from the root url to the login page', function (): void {

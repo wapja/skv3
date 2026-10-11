@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use App\Models\Organisation;
+use App\Models\User;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
 
@@ -18,7 +19,9 @@ function matrixRoutes(): array
 {
     return [
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
-        'dashboard', 'profile.edit', 'appearance.edit', 'security.edit',
+        'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
+        'users.invite', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
+        'roles.index', 'activity.index',
     ];
 }
 
@@ -26,7 +29,7 @@ dataset('matrix routes', matrixRoutes());
 dataset('matrix actors', ['guest', 'member', 'organisation admin', 'super admin']);
 dataset('matrix hosts', ['tenant', 'apex', 'admin']);
 
-/** @return 'ok'|'login'|'dashboard'|'confirm' */
+/** @return 'ok'|'login'|'dashboard'|'confirm'|'forbidden'|'organisations'|'not found' */
 function routeMatrixOutcome(string $route, string $actor, string $host): string
 {
     $signedIn = $actor !== 'guest';
@@ -34,20 +37,44 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
 
     return match (true) {
         $signedIn && ! $belongsHere => 'login',           // membership middleware logs out first
-        $route === 'home' => $signedIn ? 'dashboard' : 'login',
+        $route === 'home' => match (true) {
+            ! $signedIn => 'login',
+            $actor === 'super admin' && $host !== 'tenant' => 'organisations', // TEN-1
+            default => 'dashboard',
+        },
         in_array($route, ['login', 'password.request', 'two-factor.login'], true) => match (true) {
             $signedIn => 'dashboard',                     // guest-only pages
             $route === 'two-factor.login' => 'login',     // no challenge in the session
             default => 'ok',
         },
         ! $signedIn => 'login',
+        $route === 'organisations.create' && $host === 'tenant' => 'not found', // central page; host before can:
         $route === 'security.edit' => 'confirm',
+        $actor === 'member' && in_array($route, [
+            'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
+            'organisations.edit', 'roles.index', 'activity.index',
+        ], true) => 'forbidden',                          // the matrix member holds no permission
         default => 'ok',
+    };
+}
+
+/**
+ * Route parameters for parameter pages (RL-10), created before the host switch (strict mode).
+ *
+ * @return array<string, int>
+ */
+function matrixParameters(string $route, Organisation $organisation): array
+{
+    return match ($route) {
+        'users.edit' => ['user' => User::factory()->for($organisation)->create()->id],
+        'organisations.edit' => ['organisation' => $organisation->id],
+        default => [],
     };
 }
 
 it('answers every route on every host for every role', function (string $route, string $actor, string $host): void {
     $organisation = Organisation::factory()->create();
+    $parameters = matrixParameters($route, $organisation);
 
     match ($actor) {
         'member' => asMember($organisation),
@@ -62,13 +89,16 @@ it('answers every route on every host for every role', function (string $route, 
         default => onAdminHost(),
     };
 
-    $response = $this->get(route($route));
+    $response = $this->get(route($route, $parameters));
 
     match (routeMatrixOutcome($route, $actor, $host)) {
         'ok' => $response->assertOk(),
         'login' => $response->assertRedirect(route('login')),
         'dashboard' => $response->assertRedirect(route('dashboard')),
         'confirm' => $response->assertRedirect(route('password.confirm')),
+        'forbidden' => $response->assertForbidden(),
+        'organisations' => $response->assertRedirect(route('organisations.index')),
+        'not found' => $response->assertNotFound(),
     };
 })->with('matrix routes')->with('matrix actors')->with('matrix hosts');
 
@@ -78,7 +108,7 @@ it('lists every named GET route in the matrix or the exclusions', function (): v
         'well-known.passkeys', 'password.reset', 'password.confirmation', 'passkey.confirm-options',
         'passkey.login-options', 'passkey.registration-options', 'two-factor.qr-code',
         'two-factor.secret-key', 'two-factor.recovery-codes', 'storage.local', '__flux.flag', 'email-change.confirm',
-        'auth.handoff',
+        'auth.handoff', 'invitations.accept',
     ];
 
     $named = collect(Route::getRoutes()->getRoutes())

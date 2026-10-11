@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 use App\Actions\Settings\RequestEmailChange;
 use App\Concerns\ProfileValidationRules;
-use App\Models\User;
+use App\Concerns\ResolvesCurrentUser;
 use Flux\Flux;
-use Illuminate\Auth\AuthenticationException;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,6 +13,7 @@ use Livewire\Component;
 new #[Title('Profile settings')] class extends Component
 {
     use ProfileValidationRules;
+    use ResolvesCurrentUser;
 
     public string $name = '';
 
@@ -25,7 +24,7 @@ new #[Title('Profile settings')] class extends Component
      */
     public function mount(): void
     {
-        $user = $this->user();
+        $user = $this->currentUser();
 
         $this->name = $user->name;
         $this->email = $user->email;
@@ -36,11 +35,11 @@ new #[Title('Profile settings')] class extends Component
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange): void
     {
-        $user = $this->user();
+        $user = $this->currentUser();
 
         $this->email = Str::lower($this->email);
 
-        $validated = $this->validate($this->profileRules($user->id));
+        $validated = $this->validate($this->profileRules($user->id, $user->organisation_id));
 
         $user->fill(['name' => $validated['name']])->save();
 
@@ -56,13 +55,5 @@ new #[Title('Profile settings')] class extends Component
         }
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
-    }
-
-    /**
-     * Get the authenticated user.
-     */
-    private function user(): User
-    {
-        return Auth::user() ?? throw new AuthenticationException;
     }
 };

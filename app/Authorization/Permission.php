@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Authorization;
 
+use App\Tenancy\Auth\Impersonation;
+
 /** The permission catalogue (§4.6). The only place where permission names are spelled out. */
 enum Permission: string
 {
@@ -27,6 +29,21 @@ enum Permission: string
     public static function organisationAdmin(): array
     {
         return array_values(array_filter(self::cases(), fn (self $permission): bool => ! $permission->superOnly()));
+    }
+
+    /**
+     * The permissions the role editor offers custom roles (§4.6, §6.8): the catalogue minus the
+     * super-only ones, and without users.impersonate while the impersonation module is off.
+     * users.impersonate stays in the catalogue either way (stable sync).
+     *
+     * @return list<self>
+     */
+    public static function assignableToCustomRoles(): array
+    {
+        return array_values(array_filter(
+            self::organisationAdmin(),
+            fn (self $permission): bool => $permission !== self::UsersImpersonate || Impersonation::enabled(),
+        ));
     }
 
     /** @return list<string> */

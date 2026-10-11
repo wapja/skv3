@@ -67,3 +67,16 @@ it('logs out a disabled super admin', function (): void {
 it('uses host-only session cookies', function (): void {
     expect(config('session.domain'))->toBeNull();
 });
+
+it('applies the host login rule to members (FU3-6)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $member->delete();
+    actingAs($member);
+    onTenant($organisation);
+
+    $this->get(route('dashboard'))
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status', 'Your account is not active. Contact your administrator.');
+    $this->assertGuest();
+});

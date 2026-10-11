@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\File;
 it('hard-codes no kit or site name in app-identity values', function (): void {
     $allowed = [
         '/skv:[a-z-]+/',            // artisan command namespace
-        "/config\\(['\"]skv\\./",    // config('skv.…') keys
+        "/config\\(\\[?['\"]skv\\./",    // config('skv.…') keys, read or set
         '/config\/skv\.php/',
         '/\bSkv::/',
         '/skv-[a-z-]+/',            // storage marker / state files

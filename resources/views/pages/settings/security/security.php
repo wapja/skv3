@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Actions\Audit\RecordActivity;
 use App\Concerns\ConfirmsPasswords;
 use App\Concerns\PasswordValidationRules;
-use App\Models\User;
+use App\Concerns\ResolvesCurrentUser;
+use App\Enums\ActivityEvent;
 use Flux\Flux;
-use Illuminate\Auth\AuthenticationException;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Features;
@@ -22,6 +22,7 @@ new #[Title('Security settings')] class extends Component
 {
     use ConfirmsPasswords;
     use PasswordValidationRules;
+    use ResolvesCurrentUser;
 
     public string $current_password = '';
 
@@ -60,11 +61,11 @@ new #[Title('Security settings')] class extends Component
         $this->canManageTwoFactor = Features::canManageTwoFactorAuthentication();
 
         if ($this->canManageTwoFactor) {
-            if (Fortify::confirmsTwoFactorAuthentication() && is_null($this->user()->two_factor_confirmed_at)) {
-                $disableTwoFactorAuthentication($this->user());
+            if (Fortify::confirmsTwoFactorAuthentication() && is_null($this->currentUser()->two_factor_confirmed_at)) {
+                $disableTwoFactorAuthentication($this->currentUser());
             }
 
-            $this->twoFactorEnabled = $this->user()->hasEnabledTwoFactorAuthentication();
+            $this->twoFactorEnabled = $this->currentUser()->hasEnabledTwoFactorAuthentication();
             $this->requiresConfirmation = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
         }
 
@@ -78,7 +79,7 @@ new #[Title('Security settings')] class extends Component
     /**
      * Update the password for the currently authenticated user.
      */
-    public function updatePassword(): void
+    public function updatePassword(RecordActivity $recordActivity): void
     {
         try {
             $validated = $this->validate([
@@ -91,9 +92,12 @@ new #[Title('Security settings')] class extends Component
             throw $e;
         }
 
-        $this->user()->update([
+        $this->currentUser()->update([
             'password' => $validated['password'],
         ]);
+
+        // §4.8: the page changes the password without an event, so it records the change itself.
+        $recordActivity->handle(ActivityEvent::PasswordChanged, $this->currentUser());
 
         $this->reset('current_password', 'password', 'password_confirmation');
 
@@ -105,7 +109,7 @@ new #[Title('Security settings')] class extends Component
      */
     public function loadPasskeys(): void
     {
-        $this->passkeys = $this->user()->passkeys()
+        $this->passkeys = $this->currentUser()->passkeys()
             ->select(['id', 'name', 'credential', 'created_at', 'last_used_at'])
             ->latest()
             ->get()
@@ -125,7 +129,7 @@ new #[Title('Security settings')] class extends Component
      */
     public function confirmDelete(int $passkeyId): void
     {
-        $passkey = $this->user()->passkeys()->findOrFail($passkeyId);
+        $passkey = $this->currentUser()->passkeys()->findOrFail($passkeyId);
 
         $this->deletingPasskeyId = $passkey->id;
         $this->deletingPasskeyName = $passkey->name;
@@ -145,9 +149,9 @@ new #[Title('Security settings')] class extends Component
             return;
         }
 
-        $passkey = $this->user()->passkeys()->findOrFail($this->deletingPasskeyId);
+        $passkey = $this->currentUser()->passkeys()->findOrFail($this->deletingPasskeyId);
 
-        $deletePasskey($this->user(), $passkey);
+        $deletePasskey($this->currentUser(), $passkey);
 
         $this->closeDeleteModal();
         $this->loadPasskeys();
@@ -181,16 +185,8 @@ new #[Title('Security settings')] class extends Component
             return;
         }
 
-        $disableTwoFactorAuthentication($this->user());
+        $disableTwoFactorAuthentication($this->currentUser());
 
         $this->twoFactorEnabled = false;
-    }
-
-    /**
-     * Get the authenticated user.
-     */
-    private function user(): User
-    {
-        return Auth::user() ?? throw new AuthenticationException;
     }
 };

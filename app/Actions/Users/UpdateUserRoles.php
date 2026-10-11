@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Actions\Users;
 
+use App\Actions\Audit\RecordActivity;
+use App\Authorization\LockoutGuard;
 use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
-use App\Enums\UserStatus;
+use App\Authorization\SyncPermissions;
+use App\Enums\ActivityEvent;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,14 +21,17 @@ use LogicException;
 use Spatie\Permission\Models\Role as RoleModel;
 
 /**
- * The only way to change a user's organisation roles (§4.6). Accepts roles of the target's
- * own team plus the global organisation_admin template (DEC-21 option A); the super_admin badge
- * and other teams' roles are rejected, and non-super-admins only hand out roles whose
- * permissions they hold (W1). Refuses removing your own organisation admin role and demoting
- * the last active organisation admin (W12).
+ * The only way to change a user's organisation roles (§4.6). Accepts web-guard roles of the target's own
+ * team plus the global organisation_admin template, matched by id (DEC-21 option A, FU2-4); the
+ * super_admin badge, other teams' roles, other guards' roles and team roles named like a system role are
+ * rejected, and non-super-admins only hand out roles whose permissions they hold (W1). Refuses removing
+ * your own organisation admin role and demoting the last active organisation admin (W12). Records
+ * user.roles_changed with the old and new role names when the set changes (§4.8).
  */
-final class UpdateUserRoles
+final readonly class UpdateUserRoles
 {
+    public function __construct(private LockoutGuard $lockoutGuard, private RecordActivity $recordActivity) {}
+
     /**
      * @param  list<int>  $roleIds
      *
@@ -37,20 +43,34 @@ final class UpdateUserRoles
         Gate::forUser($actor)->authorize('updateRoles', $target);
 
         $teamId = $target->organisation_id ?? throw new LogicException('updateRoles allows only users with an organisation.');
-        $roles = $this->resolveRoles($teamId, $roleIds);
-        $keepsAdmin = $roles->contains(fn (RoleModel $role): bool => $role->name === Role::OrganisationAdmin->value);
+        $templateId = Role::templateId();
+        $roles = $this->resolveRoles($teamId, $templateId, $roleIds);
+        $keepsAdmin = $roles->contains(fn (RoleModel $role): bool => (int) $role->getKey() === $templateId);
 
-        PermissionsTeam::run($teamId, function () use ($actor, $target, $roles, $keepsAdmin, $teamId): void {
-            DB::transaction(function () use ($actor, $target, $roles, $keepsAdmin, $teamId): void {
+        PermissionsTeam::run($teamId, function () use ($actor, $target, $roles, $keepsAdmin, $teamId, $templateId): void {
+            DB::transaction(function () use ($actor, $target, $roles, $keepsAdmin, $teamId, $templateId): void {
                 $target->unsetRelation('roles');
+                $before = $this->roleNamesOf($target, $teamId);
                 $this->guardEscalation($actor, $target, $roles);
 
-                if (! $keepsAdmin && $target->hasRole(Role::OrganisationAdmin->value)) {
+                if (! $keepsAdmin && $this->holdsTemplate($target, $teamId, $templateId)) {
                     $this->guardAdminRemoval($actor, $target, $teamId);
                 }
 
                 $target->syncRoles($roles);
                 $target->unsetRelation('roles');
+
+                $after = $roles->map(fn (RoleModel $role): string => $role->name)->values()->all();
+                sort($after);
+
+                if ($before !== $after) {
+                    $this->recordActivity->handle(
+                        ActivityEvent::UserRolesChanged,
+                        $target,
+                        changes: ['old' => ['roles' => $before], 'attributes' => ['roles' => $after]],
+                        causer: $actor,
+                    );
+                }
             });
         });
     }
@@ -61,20 +81,24 @@ final class UpdateUserRoles
      *
      * @throws ValidationException
      */
-    private function resolveRoles(int $teamId, array $roleIds): Collection
+    private function resolveRoles(int $teamId, int $templateId, array $roleIds): Collection
     {
         $roleIds = array_values(array_unique($roleIds));
 
         $roles = RoleModel::query()
             ->whereKey($roleIds)
-            ->where(function (Builder $query) use ($teamId): void {
-                $query->where('team_id', $teamId)->orWhere(function (Builder $template): void {
-                    $template->whereNull('team_id')->where('name', Role::OrganisationAdmin->value);
-                });
+            ->where('guard_name', SyncPermissions::GUARD)
+            ->where(function (Builder $query) use ($teamId, $templateId): void {
+                $query->where('team_id', $teamId)->orWhere('id', $templateId);
             })
             ->get();
 
-        if ($roles->count() !== count($roleIds)) {
+        // A team role that reads like a system role would pass for it in lists and checks (FU2-4, W6).
+        $lookalike = $roles->contains(
+            fn (RoleModel $role): bool => (int) $role->getKey() !== $templateId && Role::isReservedName($role->name),
+        );
+
+        if ($lookalike || $roles->count() !== count($roleIds)) {
             throw ValidationException::withMessages([
                 'roles' => __('One or more roles are not available for this organisation.'),
             ]);
@@ -123,24 +147,34 @@ final class UpdateUserRoles
             ]);
         }
 
-        $templateId = RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+        $this->lockoutGuard->ensureAnotherActiveOrganisationAdmin($target, $teamId, 'roles');
+    }
 
-        // pluck() instead of exists(): keeps FOR UPDATE out of an EXISTS subquery on PostgreSQL.
-        $otherActiveAdmins = DB::table('model_has_roles')
-            ->join('users', 'users.id', '=', 'model_has_roles.model_id')
-            ->where('model_has_roles.role_id', $templateId)
+    /** The template by id, in this team: a team role that merely shares its name does not count (FU2-4). */
+    private function holdsTemplate(User $target, int $teamId, int $templateId): bool
+    {
+        return DB::table('model_has_roles')
+            ->where('role_id', $templateId)
+            ->where('model_type', $target->getMorphClass())
+            ->where('model_id', $target->id)
+            ->where('team_id', $teamId)
+            ->exists();
+    }
+
+    /** @return list<string> sorted in PHP, so both databases give the same order */
+    private function roleNamesOf(User $target, int $teamId): array
+    {
+        $names = DB::table('model_has_roles')
+            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
             ->where('model_has_roles.model_type', $target->getMorphClass())
+            ->where('model_has_roles.model_id', $target->id)
             ->where('model_has_roles.team_id', $teamId)
-            ->where('users.id', '!=', $target->id)
-            ->where('users.status', UserStatus::Active->value)
-            ->whereNull('users.deleted_at')
-            ->lockForUpdate()
-            ->pluck('users.id');
+            ->pluck('roles.name')
+            ->map(fn (mixed $name): string => (string) $name)
+            ->values()
+            ->all();
+        sort($names);
 
-        if ($otherActiveAdmins->isEmpty()) {
-            throw ValidationException::withMessages([
-                'roles' => __('An organisation needs at least one active organisation admin.'),
-            ]);
-        }
+        return $names;
     }
 }

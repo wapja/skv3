@@ -103,3 +103,13 @@ it('forgets the cached slug when the organisation is archived', function (): voi
     expect(Cache::has(SubdomainResolver::cacheKey('gone')))->toBeFalse();
     $this->get(tenant_url('gone', '/_probe'))->assertNotFound();
 });
+
+it('never resolves the configured admin subdomain as a tenant (FU3-5)', function (): void {
+    config(['tenancy.admin_subdomain' => 'beheer']);
+    Organisation::factory()->create(['slug' => 'beheer']);
+
+    expect(Hosts::slugOf('beheer.localhost'))->toBeNull();
+    $this->getJson(Hosts::url(Hosts::admin(), '/_probe'))
+        ->assertOk()
+        ->assertExactJson(['tenant' => null, 'team' => null]);
+});

@@ -18,4 +18,14 @@ enum UserStatus: string
             self::Disabled => __('Disabled'),
         };
     }
+
+    /** The Flux badge colour of the status (§6.5). */
+    public function color(): string
+    {
+        return match ($this) {
+            self::PendingActivation => 'amber',
+            self::Active => 'lime',
+            self::Disabled => 'zinc',
+        };
+    }
 }

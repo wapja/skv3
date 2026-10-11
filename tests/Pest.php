@@ -2,22 +2,40 @@
 
 declare(strict_types=1);
 
+use App\Actions\Invitations\InviteUser;
+use App\Actions\Users\StartImpersonation;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\ActivityEvent;
+use App\Enums\Locale;
+use App\Models\Activity;
+use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Hosts;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Routing\RouteCollection;
+use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
+use Spatie\Permission\Models\Role as RoleModel;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\get;
+use function Pest\Laravel\post;
+use function Pest\Laravel\postJson;
 
 /*
 |--------------------------------------------------------------------------
@@ -139,4 +157,152 @@ function confirmationLinkFor(string $address): string
     );
 
     return is_string($link) ? $link : throw new RuntimeException("No confirmation link was sent to [{$address}].");
+}
+
+/** @return list<string> */
+function dutchTranslationKeys(): array
+{
+    /** @var array<string, string> $dutch */
+    $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    return array_keys($dutch);
+}
+
+/**
+ * Every audit entry with this event, oldest first, read across organisations and including archived
+ * (soft-deleted) rows, whatever host the test is on.
+ *
+ * @return EloquentCollection<int, Activity>
+ */
+function recordedActivity(ActivityEvent $event): EloquentCollection
+{
+    return app(CurrentTenant::class)->bypass(fn (): EloquentCollection => Activity::query()
+        ->withTrashed()
+        ->where('event', $event->value)
+        ->orderBy('id')
+        ->get());
+}
+
+/**
+ * The snapshot of $component as the page at $url renders it for the signed-in user (generic form of the
+ * M3 security-page helper). The URL decides the host.
+ *
+ * @return array<string, mixed>
+ */
+function pageSnapshot(string $url, string $component): array
+{
+    preg_match_all('/wire:snapshot="([^"]*)"/', (string) get($url)->assertOk()->getContent(), $matches);
+
+    foreach ($matches[1] as $encoded) {
+        /** @var array<string, mixed> $snapshot */
+        $snapshot = json_decode(htmlspecialchars_decode($encoded, ENT_QUOTES), true, flags: JSON_THROW_ON_ERROR);
+
+        if (($snapshot['memo']['name'] ?? null) === $component) {
+            return $snapshot;
+        }
+    }
+
+    throw new LogicException("The page [{$url}] renders no [{$component}] component.");
+}
+
+/**
+ * Sends a Livewire update that calls $method on the snapshot's component, as a forged request would: with
+ * client-chosen parameters and property updates, from the current origin or from $host.
+ *
+ * @param  array<string, mixed>  $snapshot
+ * @param  list<mixed>  $params
+ * @param  array<string, mixed>  $updates
+ * @return TestResponse<Response>
+ */
+function callPageAction(array $snapshot, string $method, array $params = [], array $updates = [], ?string $host = null): TestResponse
+{
+    Livewire::flushState(); // a new request cycle, as in production: PersistentMiddleware remembers routes it already handled
+
+    $uri = $host === null ? Livewire::getUpdateUri() : Hosts::url($host, Livewire::getUpdateUri());
+
+    return postJson($uri, ['components' => [[
+        'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+        'updates' => $updates,
+        'calls' => [['method' => $method, 'params' => $params, 'path' => '', 'metadata' => []]],
+    ]]], ['X-Livewire' => '1']);
+}
+
+/**
+ * Invites an address into an organisation with the organisation_admin template through InviteUser
+ * (§4.5). Without an actor a fresh super admin invites; this helper signs nobody in.
+ */
+function inviteMember(Organisation $organisation, ?User $actor = null, string $email = 'invitee@example.com'): Invitation
+{
+    if (! $actor instanceof User) {
+        $actor = User::factory()->superAdmin()->create();
+        app(SetSuperAdmin::class)->handle($actor, true);
+    }
+
+    $templateId = (int) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+
+    return app(InviteUser::class)->handle($actor, $organisation, $email, [$templateId], Locale::default());
+}
+
+/** The signed accept link of an invitation, on its organisation's host (Invitation::acceptUrl()). */
+function acceptLinkFor(Invitation $invitation): string
+{
+    return $invitation->acceptUrl();
+}
+
+/**
+ * Turns the impersonation module on or off for the rest of the test (§6.8, RL-21): the flag, and the
+ * module's routes as routes/web.php registers them at boot for that value. The CI job sqlite-free boots
+ * the suite with MODULE_IMPERSONATION=false, so every test that needs the module on calls this first.
+ * RouteCollection has no remove API, so "off" swaps in a copy without the impersonation.* routes.
+ */
+function useImpersonationModule(bool $enabled): void
+{
+    config(['skv.modules.impersonation' => $enabled]);
+
+    $router = app(Router::class);
+
+    if ($enabled && ! $router->getRoutes()->hasNamedRoute('impersonation.stop')) {
+        Route::middleware('web')->group(base_path('routes/impersonation.php'));
+    }
+
+    if (! $enabled) {
+        $kept = new RouteCollection;
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            if (! str_starts_with((string) $route->getName(), 'impersonation.')) {
+                $kept->add($route);
+            }
+        }
+
+        $router->setRoutes($kept);
+    }
+
+    $router->getRoutes()->refreshNameLookups();
+    $router->getRoutes()->refreshActionLookups();
+}
+
+/**
+ * Signs $impersonator in through the login route on the current (tenant) host and starts impersonating
+ * $target in a real web request, so the swap runs the whole web middleware stack (§4.7). The guard's
+ * cached user is dropped before and after each request, as a new request in production would (RK-I9).
+ */
+function startImpersonatingOverHttp(User $impersonator, User $target, string $reason = 'Support ticket'): void
+{
+    Route::middleware(['web', 'auth'])->post('_start-impersonating', function () use ($target, $reason): string {
+        $actor = Auth::user();
+
+        if (! $actor instanceof User) {
+            throw new LogicException('Nobody is signed in.');
+        }
+
+        app(StartImpersonation::class)->handle($actor, $target, $reason);
+
+        return 'impersonating';
+    });
+
+    Auth::guard('web')->forgetUser();
+    post(route('login.store'), ['email' => $impersonator->email, 'password' => 'password'])->assertRedirect();
+    Auth::guard('web')->forgetUser();
+    post('/_start-impersonating')->assertOk();
+    Auth::guard('web')->forgetUser();
 }

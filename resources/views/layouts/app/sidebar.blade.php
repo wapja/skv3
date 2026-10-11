@@ -16,6 +16,40 @@
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
+
+                @canany([\App\Authorization\Permission::UsersView, \App\Authorization\Permission::OrganisationsView, \App\Authorization\Permission::RolesView, \App\Authorization\Permission::ActivityLogView])
+                    <flux:sidebar.group :heading="__('Administration')" class="grid">
+                        @can(\App\Authorization\Permission::UsersView)
+                            <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>
+                                {{ __('Users') }}
+                            </flux:sidebar.item>
+                        @endcan
+
+                        @can(\App\Authorization\Permission::UsersView)
+                            <flux:sidebar.item icon="envelope" :href="route('invitations.pending')" :current="request()->routeIs('invitations.pending')" wire:navigate data-test="nav-pending-invitations">
+                                {{ __('Pending invitations') }}
+                            </flux:sidebar.item>
+                        @endcan
+
+                        @can(\App\Authorization\Permission::OrganisationsView)
+                            <flux:sidebar.item icon="building-office" :href="route('organisations.index')" :current="request()->routeIs('organisations.*')" wire:navigate>
+                                {{ __('Organisations') }}
+                            </flux:sidebar.item>
+                        @endcan
+
+                        @can(\App\Authorization\Permission::RolesView)
+                            <flux:sidebar.item icon="shield-check" :href="route('roles.index')" :current="request()->routeIs('roles.*')" wire:navigate>
+                                {{ __('Roles') }}
+                            </flux:sidebar.item>
+                        @endcan
+
+                        @can(\App\Authorization\Permission::ActivityLogView)
+                            <flux:sidebar.item icon="clipboard-document-list" :href="route('activity.index')" :current="request()->routeIs('activity.*')" wire:navigate>
+                                {{ __('Activity log') }}
+                            </flux:sidebar.item>
+                        @endcan
+                    </flux:sidebar.group>
+                @endcanany
             </flux:sidebar.nav>
 
             <flux:spacer />
@@ -95,6 +129,8 @@
                 <flux:toast />
             </flux:toast.group>
         @endpersist
+
+        <x-flash-toast />
 
         @fluxScripts
     </body>

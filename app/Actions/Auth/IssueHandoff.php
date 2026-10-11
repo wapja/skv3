@@ -7,16 +7,21 @@ namespace App\Actions\Auth;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Hosts;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * Issues a single-use sign-in link for another host (§6.4): valid 60 seconds, bound to the user and the
  * target host, only for relative paths. Super admins may enter any host; members only their own
  * organisation's host (used after a slug rename). Session cookies stay host-only. Whether the user may
  * still sign in at all (active, not deleted) is decided when the link is used, by the host login rule.
+ *
+ * A handoff is a sign-in that skips the second factor: callers pass only the authenticated actor, never
+ * a user taken from input (FU3-1).
  */
 final class IssueHandoff
 {
@@ -28,6 +33,12 @@ final class IssueHandoff
      */
     public function handle(User $user, string $targetHost, string $path = '/dashboard'): string
     {
+        // A handoff carries the signed-in identity into a clean session on another host; while impersonating
+        // that identity is borrowed (RL-20).
+        if (Impersonation::isActive()) {
+            throw new AuthorizationException('No handoff can be issued while impersonating.');
+        }
+
         $targetHost = Str::lower($targetHost);
 
         if (! str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '\\')) {
@@ -54,7 +65,12 @@ final class IssueHandoff
     private function mayEnter(User $user, string $host): bool
     {
         if (! $user->isSuperAdmin()) {
-            return $host === Hosts::homeOf($user);
+            try {
+                return $host === Hosts::homeOf($user);
+            } catch (LogicException) {
+                // FU3-4: a member whose organisation is archived (or missing) has no host to enter.
+                return false;
+            }
         }
 
         return in_array($host, [Hosts::apex(), Hosts::admin()], true) || $this->isOrganisationHost($host);

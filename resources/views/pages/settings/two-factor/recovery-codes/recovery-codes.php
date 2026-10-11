@@ -3,10 +3,8 @@
 declare(strict_types=1);
 
 use App\Concerns\ConfirmsPasswords;
-use App\Models\User;
+use App\Concerns\ResolvesCurrentUser;
 use Flux\Flux;
-use Illuminate\Auth\AuthenticationException;
-use Illuminate\Support\Facades\Auth;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -15,6 +13,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 new class extends Component
 {
     use ConfirmsPasswords;
+    use ResolvesCurrentUser;
 
     /**
      * @var list<string>
@@ -39,7 +38,7 @@ new class extends Component
             return;
         }
 
-        $generateNewRecoveryCodes($this->user());
+        $generateNewRecoveryCodes($this->currentUser());
 
         $this->loadRecoveryCodes();
 
@@ -67,7 +66,7 @@ new class extends Component
      */
     private function loadRecoveryCodes(): void
     {
-        $user = $this->user();
+        $user = $this->currentUser();
 
         if ($user->hasEnabledTwoFactorAuthentication() && $user->two_factor_recovery_codes) {
             try {
@@ -78,13 +77,5 @@ new class extends Component
                 $this->recoveryCodes = [];
             }
         }
-    }
-
-    /**
-     * Get the authenticated user.
-     */
-    private function user(): User
-    {
-        return Auth::user() ?? throw new AuthenticationException;
     }
 };

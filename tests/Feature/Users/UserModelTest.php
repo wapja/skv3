@@ -70,3 +70,11 @@ it('soft deletes users', function (): void {
 it('labels every status', function (UserStatus $status): void {
     expect($status->label())->not->toBe('');
 })->with(UserStatus::cases());
+
+it('gives every user status a badge colour', function (UserStatus $status, string $colour): void {
+    expect($status->color())->toBe($colour);
+})->with([
+    'pending activation' => [UserStatus::PendingActivation, 'amber'],
+    'active' => [UserStatus::Active, 'lime'],
+    'disabled' => [UserStatus::Disabled, 'zinc'],
+]);

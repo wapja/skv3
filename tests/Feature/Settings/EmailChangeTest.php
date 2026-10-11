@@ -115,7 +115,9 @@ it('refuses an address that was taken in the meantime', function (): void {
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
     User::factory()->for($organisation)->create(['email' => 'new@example.com']);
 
-    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('new@example.com'))->assertRedirect(route('profile.edit'));
+    $this->actingAs($member)->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('new@example.com'))
+        ->assertRedirect(route('profile.edit'))
+        ->assertSessionHas('status', __('This address is already used in this organisation.'));
 
     expect($member->fresh()?->email)->toBe('old@example.com');
 });

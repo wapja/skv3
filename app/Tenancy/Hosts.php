@@ -14,6 +14,9 @@ use LogicException;
  */
 final class Hosts
 {
+    /** One DNS label of 3–63 characters [a-z0-9-] without a leading or trailing hyphen (§4.3, §6.2). */
+    public const string SLUG_PATTERN = '/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/';
+
     public static function apex(): string
     {
         return Str::lower((string) config('tenancy.apex_domain'));
@@ -41,10 +44,19 @@ final class Hosts
         return self::tenant($organisation->slug);
     }
 
+    /** Reserved words and the configured admin subdomain are never organisation slugs (§4.3, FU2-1, FU3-5). */
+    public static function isReservedSlug(string $slug): bool
+    {
+        /** @var list<string> $reserved */
+        $reserved = config('tenancy.reserved_slugs', []);
+
+        return in_array($slug, [...$reserved, Str::lower((string) config('tenancy.admin_subdomain'))], true);
+    }
+
     /**
      * The organisation slug a host names, or null when it is not {slug}.{apex} with a valid,
-     * unreserved slug (§6.2): one label of 3–63 characters [a-z0-9-] without a leading or
-     * trailing hyphen. Expects a lower-cased host. Whether the organisation exists is not checked.
+     * unreserved slug (§6.2, SLUG_PATTERN; the admin subdomain counts as reserved, FU3-5).
+     * Expects a lower-cased host. Whether the organisation exists is not checked.
      */
     public static function slugOf(string $host): ?string
     {
@@ -56,14 +68,11 @@ final class Hosts
 
         $slug = substr($host, 0, -strlen($suffix));
 
-        if (preg_match('/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/', $slug) !== 1) {
+        if (preg_match(self::SLUG_PATTERN, $slug) !== 1 || self::isReservedSlug($slug)) {
             return null;
         }
 
-        /** @var list<string> $reserved */
-        $reserved = config('tenancy.reserved_slugs', []);
-
-        return in_array($slug, $reserved, true) ? null : $slug;
+        return $slug;
     }
 
     public static function origin(string $host): string

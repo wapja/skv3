@@ -6,6 +6,7 @@ namespace App\Actions\Settings;
 
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -33,15 +34,23 @@ final class ConfirmEmailChange
 
         Cache::forget($key);
 
-        Validator::make(['email' => $email], ['email' => $this->emailRules($user->id)])->validate();
+        Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();
 
-        DB::transaction(function () use ($user, $email): void {
-            $previous = $user->email;
+        try {
+            DB::transaction(function () use ($user, $email): void {
+                $previous = $user->email;
 
-            $user->forceFill(['email' => $email])->save();
+                $user->forceFill(['email' => $email])->save();
 
-            // Reset links issued for the old address must not work any more.
-            DB::table('password_reset_tokens')->where('email', $previous)->delete();
-        });
+                // Reset links issued for the old address must not work any more, and reset tokens are keyed by
+                // address: one issued for the new address belongs to whoever held it before.
+                DB::table('password_reset_tokens')->whereIn('email', [$previous, $email])->delete();
+            });
+        } catch (UniqueConstraintViolationException) {
+            // Another request took the address between validation and save (FU3-8).
+            $user->refresh();
+
+            throw ValidationException::withMessages(['email' => [__('This address can\'t be used.')]]);
+        }
     }
 }

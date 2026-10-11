@@ -11,10 +11,19 @@ it('spells permission names only in the Permission enum', function (): void {
     $names = implode('|', array_map(fn (string $name): string => preg_quote($name, '/'), Permission::values()));
     $files = array_values(array_diff(kitSourceFiles('app', 'routes', 'resources/views'), ['app/Authorization/Permission.php']));
 
-    // A name as a whole string, after a `prefix:` (can:, permission:) or inside a `|` / `,` list.
-    $pattern = "/(['\"])(?:[^'\"]*[:|,])?(?:{$names})(?:[|,][^'\"]*)?\\1/";
+    // A name as a whole string, after a single-colon `prefix:` (can:, permission:) or inside a `|` / `,` list.
+    // `pages::organisations.create` (a component name, double colon) is not a permission.
+    $pattern = "/(['\"])(?:[^'\"]*(?<!:)[:|,])?(?:{$names})(?<!:)(?:[|,][^'\"]*)?\\1/";
+    // Route names may equal a permission name (organisations.create): drop route-name arguments first.
+    $routeNames = '/\b(?:name|route|to_route|redirectRoute|routeIs)\(\s*([\'"])[\w.*-]+\1/';
+    $spells = fn (string $contents): bool => preg_match($pattern, (string) preg_replace($routeNames, '', $contents)) === 1;
 
-    expect(filesMatching($files, $pattern))->toBe([]);
+    expect($spells("->can('organisations.create')"))->toBeTrue()
+        ->and($spells("'can:organisations.create'"))->toBeTrue()
+        ->and($spells("->name('organisations.create')"))->toBeFalse()
+        ->and($spells("route('organisations.create')"))->toBeFalse()
+        ->and($spells("'pages::organisations.create'"))->toBeFalse()
+        ->and(array_values(array_filter($files, fn (string $path): bool => $spells((string) file_get_contents(base_path($path))))))->toBe([]);
 });
 
 it('changes the Spatie team id only in PermissionsTeam', function (): void {
