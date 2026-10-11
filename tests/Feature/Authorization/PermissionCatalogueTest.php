@@ -8,15 +8,6 @@ use App\Authorization\Permission;
 use App\Authorization\PermissionGroup;
 use App\Authorization\Role;
 
-/** @return list<string> */
-function dutchTranslationKeys(): array
-{
-    /** @var array<string, string> $dutch */
-    $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
-
-    return array_keys($dutch);
-}
-
 it('has the fifteen permissions of the catalogue', function (): void {
     expect(Permission::values())->toBe([
         'users.view', 'users.create', 'users.update', 'users.delete', 'users.invite.resend', 'users.impersonate',

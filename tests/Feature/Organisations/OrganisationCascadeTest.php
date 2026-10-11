@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.1 */
 
 use App\Authorization\SetSuperAdmin;
+use App\Models\Activity;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Database\QueryException;
@@ -64,4 +65,20 @@ it('never archives a super admin with the organisation', function (): void {
     $organisation->delete();
 
     expect(deletedAtOf($promoted))->toBeNull();
+});
+
+it('archives and restores an organisation\'s activity rows with it (AUD-12)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $entry = Activity::factory()->for($organisation)->create();
+    $central = Activity::factory()->create();
+
+    $organisation->delete();
+
+    $organisationDeletedAt = (string) DB::table('organisations')->where('id', $organisation->id)->value('deleted_at');
+    expect((string) DB::table('activity_log')->where('id', $entry->id)->value('deleted_at'))->toBe($organisationDeletedAt)
+        ->and(DB::table('activity_log')->where('id', $central->id)->value('deleted_at'))->toBeNull();
+
+    $organisation->restore();
+
+    expect(DB::table('activity_log')->where('id', $entry->id)->value('deleted_at'))->toBeNull();
 });

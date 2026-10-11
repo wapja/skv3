@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\ActivityEvent;
+use App\Models\Activity;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Hosts;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\File;
@@ -139,4 +142,28 @@ function confirmationLinkFor(string $address): string
     );
 
     return is_string($link) ? $link : throw new RuntimeException("No confirmation link was sent to [{$address}].");
+}
+
+/** @return list<string> */
+function dutchTranslationKeys(): array
+{
+    /** @var array<string, string> $dutch */
+    $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    return array_keys($dutch);
+}
+
+/**
+ * Every audit entry with this event, oldest first, read across organisations and including archived
+ * (soft-deleted) rows, whatever host the test is on.
+ *
+ * @return EloquentCollection<int, Activity>
+ */
+function recordedActivity(ActivityEvent $event): EloquentCollection
+{
+    return app(CurrentTenant::class)->bypass(fn (): EloquentCollection => Activity::query()
+        ->withTrashed()
+        ->where('event', $event->value)
+        ->orderBy('id')
+        ->get());
 }

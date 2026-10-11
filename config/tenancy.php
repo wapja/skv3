@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\Activity;
 use App\Models\User;
 
 $appUrlHost = parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST);
@@ -30,6 +31,7 @@ return [
     */
     'tenant_models' => [
         User::class,
+        Activity::class,
     ],
 
     'reserved_slugs' => [
