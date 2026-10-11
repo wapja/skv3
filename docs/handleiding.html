@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>skv3 handleiding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: documentation page, sticky contents rail left of a ~46rem reading column; on phones the rail becomes a sticky, sideways-scrolling bar. Host types carry their own colour (organisation = teal, apex = blue, admin = violet, as the app's super admin badge). */
+:root {
+  --paper: #f5f7f5;
+  --surface: #ffffff;
+  --sunken: #e9eeea;
+  --ink: #16201c;
+  --ink-2: #4b5852;
+  --rule: #d3dbd5;
+  --accent: #0b6a57;
+  --accent-soft: #d9eee6;
+  --apex: #2c5b8c;
+  --apex-soft: #dde8f3;
+  --admin: #6a45b3;
+  --admin-soft: #ebe3f8;
+  --warn: #8f5200;
+  --warn-soft: #fbedd5;
+  --danger: #a8261b;
+  --danger-soft: #f8e0dc;
+  --code-bg: #eef2ef;
+  --focus: #0b6a57;
+
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --step--1: 0.875rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.25rem;
+  --step-2: 1.6rem;
+  --step-3: 2.2rem;
+  --step-4: 3rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111614;
+    --surface: #171f1c;
+    --sunken: #0c110f;
+    --ink: #e3eae6;
+    --ink-2: #9caaa3;
+    --rule: #2b3732;
+    --accent: #5cc9a9;
+    --accent-soft: #153a30;
+    --apex: #8db8e6;
+    --apex-soft: #19293a;
+    --admin: #bba1f2;
+    --admin-soft: #2a2140;
+    --warn: #f1b456;
+    --warn-soft: #36270f;
+    --danger: #f19184;
+    --danger-soft: #3a1c18;
+    --code-bg: #0e1412;
+    --focus: #5cc9a9;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111614;
+  --surface: #171f1c;
+  --sunken: #0c110f;
+  --ink: #e3eae6;
+  --ink-2: #9caaa3;
+  --rule: #2b3732;
+  --accent: #5cc9a9;
+  --accent-soft: #153a30;
+  --apex: #8db8e6;
+  --apex-soft: #19293a;
+  --admin: #bba1f2;
+  --admin-soft: #2a2140;
+  --warn: #f1b456;
+  --warn-soft: #36270f;
+  --danger: #f19184;
+  --danger-soft: #3a1c18;
+  --code-bg: #0e1412;
+  --focus: #5cc9a9;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+
+.wrap {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding-inline: max(16px, 3vw);
+  padding-block: 0 5rem;
+}
+
+/* Masthead */
+.masthead {
+  padding-block: 3rem 2.25rem;
+  border-bottom: 1px solid var(--rule);
+  display: grid;
+  gap: 1rem;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem;
+}
+.masthead h1 {
+  font-family: var(--font-display);
+  font-stretch: 78%;
+  font-weight: 800;
+  font-size: clamp(2.4rem, 7vw, 3.75rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  margin: 0;
+  text-wrap: balance;
+}
+.masthead h1 span { color: var(--accent); }
+.lede { font-size: var(--step-1); max-width: 40em; margin: 0; color: var(--ink); text-wrap: pretty; }
+
+/* Two-column page */
+.page {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  gap: 3.5rem;
+  align-items: start;
+  padding-top: 2.5rem;
+}
+.toc {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  font-size: var(--step--1);
+}
+.toc-title {
+  font-family: var(--font-display);
+  font-stretch: 85%;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  margin: 0 0 0.75rem;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+.toc ol ol { padding-left: 0.9rem; margin: 0.15rem 0 0.4rem; border-left: 1px solid var(--rule); }
+.toc a {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: 4px;
+  line-height: 1.35;
+}
+.toc > ol > li > a { color: var(--ink); font-weight: 600; }
+.toc a:hover { background: var(--sunken); color: var(--ink); }
+.toc a[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.toc .num { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-2); margin-right: 0.35rem; }
+
+main { min-width: 0; max-width: 48rem; }
+
+/* Sections and type */
+section.chapter { padding-block: 0.5rem 2.5rem; border-bottom: 1px solid var(--rule); margin-bottom: 2.5rem; scroll-margin-top: 1.5rem; }
+section.chapter:last-of-type { border-bottom: 0; }
+h2 {
+  font-family: var(--font-display);
+  font-stretch: 82%;
+  font-weight: 750;
+  font-size: var(--step-3);
+  line-height: 1.1;
+  margin: 0 0 1rem;
+  text-wrap: balance;
+  display: flex; align-items: baseline; gap: 0.75rem;
+}
+h2 .num { font-family: var(--font-mono); font-size: var(--step-1); font-weight: 600; color: var(--accent); }
+h3 {
+  font-family: var(--font-display);
+  font-stretch: 88%;
+  font-weight: 700;
+  font-size: var(--step-2);
+  line-height: 1.2;
+  margin: 2.25rem 0 0.75rem;
+  text-wrap: balance;
+  scroll-margin-top: 1.5rem;
+}
+h4 {
+  font-family: var(--font-display);
+  font-stretch: 95%;
+  font-weight: 650;
+  font-size: var(--step-1);
+  margin: 1.75rem 0 0.5rem;
+}
+p, ul, ol { margin: 0 0 1rem; }
+main p, main li { max-width: 68ch; }
+ul, ol { padding-left: 1.35rem; }
+li { margin-bottom: 0.35rem; }
+li::marker { color: var(--ink-2); }
+strong { font-weight: 700; }
+.muted { color: var(--ink-2); }
+
+code, kbd, samp {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--sunken);
+  padding: 0.08em 0.32em;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  margin: 0 0 1.25rem;
+  overflow-x: auto;
+  tab-size: 4;
+}
+pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.cm { color: var(--ink-2); }
+.figcap { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-2); margin: -0.25rem 0 0.4rem; }
+
+/* UI label: what the app shows */
+.ui {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95em;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.02em 0.38em;
+  white-space: normal;
+}
+.quote-ui {
+  display: block;
+  font-style: italic;
+  border-left: 3px solid var(--rule);
+  padding: 0.15rem 0 0.15rem 0.8rem;
+  margin: 0.4rem 0 1rem;
+  color: var(--ink);
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+}
+.b-unv { background: var(--warn-soft); color: var(--warn); }
+.b-plan { background: var(--apex-soft); color: var(--apex); }
+.b-super { background: var(--admin-soft); color: var(--admin); }
+.b-ok { background: var(--accent-soft); color: var(--accent); }
+
+/* Callouts */
+.note {
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin: 0 0 1.25rem;
+}
+.note > :last-child { margin-bottom: 0; }
+.note-title {
+  font-family: var(--font-display);
+  font-stretch: 88%;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin: 0 0 0.35rem;
+}
+.note.warn { background: var(--warn-soft); border-color: transparent; }
+.note.warn .note-title { color: var(--warn); }
+.note.danger { background: var(--danger-soft); border-color: transparent; }
+.note.danger .note-title { color: var(--danger); }
+.note.plan { background: var(--apex-soft); border-color: transparent; }
+.note.plan .note-title { color: var(--apex); }
+
+.src {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: -0.35rem 0 1.25rem;
+  overflow-wrap: anywhere;
+}
+.src::before { content: "Bron: "; font-weight: 600; }
+details.srcs { margin: -0.35rem 0 1.25rem; }
+details.srcs summary { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-2); cursor: pointer; width: fit-content; }
+details.srcs summary:hover { color: var(--ink); }
+details.srcs .src { margin: 0.3rem 0 0; }
+details.srcs .src::before { content: none; }
+.where { border-left: 3px solid var(--accent); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; margin: 0 0 1.5rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; line-height: 1.45; }
+th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+thead th {
+  font-family: var(--font-display);
+  font-stretch: 90%;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: var(--sunken);
+  white-space: nowrap;
+}
+td code { white-space: nowrap; overflow-wrap: normal; }
+td.wrapcode code { white-space: normal; overflow-wrap: anywhere; }
+.yes { color: var(--accent); font-weight: 700; }
+.no { color: var(--ink-2); }
+.tabnum { font-variant-numeric: tabular-nums; }
+table.compact td, table.compact th { padding: 0.45rem 0.6rem; }
+
+/* Steps */
+ol.steps { list-style: none; padding: 0; counter-reset: step; display: grid; gap: 0.9rem; }
+ol.steps > li { counter-increment: step; display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.6rem; margin: 0; max-width: none; }
+ol.steps > li::before {
+  content: counter(step);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  width: 1.8rem; height: 1.8rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+ol.steps > li > div { min-width: 0; }
+ol.steps > li > div > :last-child { margin-bottom: 0; }
+
+/* Host diagram */
+.hosts { margin: 1.5rem 0 1.75rem; }
+.host-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.host {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1rem 1rem;
+  display: grid; gap: 0.45rem; align-content: start;
+  min-width: 0;
+}
+.host .kind { font-family: var(--font-display); font-stretch: 88%; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.host .addr { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+.host .addr i { font-style: normal; opacity: 0.6; }
+.host dl { margin: 0; display: grid; gap: 0.35rem; font-size: 0.9rem; line-height: 1.4; }
+.host dt { font-weight: 700; font-size: 0.78rem; color: var(--ink-2); }
+.host dd { margin: 0; }
+.host.t-tenant .kind, .host.t-tenant .addr { color: var(--accent); }
+.host.t-apex .kind, .host.t-apex .addr { color: var(--apex); }
+.host.t-admin .kind, .host.t-admin .addr { color: var(--admin); }
+.bus {
+  margin-top: 0.75rem;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;
+}
+.bus span { height: 1rem; border-left: 2px dashed var(--rule); margin-left: 50%; }
+.db {
+  border: 1px dashed var(--ink-2);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; justify-content: space-between;
+  color: var(--ink-2);
+}
+.db strong { color: var(--ink); }
+
+/* Two-up grid for short cards */
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 0 0 1.5rem; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.9rem 1rem; min-width: 0; }
+.card h4 { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+
+/* Event list */
+.events { display: grid; gap: 0.6rem; margin: 0 0 1.5rem; }
+.events .grp { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 0.75rem; padding: 0.6rem 0; border-top: 1px solid var(--rule); }
+.events .grp:first-child { border-top: 0; }
+.events .gname { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; color: var(--ink-2); padding-top: 0.15rem; }
+.events ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.events li { margin: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0.1rem 0.45rem; font-size: 0.88rem; }
+.events li code { background: none; padding: 0; font-size: 0.72rem; color: var(--ink-2); margin-left: 0.25rem; }
+
+footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1rem; }
+
+/* Phone and narrow tablet: contents rail becomes a sticky top bar */
+@media (max-width: 960px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding-top: 0; }
+  .toc {
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    max-height: none;
+    overflow: visible;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    margin-inline: calc(-1 * max(16px, 3vw));
+    padding: 0.5rem max(16px, 3vw);
+  }
+  .toc-title { display: none; }
+  .toc > ol { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: thin; padding-bottom: 0.15rem; }
+  .toc > ol > li { flex: 0 0 auto; }
+  .toc ol ol { display: none; }
+  .toc a { white-space: nowrap; padding: 0.35rem 0.6rem; }
+  section.chapter, h3 { scroll-margin-top: 4rem; }
+  main { max-width: none; }
+}
+@media (max-width: 720px) {
+  .host-row, .bus { grid-template-columns: minmax(0, 1fr); }
+  .bus { display: none; }
+  .db { margin-top: 0.75rem; }
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .events .grp { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
+  h2 { font-size: 1.85rem; }
+  .masthead { padding-block: 2rem 1.5rem; }
+}
+@media (max-width: 480px) {
+  .badge { white-space: normal; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow"><span>main @ 8c9ecab</span><span>M0–M4 klaar</span><span>bijgewerkt 11-10-2026</span></div>
+    <h1>skv3 <span>handleiding</span></h1>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand van <code>main</code> na milestone M4.</p>
+  </header>
+
+  <div class="page">
+    <nav class="toc" aria-label="Inhoud">
+      <p class="toc-title">Inhoud</p>
+      <ol>
+        <li><a href="#intro"><span class="num">1</span>Introductie</a>
+          <ol>
+            <li><a href="#hosttypes">Drie soorten hosts</a></li>
+          </ol>
+        </li>
+        <li><a href="#start"><span class="num">2</span>Aan de slag</a>
+          <ol>
+            <li><a href="#vereisten">Vereisten</a></li>
+            <li><a href="#herd">Via Herd</a></li>
+            <li><a href="#cli">Via de terminal</a></li>
+            <li><a href="#composer-dev">composer dev</a></li>
+            <li><a href="#devlogin">Ontwikkelaccount</a></li>
+            <li><a href="#valkuilen">Valkuilen</a></li>
+          </ol>
+        </li>
+        <li><a href="#config"><span class="num">3</span>Configuratie</a>
+          <ol>
+            <li><a href="#env">.env-sleutels</a></li>
+            <li><a href="#configkeys">Config-sleutels</a></li>
+          </ol>
+        </li>
+        <li><a href="#auth"><span class="num">4</span>Inloggen en beveiliging</a>
+          <ol>
+            <li><a href="#wie-waar">Wie logt waar in</a></li>
+            <li><a href="#twofa">Tweestapsverificatie</a></li>
+            <li><a href="#passkeys">Passkeys</a></li>
+            <li><a href="#reset">Wachtwoord vergeten</a></li>
+            <li><a href="#emailchange">E-mailadres wijzigen</a></li>
+            <li><a href="#handoff">Wisselen van host</a></li>
+          </ol>
+        </li>
+        <li><a href="#beheer"><span class="num">5</span>Beheer</a>
+          <ol>
+            <li><a href="#eerste-keer">Eerste keer als beheerder</a></li>
+            <li><a href="#beheerders">Soorten gebruikers</a></li>
+            <li><a href="#organisaties">Organisaties</a></li>
+            <li><a href="#gebruikers">Gebruikers</a></li>
+            <li><a href="#uitnodigingen">Uitnodigingen</a></li>
+            <li><a href="#rechten">Rollen en rechten</a></li>
+            <li><a href="#inloggen-als">Inloggen als</a></li>
+            <li><a href="#activiteitenlog">Activiteitenlog</a></li>
+          </ol>
+        </li>
+        <li><a href="#dev"><span class="num">6</span>Voor ontwikkelaars</a>
+          <ol>
+            <li><a href="#dev-routes">Routes en hosts</a></li>
+            <li><a href="#dev-livewire">Livewire</a></li>
+            <li><a href="#dev-tenant">Tenant-modellen</a></li>
+            <li><a href="#dev-hostscope">HostScope</a></li>
+            <li><a href="#dev-perms">Rechten</a></li>
+            <li><a href="#dev-audit">Audit</a></li>
+            <li><a href="#dev-links">Links en mails</a></li>
+            <li><a href="#dev-tests">Tests</a></li>
+            <li><a href="#dev-gate">Kwaliteitspoort</a></li>
+          </ol>
+        </li>
+        <li><a href="#status"><span class="num">7</span>Status en roadmap</a>
+          <ol>
+            <li><a href="#wat-er-is">Wat er nu is</a></li>
+            <li><a href="#roadmap">Wat er komt</a></li>
+            <li><a href="#beperkingen">Bekende beperkingen</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+
+    <main>
+
+<!-- ============================ 1 ============================ -->
+<section class="chapter" id="intro">
+  <h2><span class="num">1</span>Introductie</h2>
+  <p>skv3 is een multi-tenant Laravel starter kit en de opvolger van skv2. Elke organisatie krijgt een eigen subdomein. De kit levert uitnodigingen, rollen en rechten, &lsquo;inloggen als&rsquo;, een activiteitenlog en een Flux UI. Alles draait op één database: de organisatie volgt uit het subdomein van het verzoek.</p>
+  <p>De basis is de officiële Laravel Livewire starter kit: PHP 8.4, Laravel 13, Livewire 4, Flux 2 (de gratis versie), Fortify voor inloggen, en de Spatie-pakketten voor rechten en het activiteitenlog. Tests schrijf je met Pest 5.</p>
+  <p class="src">README.md:3; CHANGELOG.md:8; composer.json:12-20; spec:94</p>
+
+  <h3 id="hosttypes">Drie soorten hosts</h3>
+  <p>Elke host is een adres onder het <em>apex-domein</em>. Dat apex is <code>TENANCY_APEX_DOMAIN</code>, of als die leeg is de host uit <code>APP_URL</code>. In alle voorbeelden in deze handleiding staat de app in de map <code>mijnapp</code>, is het apex <code>mijnapp.test</code> en heet de organisatie <code>acme</code>.</p>
+
+  <figure class="hosts" aria-label="Schema van de drie hosttypes">
+    <div class="host-row">
+      <div class="host t-apex">
+        <span class="kind">Centraal · apex</span>
+        <span class="addr">mijnapp.test</span>
+        <dl>
+          <dt>Wie logt in</dt><dd>Alleen superbeheerders</dd>
+          <dt>Waarvoor</dt><dd>Centrale host: superbeheerders zien hier alle organisaties, gebruikers en het hele log</dd>
+        </dl>
+      </div>
+      <div class="host t-admin">
+        <span class="kind">Centraal · beheer</span>
+        <span class="addr">admin.mijnapp.test</span>
+        <dl>
+          <dt>Wie logt in</dt><dd>Alleen superbeheerders (hun &lsquo;thuishost&rsquo;)</dd>
+          <dt>Waarvoor</dt><dd>Thuishost van superbeheerders: links in mails voor hen wijzen hierheen. Werkt verder als het apex</dd>
+        </dl>
+      </div>
+      <div class="host t-tenant">
+        <span class="kind">Organisatie · tenant</span>
+        <span class="addr"><i>acme.</i>mijnapp.test</span>
+        <dl>
+          <dt>Wie logt in</dt><dd>Actieve leden van die organisatie, plus superbeheerders</dd>
+          <dt>Waarvoor</dt><dd>Het eigen werk van de organisatie; beheer binnen de organisatie</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="bus" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="db"><span><strong>Eén app, één database</strong></span><span>rijen van een organisatie dragen <code>organisation_id</code></span></div>
+  </figure>
+
+  <ul>
+    <li>Een adres dat geen apex, geen admin-host en geen bestaande organisatie is, geeft een nette 404: <span class="ui">Organisatie niet gevonden</span> met de knop <span class="ui">Naar de hoofdsite</span>.</li>
+    <li>Het <em>organisatieadres</em> (in de app het veld <span class="ui">Adres</span>, in de code <code>slug</code>) is het deel vóór het apex: <code>acme</code> in <code>acme.mijnapp.test</code>. Het is één DNS-label van 3 tot 63 tekens (<code>a-z</code>, <code>0-9</code>, <code>-</code>), zonder koppelteken aan begin of eind. Een aantal woorden is gereserveerd, zoals <code>admin</code>, <code>www</code>, <code>api</code> en <code>login</code>.</li>
+    <li>Iedere gebruiker hoort bij precies één organisatie. Superbeheerders hebben meestal geen organisatie.</li>
+    <li>Sessies gelden per host. Wie op <code>acme.mijnapp.test</code> is ingelogd, is dat niet automatisch op <code>admin.mijnapp.test</code>.</li>
+  </ul>
+  <p class="src">.env.example:11-14; config/tenancy.php:17-19,39-42; app/Tenancy/Hosts.php:17-18,35-54; app/Tenancy/Resolvers/SubdomainResolver.php:31-37; app/Tenancy/Auth/HostLoginRule.php:9-18; DEC-13</p>
+
+  <div class="note warn">
+    <p class="note-title">Taal op het scherm</p>
+    <p>De standaardtaal is Nederlands. De beheerschermen, mails, meldingen en de banner zijn al vertaald. Een deel van de standaardschermen van de starter kit (inloggen, instellingen, beveiliging) toont nog Engelse teksten tot M5. Deze handleiding noemt de labels precies zoals de app ze nu laat zien, dus soms in het Engels. Waar een melding een naam, adres of getal invult, staat hier een <em>schuingedrukte</em> voorbeeldwaarde, zoals <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p>
+  </div>
+  <p class="src">.env.example:7-8; docs/decisions.md:132 (35), :134</p>
+</section>
+
+<!-- ============================ 2 ============================ -->
+<section class="chapter" id="start">
+  <h2><span class="num">2</span>Aan de slag</h2>
+
+  <h3 id="vereisten">Vereisten</h3>
+  <ul>
+    <li>PHP 8.4 of nieuwer, Composer 2</li>
+    <li>Node 22.13 of nieuwer met npm (nodig voor <code>composer setup</code> en <code>composer dev</code>)</li>
+    <li>Laravel Herd. Herd Pro is aan te raden voor PostgreSQL en mail.</li>
+    <li>Database: SQLite werkt direct. PostgreSQL (18 in Herd en CI) is de standaard waar het beschikbaar is; beide worden in CI getest.</li>
+  </ul>
+  <p class="src">README.md:9-10 (noemt Node alleen voor composer dev); composer.json:12,54-65; spec:33,79; .github/workflows/tests.yml:42-43</p>
+
+  <h3 id="herd">Installeren via Herd (aanbevolen)</h3>
+  <p>Herd serveert de site, dus je draait nooit <code>php artisan serve</code>. Herd serveert elke map in <code>~/Herd</code> als <code>&lt;map&gt;.test</code>, inclusief subdomeinen: de map <code>mijnapp</code> antwoordt op <code>mijnapp.test</code>, <code>admin.mijnapp.test</code> en <code>acme.mijnapp.test</code>, zonder extra instellingen (gecontroleerd in de smoke test van M4).</p>
+
+  <ol class="steps">
+    <li><div>
+      <p><strong>Zet de code in een map die Herd serveert.</strong> De naam van de map wordt het adres.</p>
+<pre><code>cd ~/Herd
+git clone &lt;repository-url&gt; mijnapp
+cd mijnapp</code></pre>
+    </div></li>
+    <li><div>
+      <p><strong>Draai de setup.</strong> Dit installeert de PHP-pakketten, maakt <code>.env</code> aan uit <code>.env.example</code> (alleen als <code>.env</code> nog niet bestaat), genereert een <code>APP_KEY</code> (alleen als die leeg is), maakt <code>database/database.sqlite</code>, migreert, haalt de Boost-richtlijnen op, zet de git-hooks aan en draait <code>npm ci</code> en <code>npm run build</code>. Zonder Node en npm loopt de setup hier vast.</p>
+<pre><code>composer setup</code></pre>
+      <div class="note">
+        <p class="note-title">Liever PostgreSQL dan SQLite? Doe dit vóór <code>composer setup</code></p>
+        <p><code>composer setup</code> migreert naar de database in <code>.env</code>, en dat is standaard SQLite. Wil je PostgreSQL, maak dan eerst zelf de <code>.env</code> aan; de setup laat een bestaande <code>.env</code> staan.</p>
+<pre><code>cp .env.example .env</code></pre>
+        <p>Haal in <code>.env</code> het <code>#</code>-teken weg bij de regels <code>DB_HOST</code> tot en met <code>DB_PASSWORD</code> en zet:</p>
+<pre><code>DB_CONNECTION=pgsql
+DB_PORT=5432
+DB_DATABASE=mijnapp</code></pre>
+        <p><strong>Verander 3306 in 5432.</strong> In <code>.env.example</code> staat <code>DB_PORT=3306</code>, de MySQL-poort. Laat je de regels in commentaar, dan gelden de PostgreSQL-standaarden van de kit: <code>127.0.0.1</code>, <code>5432</code>, database <code>laravel</code>, gebruiker <code>root</code> en een leeg wachtwoord. Herd Pro gebruikt gebruiker <code>root</code> zonder wachtwoord.</p>
+        <p>De database zelf moet al bestaan. Maak hem bijvoorbeeld met <code>createdb -U root mijnapp</code> of via TablePlus <span class="badge b-unv">niet in de repo geverifieerd</span>. Draai daarna <code>composer setup</code>.</p>
+      </div>
+    </div></li>
+    <li><div>
+      <p><strong>Zet <code>APP_URL</code> op het Herd-adres.</strong> <code>.env.example</code> begint met <code>http://localhost</code>. Laat je dat staan, dan is het apex <code>localhost</code> en geeft <code>mijnapp.test</code> de pagina <span class="ui">Organisatie niet gevonden</span>.</p>
+<pre><code>APP_NAME="Mijn App"
+APP_URL=http://mijnapp.test</code></pre>
+      <p>Heb je de config gecachet, draai dan <code>php artisan config:clear</code>. <code>APP_NAME</code> staat standaard op <code>Laravel</code>; die naam zie je in de zijbalk, de paginatitel en als afzender van mails.</p>
+    </div></li>
+    <li><div>
+      <p><strong>Maak het ontwikkelaccount aan.</strong> <code>composer setup</code> seedt niet; dat doe je één keer zelf.</p>
+<pre><code>php artisan db:seed</code></pre>
+    </div></li>
+    <li><div>
+      <p><strong>Start de ontwikkelprocessen</strong> en open <code>http://admin.mijnapp.test/login</code>.</p>
+<pre><code>composer dev</code></pre>
+    </div></li>
+  </ol>
+  <p class="src">composer.json:54-65; .env.example:1,5,48-53; config/database.php:89-96; config/tenancy.php:9,17; database/seeders/DatabaseSeeder.php:19-30; AppServiceProvider.php:67-81</p>
+
+  <div class="note plan">
+    <p class="note-title">Straks: installeren met één klik <span class="badge b-plan">M6</span></p>
+    <p>De bedoeling is: Herd → <em>New site</em> → <em>Custom Starter Kit</em> <code>frankcornet/skv3</code> → <em>Open site</em> → een setupwizard in de browser met hoogstens vijf vragen → een werkende app met demodata, binnen vijf minuten en zonder terminal. Ook <code>https://herd.laravel.com/new/frankcornet/skv3</code> moet dan werken.</p>
+    <p>Dat bestaat nog niet. De wizard, <code>skv:install</code> en <code>skv:doctor</code> komen in M6, en het pakket wordt pas in M8 gepubliceerd (na akkoord van de eigenaar). Tot die tijd gebruik je de stappen hierboven.</p>
+  </div>
+  <p class="src">spec:12,207-214,291-304,518,520</p>
+
+  <h3 id="cli">Via de terminal</h3>
+  <p>Werk je zonder de Herd-app, dan blijven de stappen hetzelfde: <code>git clone</code>, <code>composer setup</code>, <code>APP_URL</code> goed zetten, <code>php artisan db:seed</code>, <code>composer dev</code>. Zonder Herd moet je zelf zorgen dat het apex, <code>admin.</code> en elke organisatie naar je machine wijzen, bijvoorbeeld met regels in <code>/etc/hosts</code> of dnsmasq voor <code>*.localhost</code> <span class="badge b-unv">niet getest in de repo</span>.</p>
+  <p>De varianten <code>laravel new mijnapp --using=frankcornet/skv3</code> en <code>composer create-project frankcornet/skv3 mijnapp</code> werken pas als het pakket gepubliceerd is <span class="badge b-plan">M8</span>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Commando</th><th>Wat het doet</th></tr></thead>
+      <tbody>
+        <tr><td><code>composer setup</code></td><td>Installeren, <code>.env</code>, sleutel (als die ontbreekt), SQLite, migreren, Boost-richtlijnen, git-hooks, assets</td></tr>
+        <tr><td><code>composer dev</code></td><td>Vite, queue, logs en scheduler (Herd serveert de site)</td></tr>
+        <tr><td><code>composer check</code></td><td>Pint, Rector, Larastan en Pest op SQLite</td></tr>
+        <tr><td><code>composer test:pgsql</code></td><td>Dezelfde Pest-suite op PostgreSQL (Herd Pro)</td></tr>
+        <tr><td><code>composer fix</code></td><td>Rector, daarna Pint</td></tr>
+        <tr><td><code>php artisan permissions:sync</code></td><td>Rechtencatalogus en systeemrollen bijwerken</td></tr>
+        <tr><td><code>php artisan activitylog:clean</code></td><td>Logregels ouder dan <code>ACTIVITYLOG_RETENTION_DAYS</code> verwijderen</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="src">README.md:14-20; composer.json:54-91; spec:209-212,310; app/Console/Commands/SyncPermissionsCommand.php:12-20</p>
+
+  <h3 id="composer-dev">Wat <code>composer dev</code> start</h3>
+  <p><code>composer dev</code> roept <code>php artisan dev</code> aan. De kit voegt altijd de scheduler toe, en laat het <code>serve</code>-proces weg zodra Herd op de machine staat (de map <code>~/Library/Application Support/Herd</code> bestaat).</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Proces</th><th>Commando</th><th>Waarom</th></tr></thead>
+      <tbody>
+        <tr><td><code>schedule</code></td><td><code>php artisan schedule:work</code></td><td>De scheduler draait lokaal mee</td></tr>
+        <tr><td><code>queue</code></td><td><code>php artisan queue:listen --tries=1 --timeout=0</code></td><td>Verstuurt de mails in de wachtrij (uitnodigingen, e-mailwijzigingen)</td></tr>
+        <tr><td><code>logs</code></td><td><code>php artisan pail --timeout=0</code></td><td>Toont het log, en dus ook mails met <code>MAIL_MAILER=log</code></td></tr>
+        <tr><td><code>vite</code></td><td><code>npm run dev</code></td><td>Frontend-assets met hot reload</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Start <code>composer dev</code> één keer per project. Draaien er twee, dan pakken twee workers dezelfde job op. Met SQLite verliest er één met <code>database is locked</code>: de mail gaat wel één keer weg, maar er komt een overbodig record in <code>failed_jobs</code>. Zonder <code>composer dev</code> blijven uitnodigings- en e-mailwijzigingsmails in de tabel <code>jobs</code> staan tot je zelf een worker start, bijvoorbeeld <code>php artisan queue:work</code>. De mail voor wachtwoordherstel gaat niet via de wachtrij.</p>
+  <p class="src">composer.json:66-69; app/Providers/AppServiceProvider.php:67-81; .env.example:64; config/queue.php:42-45; app/Mail/InvitationMail.php:24; app/Mail/InvitationReminderMail.php:22; app/Notifications/*.php; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:24</p>
+
+  <h3 id="devlogin">Het ontwikkelaccount</h3>
+  <p><code>php artisan db:seed</code> zet de rechtencatalogus en systeemrollen klaar en maakt één superbeheerder aan:</p>
+  <div class="table-wrap">
+    <table class="compact">
+      <tbody>
+        <tr><th scope="row">Naam</th><td>Test User</td></tr>
+        <tr><th scope="row">E-mailadres</th><td><code>test@example.com</code></td></tr>
+        <tr><th scope="row">Wachtwoord</th><td><code>password</code></td></tr>
+        <tr><th scope="row">Rol</th><td>Superbeheerder, zonder organisatie</td></tr>
+        <tr><th scope="row">Inloggen op</th><td><code>http://admin.&lt;apex&gt;/login</code> (hier: <code>http://admin.mijnapp.test/login</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Na het inloggen kom je op het (nog lege) <span class="ui">Dashboard</span>. Open in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>. Dit account is tijdelijk: in M6 komen een demoseeder (organisaties <code>demo1</code> en <code>demo2</code>, elk met een beheerder en een gebruiker) en het commando <code>skv:create-super-admin</code>.</p>
+  <p>Draai <code>db:seed</code> maar één keer. Een tweede keer loopt vast op het unieke e-mailadres <span class="badge b-unv">afgeleid, niet uitgeprobeerd</span>.</p>
+  <p class="src">database/seeders/DatabaseSeeder.php:19-30; database/factories/UserFactory.php:39,76-82; config/fortify.php:78; routes/web.php:17-27; tests/Feature/Auth/HostScopedLoginTest.php:47-55; spec:203</p>
+
+  <h4>Je eerste organisatie</h4>
+  <ol class="steps">
+    <li><div><p>Klik in <span class="ui">Organisaties</span> op <span class="ui">Nieuwe organisatie</span>. Vul <span class="ui">Naam</span> en <span class="ui">Adres</span> (het organisatieadres, bijvoorbeeld <code>acme</code>) in, en onder <span class="ui">Eerste beheerder</span> het e-mailadres en de taal. Klik <span class="ui">Organisatie aanmaken</span>. Alle velden en regels staan in <a href="#organisaties">Organisaties</a>.</p></div></li>
+    <li><div><p>De uitnodigingsmail gaat met <code>MAIL_MAILER=log</code> naar het log; met <code>composer dev</code> zie je hem in de Pail-uitvoer. Sneller: open <span class="ui">Openstaande uitnodigingen</span> en kies <span class="ui">Uitnodigingslink kopiëren</span>.</p></div></li>
+    <li><div><p>Open de link. Hij werkt alleen op de host van de organisatie, bijvoorbeeld <code>acme.mijnapp.test</code>. Kies een naam en wachtwoord en klik <span class="ui">Account activeren</span>.</p></div></li>
+  </ol>
+  <p class="src">resources/views/pages/organisations/create/create.blade.php:6-44; resources/views/pages/invitations/pending/pending.blade.php:67-71; routes/admin.php:59-66; .env.example:76</p>
+
+  <h3 id="valkuilen">Valkuilen</h3>
+  <ul>
+    <li><strong><code>APP_URL</code> moet kloppen met het adres in je browser</strong>, inclusief http of https. Het apex komt eruit, en mails die de worker bouwt nemen het schema van <code>APP_URL</code> over.</li>
+    <li><strong>Mails worden niet echt verstuurd.</strong> <code>MAIL_MAILER=log</code> schrijft ze naar het log. Wil je ze in Herd Pro-mail zien, zet dan in <code>.env</code> <code>MAIL_MAILER=smtp</code>; <code>MAIL_HOST=127.0.0.1</code> en <code>MAIL_PORT=2525</code> staan al in <code>.env.example</code> <span class="badge b-unv">Herd-poort 2525 niet in de repo getest</span>. Uitnodigings- en e-mailwijzigingsmails gaan via de wachtrij, dus de queue-worker (<code>composer dev</code>) moet draaien.</li>
+    <li><strong>Bewaar je <code>APP_KEY</code>.</strong> De geheimen van tweestapsverificatie en passkeys hangen ervan af. <code>composer setup</code> laat een bestaande sleutel staan. Na het wisselen van de sleutel moet je openstaande uitnodigingen intrekken en opnieuw versturen.</li>
+    <li><strong>Passkeys willen https.</strong> Browsers staan WebAuthn alleen toe in een beveiligde context <span class="badge b-unv">algemene browserregel, niet getest in de repo</span>. Beveilig de site in Herd en zet <code>APP_URL</code> dan op <code>https://</code>. Controleer daarna dat ook <code>acme.mijnapp.test</code> een geldig certificaat heeft <span class="badge b-unv">niet geverifieerd</span>.</li>
+    <li><strong>Leden loggen alleen in op hun eigen organisatie.</strong> Een lid op het apex of de admin-host krijgt dezelfde foutmelding als bij een verkeerd wachtwoord.</li>
+    <li><strong>Er staan nog geen geplande taken.</strong> <code>schedule:list</code> is leeg. Opruimen van het log doe je met de hand: <code>php artisan activitylog:clean</code>.</li>
+    <li><strong>Sterke wachtwoorden alleen in productie.</strong> Daar geldt minimaal 12 tekens, hoofd- en kleine letters, cijfers, symbolen en niet gelekt. Lokaal is alleen een minimum van 8 tekens verplicht.</li>
+    <li><strong><code>migrate:fresh</code> en <code>db:wipe</code> wissen je ontwikkeldata.</strong> De tests hebben hun eigen database, dus voor de tests is dat nooit nodig. Moet je een oude ontwikkeldatabase toch opnieuw opbouwen, maak dan eerst een kopie van <code>database/database.sqlite</code> en draai <code>php artisan migrate:fresh --seed</code>.</li>
+    <li><strong>Werk je met een AI-agent?</strong> <code>CLAUDE.md</code> verbiedt agents <code>migrate:fresh</code> en <code>db:wipe</code> op de ontwikkeldatabase, en laat ze vragen voor <code>tinker</code>, <code>migrate</code> en <code>db:seed</code>. Ze draaien ook nooit <code>herd sites</code> of de Herd MCP-tool <code>get_all_sites</code>: die tonen de <code>.env</code> van al je sites, met geheimen.</li>
+    <li><strong>De tests trekken zich niets aan van je <code>.env</code>-hosts.</strong> <code>phpunit.xml</code> zet het apex vast op <code>localhost</code>.</li>
+  </ul>
+  <p class="src">config/tenancy.php:9,17; app/Tenancy/Hosts.php:11-14; CHANGELOG.md:29; docs/decisions.md:132 (37); spec:295; app/Providers/AppServiceProvider.php:56-64; vendor/laravel/framework/src/Illuminate/Validation/Rules/Password.php:166-173; .env.example:64,76-83; routes/console.php:8-10; CLAUDE.md (Safety); phpunit.xml:25-27</p>
+</section>
+
+<!-- ============================ 3 ============================ -->
+<section class="chapter" id="config">
+  <h2><span class="num">3</span>Configuratie</h2>
+  <p>De meeste instellingen staan in <code>.env</code>. Roep <code>env()</code> nooit buiten <code>config/</code> aan; lees in code altijd <code>config('…')</code>.</p>
+
+  <h3 id="env">Sleutels in <code>.env</code></h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sleutel</th><th>Standaard</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>APP_NAME</code></td><td><code>Laravel</code></td><td>Naam in zijbalk, paginatitel en als afzender (<code>MAIL_FROM_NAME</code>)</td></tr>
+        <tr><td><code>APP_KEY</code></td><td>leeg</td><td>Wordt door <code>composer setup</code> alleen gemaakt als hij leeg is. Tweestapsgeheimen en passkeys hangen ervan af</td></tr>
+        <tr><td><code>APP_URL</code></td><td><code>http://localhost</code></td><td>Basisadres. De host wordt het apex als <code>TENANCY_APEX_DOMAIN</code> leeg is; het schema geldt voor links uit de queue</td></tr>
+        <tr><td><code>APP_LOCALE</code> / <code>APP_FALLBACK_LOCALE</code></td><td><code>nl</code> / <code>en</code></td><td>Schermtaal Nederlands, terugval Engels</td></tr>
+        <tr><td><code>TENANCY_APEX_DOMAIN</code></td><td>leeg</td><td>Apex overschrijven; leeg betekent de host van <code>APP_URL</code></td></tr>
+        <tr><td><code>TENANCY_ADMIN_SUBDOMAIN</code></td><td><code>admin</code></td><td>Subdomein van de beheerhost. Wordt nooit als organisatie gezien</td></tr>
+        <tr><td><code>TENANCY_STRICT</code></td><td><code>true</code></td><td>Een tenant-model lezen zonder gekoppelde organisatie geeft een fout (behalve in de console en in <code>Tenant::bypass()</code>)</td></tr>
+        <tr><td><code>INVITATION_EXPIRES_IN_DAYS</code></td><td class="tabnum"><code>7</code></td><td>Geldigheid van een uitnodiging; een herinnering verlengt hem</td></tr>
+        <tr><td><code>MODULE_IMPERSONATION</code></td><td><code>true</code></td><td>Module &lsquo;Inloggen als gebruiker&rsquo;. Met <code>false</code> bestaan de routes niet</td></tr>
+        <tr><td><code>PASSKEYS_RELYING_PARTY_ID</code></td><td>leeg</td><td>Passkeys gebruiken het apex als relying party id; alleen invullen als dat anders moet</td></tr>
+        <tr><td><code>TRUSTED_PROXIES</code></td><td>leeg</td><td>Achter een load balancer of CDN: hun adressen (komma&rsquo;s) of <code>*</code>, zodat rate limits het IP van de bezoeker zien</td></tr>
+        <tr><td><code>BCRYPT_ROUNDS</code></td><td class="tabnum"><code>12</code></td><td>Kosten van de wachtwoordhash</td></tr>
+        <tr><td><code>AUTH_TIMEBOX_DURATION</code></td><td class="tabnum"><code>500000</code> µs</td><td>Een mislukte inlogpoging duurt minstens zo lang (500 ms), zodat de responstijd niet verraadt welke adressen bestaan. Houd hem boven één hashcontrole</td></tr>
+        <tr><td><code>AUTH_PASSWORD_TIMEOUT</code></td><td class="tabnum"><code>10800</code> s</td><td>Hoe lang een wachtwoordbevestiging geldt (3 uur). Staat niet in <code>.env.example</code></td></tr>
+        <tr><td><code>ACTIVITYLOG_RETENTION_DAYS</code></td><td class="tabnum"><code>365</code></td><td>Logregels ouder dan dit verwijdert <code>activitylog:clean</code></td></tr>
+        <tr><td><code>DB_CONNECTION</code></td><td><code>sqlite</code></td><td>Databasedriver; <code>pgsql</code> voor PostgreSQL</td></tr>
+        <tr><td><code>SESSION_DRIVER</code></td><td><code>database</code></td><td>Sessies in de database</td></tr>
+        <tr><td><code>SESSION_DOMAIN</code></td><td><code>null</code></td><td>Cookies per host, dus een aparte sessie per subdomein</td></tr>
+        <tr><td><code>SESSION_COOKIE</code></td><td><code>app_session</code></td><td>Vaste, neutrale naam: een andere <code>APP_NAME</code> hernoemt de cookie niet</td></tr>
+        <tr><td><code>QUEUE_CONNECTION</code></td><td><code>database</code></td><td>Mails wachten in de tabel <code>jobs</code>; er moet een worker draaien</td></tr>
+        <tr><td><code>MAIL_MAILER</code></td><td><code>log</code></td><td>Mails gaan naar het log, niet de deur uit</td></tr>
+        <tr><td><code>MAIL_HOST</code> / <code>MAIL_PORT</code></td><td><code>127.0.0.1</code> / <code>2525</code></td><td>SMTP-doel als <code>MAIL_MAILER=smtp</code></td></tr>
+        <tr><td><code>MAIL_FROM_ADDRESS</code></td><td><code>hello@example.com</code></td><td>Afzenderadres</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="src">.env.example:1-83; config/tenancy.php:9-25; config/fortify.php:148-153; config/auth.php:117,131; config/activitylog.php:18-19; config/skv.php:12-22; config/trustedproxy.php:7-20</p>
+
+  <h3 id="configkeys">Config-sleutels van de kit</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sleutel</th><th>Standaard</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>skv.invitations.expires_in_days</code></td><td class="tabnum">7</td><td>Uit <code>INVITATION_EXPIRES_IN_DAYS</code></td></tr>
+        <tr><td><code>skv.invitations.signature_grace_days</code></td><td class="tabnum">30</td><td>De handtekening van een uitnodigingslink leeft 30 dagen langer dan de uitnodiging. Een net verlopen link toont zo nog de pagina &lsquo;verlopen&rsquo;; pas oudere links geven 403</td></tr>
+        <tr><td><code>skv.modules.impersonation</code></td><td>true</td><td>Uit <code>MODULE_IMPERSONATION</code></td></tr>
+        <tr><td><code>tenancy.apex_domain</code></td><td>host van <code>APP_URL</code></td><td>Of <code>TENANCY_APEX_DOMAIN</code>, anders <code>localhost</code></td></tr>
+        <tr><td><code>tenancy.admin_subdomain</code></td><td><code>admin</code></td><td>Uit <code>TENANCY_ADMIN_SUBDOMAIN</code></td></tr>
+        <tr><td><code>tenancy.strict</code></td><td>true</td><td>Uit <code>TENANCY_STRICT</code></td></tr>
+        <tr><td><code>tenancy.slug_cache_ttl</code></td><td class="tabnum">3600 s</td><td>Hoe lang een slug-opzoeking gecachet wordt</td></tr>
+        <tr><td><code>tenancy.tenant_models</code></td><td class="wrapcode"><code>User</code>, <code>Activity</code>, <code>Invitation</code></td><td>Modellen met <code>organisation_id</code>; ze volgen archiveren en herstellen van de organisatie</td></tr>
+        <tr><td><code>tenancy.reserved_slugs</code></td><td class="wrapcode"><code>admin, www, api, app, mail, smtp, ftp, static, assets, cdn, docs, help, status, support, dashboard, login, test</code></td><td>Nooit een organisatieadres. Het ingestelde admin-subdomein is altijd gereserveerd</td></tr>
+        <tr><td><code>activitylog.enabled</code></td><td>true</td><td>Het log kan niet uit</td></tr>
+        <tr><td><code>activitylog.clean_after_days</code></td><td class="tabnum">365</td><td>Uit <code>ACTIVITYLOG_RETENTION_DAYS</code>; geldt voor alle organisaties, ook gearchiveerde</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="src">config/skv.php:7-22; config/tenancy.php:17-42; config/activitylog.php:15-39; app/Tenancy/Hosts.php:47-54</p>
+</section>
+
+<!-- ============================ 4 ============================ -->
+<section class="chapter" id="auth">
+  <h2><span class="num">4</span>Inloggen en beveiliging</h2>
+  <p>De kit werkt alleen op uitnodiging. Er is geen registratie, geen e-mailverificatie en je kunt je account niet zelf verwijderen.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:168-177; CHANGELOG.md:49; tests/Feature/Auth/InviteOnlyTest.php:17-27</p></details>
+
+  <h3 id="wie-waar">Wie logt waar in</h3>
+  <p>Eén regel bepaalt het, voor wachtwoord, tweestapscode, passkey, wachtwoordherstel en overdrachtslinks: <strong>een actieve, niet-verwijderde gebruiker die bij deze host hoort.</strong> Superbeheerders horen bij elke host.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Host</th><th>Mag inloggen</th><th>Na inloggen</th></tr></thead>
+      <tbody>
+        <tr><td><code>{slug}.{apex}</code></td><td>Actieve leden van die organisatie, en superbeheerders</td><td>Dashboard</td></tr>
+        <tr><td><code>{apex}</code></td><td>Alleen superbeheerders</td><td>Dashboard</td></tr>
+        <tr><td><code>admin.{apex}</code></td><td>Alleen superbeheerders</td><td>Dashboard</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">De startpagina <code>/</code> gaat voor superbeheerders op een centrale host naar <span class="ui">Organisaties</span>.</p>
+  <p>Een onbekend e-mailadres, een fout wachtwoord, een uitgeschakeld account en een lid op de verkeerde host krijgen allemaal dezelfde melding, en het duurt even lang:</p>
+  <span class="quote-ui">Deze combinatie van e-mailadres en wachtwoord is niet geldig.</span>
+  <p>Na vijf mislukte pogingen per minuut (per adres en IP) zie je <span class="ui">Te veel inlogpogingen. Probeer het over <em>42</em> seconden opnieuw.</span></p>
+  <p>Ben je al ingelogd en hoor je niet (meer) bij de host, dan word je uitgelogd en zie je op de inlogpagina een van deze meldingen:</p>
+  <ul>
+    <li><span class="ui">Je account heeft geen toegang tot dit adres. Log in bij je eigen organisatie.</span></li>
+    <li><span class="ui">Je account is niet actief. Neem contact op met je beheerder.</span></li>
+  </ul>
+  <p>De inlogpagina toont nu: kop <span class="ui">Log in to your account</span>, velden <span class="ui">E-mailadres</span> en <span class="ui">Wachtwoord</span>, <span class="ui">Remember me</span>, de link <span class="ui">Forgot your password?</span>, de knop <span class="ui">Inloggen</span> en <span class="ui">Sign in with a passkey</span>. Uitloggen doe je met <span class="ui">Uitloggen</span> in het gebruikersmenu.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/HostLoginRule.php:9-18; config/fortify.php:78; routes/web.php:19-27; tests/Feature/Auth/HostScopedLoginTest.php:47-55; app/Tenancy/Auth/AuthenticateOnThisHost.php:15-58; lang/nl/auth.php:7,9; app/Tenancy/Http/Middleware/VerifyTenantMembership.php:14-41; resources/views/pages/auth/login.blade.php; app/Providers/FortifyServiceProvider.php:92-101</p></details>
+
+  <h4>Sessies</h4>
+  <ul>
+    <li>Een sessie geldt alleen op de host waar je inlogde en duurt standaard 120 minuten.</li>
+    <li>Wijzig je je wachtwoord, dan worden je sessies op andere apparaten afgemeld.</li>
+    <li>Wordt een account uitgeschakeld of verwijderd, of de organisatie gearchiveerd of verwijderd, dan is die persoon direct overal uitgelogd.</li>
+    <li>Een overzicht van je sessies met &lsquo;andere apparaten uitloggen&rsquo; komt in M7.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127</p></details>
+
+  <h3 id="twofa">Tweestapsverificatie en herstelcodes</h3>
+  <p>Je beheert de tweede stap op de beveiligingspagina: klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven), dan <span class="ui">Settings</span> en <span class="ui">Security</span> (<code>/settings/security</code>). Die pagina vraagt eerst je wachtwoord (<span class="ui">Wachtwoord bevestigen</span>). Een bevestiging blijft 3 uur geldig; elke gevoelige actie controleert dat opnieuw.</p>
+  <ol class="steps">
+    <li><div><p>Klik <span class="ui">Enable 2FA</span>. Scan de QR-code met je authenticator-app, of kies <span class="ui">or, enter the code manually</span>, en klik <span class="ui">Continue</span>.</p></div></li>
+    <li><div><p>Vul de 6-cijferige code in en klik <span class="ui">Confirm</span> (met <span class="ui">Terug</span> ga je een stap terug). Het venster sluit en de pagina toont nu <span class="ui">Disable 2FA</span> en je herstelcodes.</p></div></li>
+    <li><div><p>Bewaar je herstelcodes: <span class="ui">View recovery codes</span>, dan <span class="ui">Kopiëren</span> of <span class="ui">Downloaden</span> (een bestand <code>recovery-codes.txt</code>, één code per regel).</p></div></li>
+  </ol>
+  <p>Bij het inloggen vraagt de pagina <span class="ui">Two-factor authentication</span> om je code. Kwijt? Kies <span class="ui">login using a recovery code</span>. Elke herstelcode werkt één keer. Met <span class="ui">Codes opnieuw genereren</span> maak je nieuwe; de vraag <span class="ui">Herstelcodes opnieuw genereren?</span> waarschuwt dat de oude dan niet meer werken. Uitzetten doe je met <span class="ui">Disable 2FA</span>.</p>
+  <p>Ook je wachtwoord wijzig je hier: onder <span class="ui">Update password</span> vul je <span class="ui">Current password</span>, <span class="ui">New password</span> en <span class="ui">Wachtwoord bevestigen</span> in, en klik je <span class="ui">Opslaan</span>.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:170-173; routes/settings.php:14-16; resources/views/components/desktop-user-menu.blade.php:23; resources/views/pages/settings/layout.blade.php:4-6; resources/views/pages/settings/security/security.blade.php:6-37; resources/views/pages/settings/two-factor-setup-modal/two-factor-setup-modal.php:60-147; lang/nl.json:38,57,212; resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php; resources/views/pages/auth/two-factor-challenge.blade.php; config/auth.php:117</p></details>
+
+  <h3 id="passkeys">Passkeys</h3>
+  <p>Met een passkey log je in zonder wachtwoord. Het relying party id is altijd het apex, dus één passkey werkt op het apex, de admin-host en elke organisatiehost, en blijft werken als het webadres van je organisatie verandert.</p>
+  <ul>
+    <li>Toevoegen: op de beveiligingspagina (<span class="ui">Settings</span> → <span class="ui">Security</span>) onder <span class="ui">Passkeys</span> klik je <span class="ui">Add passkey</span>, geef je een <span class="ui">Passkey name</span> (bijvoorbeeld &lsquo;MacBook Pro&rsquo;) en klik je <span class="ui">Register passkey</span>.</li>
+    <li>Inloggen: <span class="ui">Sign in with a passkey</span> op de inlogpagina. Ook dan geldt de hostregel.</li>
+    <li>Mislukt de controle, dan zie je <span class="ui">Deze passkey kon niet worden geverifieerd.</span></li>
+    <li>Verwijderen vraagt een verse wachtwoordbevestiging.</li>
+    <li>Passkeys staan nu altijd aan. Een schakelaar <code>MODULE_PASSKEYS</code> komt in M5.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:148-153,174-176; spec:111; app/Tenancy/Listeners/SetPasskeyOrigin.php; bootstrap/app.php:48-52; resources/views/components/passkey-registration.blade.php:69-111</p></details>
+
+  <h3 id="reset">Wachtwoord vergeten</h3>
+  <p>Klik op de inlogpagina <span class="ui">Forgot your password?</span>, vul je e-mailadres in en klik <span class="ui">Email password reset link</span>. Je krijgt altijd hetzelfde antwoord, of het adres nu bestaat of niet:</p>
+  <span class="quote-ui">Als dit e-mailadres bij ons bekend is, hebben we je een link gestuurd om je wachtwoord opnieuw in te stellen.</span>
+  <ul>
+    <li>De link wijst altijd naar je eigen host (leden: hun organisatie, superbeheerders: de admin-host), ook als je hem ergens anders aanvroeg.</li>
+    <li>De link is 60 minuten geldig. Een ongeldige link geeft <span class="ui">Deze link om je wachtwoord opnieuw in te stellen is ongeldig.</span></li>
+    <li>Gelukt: <span class="ui">Je wachtwoord is opnieuw ingesteld.</span></li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Providers/FortifyServiceProvider.php:59-63; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:17-27; lang/nl/passwords.php:7-10; config/auth.php:97-103</p></details>
+
+  <h3 id="emailchange">E-mailadres wijzigen</h3>
+  <p>Op je profielpagina (je naam linksonder → <span class="ui">Settings</span> → <span class="ui">Profile</span>, <code>/settings/profile</code>) verander je je e-mailadres niet direct. Onder het veld staat: <span class="ui">Een nieuw adres wordt pas gebruikt nadat je het bevestigt via de link die we ernaartoe mailen.</span></p>
+  <ol class="steps">
+    <li><div><p>Sla het nieuwe adres op. Je ziet <span class="ui">We hebben een bevestigingslink gestuurd naar <em>jan@voorbeeld.nl</em>.</span> Je oude adres krijgt de mail <span class="ui">Je e-mailadres gaat veranderen</span>.</p></div></li>
+    <li><div><p>Open de mail <span class="ui">Bevestig je nieuwe e-mailadres</span> en klik <span class="ui">E-mailadres bevestigen</span>. De link is 60 minuten geldig, werkt één keer en alleen de nieuwste link telt.</p></div></li>
+    <li><div><p>Je moet ingelogd zijn als dezelfde gebruiker, en je wachtwoord recent bevestigd hebben. Daarna: <span class="ui">Je e-mailadres is gewijzigd.</span></p></div></li>
+  </ol>
+  <p>Wijzigt een beheerder jouw e-mailadres, dan geldt het meteen en krijgt je oude adres de mail <span class="ui">Een beheerder heeft je e-mailadres gewijzigd</span>.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/settings/profile/profile.php:33-57; app/Actions/Settings/RequestEmailChange.php:19-58; app/Actions/Settings/ConfirmEmailChange.php:16-53; routes/settings.php:18-23; app/Actions/Users/UpdateUser.php:22-86</p></details>
+
+  <h3 id="handoff">Wisselen van host: de overdrachtslink</h3>
+  <p>Omdat sessies per host gelden, gebruikt de kit een eenmalige overdrachtslink om je naar een andere host te brengen. Die link is 60 seconden geldig, hoort bij één gebruiker en één host, en wordt als hash opgeslagen.</p>
+  <ul>
+    <li><strong>Openen:</strong> een superbeheerder klikt op een centrale host in <span class="ui">Organisaties</span> op <span class="ui">Openen</span> en komt ingelogd op het dashboard van die organisatie.</li>
+    <li><strong>Adres wijzigen:</strong> verandert een superbeheerder het webadres van een organisatie terwijl hij op die organisatiehost zit, dan gaat hij via zo&rsquo;n link mee naar het nieuwe webadres.</li>
+    <li><strong>Al iemand anders ingelogd?</strong> Dan vraagt de pagina <span class="ui">Doorgaan als andere gebruiker?</span> met <span class="ui">Doorgaan als <em>Jan Jansen</em></span> of <span class="ui">Ingelogd blijven als <em>Piet de Vries</em></span>. Alleen een klik op de knop vervangt je sessie.</li>
+    <li>Verlopen, gebruikt of verkeerde host: <span class="ui">Deze inloglink is ongeldig of verlopen.</span></li>
+    <li>Tijdens &lsquo;inloggen als&rsquo; worden geen overdrachtslinks uitgegeven.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Actions/Auth/IssueHandoff.php:17-85; app/Http/Controllers/Auth/HandoffController.php:21-145; resources/views/pages/auth/handoff-confirm.blade.php:1-18; resources/views/pages/organisations/index/index.php:63-77</p></details>
+</section>
+
+<!-- ============================ 5 ============================ -->
+<section class="chapter" id="beheer">
+  <h2><span class="num">5</span>Beheer</h2>
+  <p>Dit hoofdstuk is voor beheerders.</p>
+  <div class="note where">
+    <p class="note-title">Waar ben je?</p>
+    <p><strong>Organisatiehost</strong> = het webadres van je organisatie, bijvoorbeeld <code>acme.mijnapp.test</code>. <strong>Centrale host</strong> = het hoofdadres (<code>mijnapp.test</code>) of <code>admin.mijnapp.test</code>; daar komen alleen superbeheerders (platformbeheerders). Meer in <a href="#hosttypes">Drie soorten hosts</a>.</p>
+  </div>
+  <p>In de zijbalk staat de groep <span class="ui">Beheer</span> zodra je minstens één van de bekijkrechten hebt: <code>users.view</code>, <code>organisations.view</code>, <code>roles.view</code> of <code>activity_log.view</code>. Elk onderdeel heeft een eigen recht:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Menu-item</th><th>Pad</th><th>Benodigd recht</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ui">Gebruikers</span></td><td><code>/users</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
+        <tr><td><span class="ui">Openstaande uitnodigingen</span></td><td><code>/invitations/pending</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
+        <tr><td><span class="ui">Organisaties</span></td><td><code>/organisations</code></td><td>Organisaties bekijken <code>organisations.view</code></td></tr>
+        <tr><td><span class="ui">Rollen</span></td><td><code>/roles</code></td><td>Rollen bekijken <code>roles.view</code></td></tr>
+        <tr><td><span class="ui">Activiteitenlog</span></td><td><code>/activity</code></td><td>Activiteitenlog bekijken <code>activity_log.view</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Deze pagina&rsquo;s werken op elke host. Op een organisatiehost zie je alleen je eigen organisatie. Op een centrale host komen alleen superbeheerders binnen, en zien die alles. Twee uitzonderingen: de wizard <span class="ui">Nieuwe organisatie</span> werkt alleen centraal, en &lsquo;inloggen als&rsquo; alleen op een organisatiehost.</p>
+  <p>De groep <span class="ui">Beheer</span> is tijdelijk. In M5 wordt de navigatie ingedeeld in Overzicht, Beheer en Systeem.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/layouts/app/sidebar.blade.php:20-50; routes/admin.php:9-66; app/Authorization/Permission.php:10-116; docs/decisions.md:132 (11), :134</p></details>
+
+  <h3 id="eerste-keer">Eerste keer als organisatiebeheerder</h3>
+  <ol class="steps">
+    <li><div><p>Open de mail <span class="ui">Je bent uitgenodigd voor <em>Acme</em></span> en klik <span class="ui">Uitnodiging accepteren</span>. De link werkt alleen op het webadres van je organisatie.</p></div></li>
+    <li><div><p>Vul <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span> en <span class="ui">Wachtwoord bevestigen</span> in en klik <span class="ui">Account activeren</span>. Je bent meteen ingelogd en komt op het <span class="ui">Dashboard</span>.</p></div></li>
+    <li><div><p>Log daarna altijd in op het webadres van je eigen organisatie, bijvoorbeeld <code>http://acme.mijnapp.test/login</code>, niet op het hoofdadres. Daar krijg je <span class="ui">Deze combinatie van e-mailadres en wachtwoord is niet geldig.</span>, ook als je wachtwoord klopt.</p></div></li>
+    <li><div><p>Een collega uitnodigen: zijbalk → <span class="ui">Beheer</span> → <span class="ui">Gebruikers</span> → <span class="ui">Gebruiker uitnodigen</span>. Zie <a href="#uitnodigingen">Uitnodigingen</a>.</p></div></li>
+  </ol>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/mail/invitation.blade.php:7; lang/nl.json:8,310; resources/views/pages/invitations/accept/accept.php:118-123; app/Tenancy/Auth/HostLoginRule.php:9-18; lang/nl/auth.php:7; resources/views/layouts/app/sidebar.blade.php:20-52; resources/views/pages/users/index/index.blade.php:9-10</p></details>
+
+  <h3 id="beheerders">Soorten gebruikers</h3>
+  <div class="grid-2">
+    <div class="card">
+      <h4><span class="badge b-super">Superbeheerder</span></h4>
+      <p>Platformbeheer. Mag alles, via een instelling op het account (de rol &lsquo;Superbeheerder&rsquo; is alleen een label). Logt in op elke host. Alleen een andere superbeheerder kan iemand superbeheerder maken of dat intrekken.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge b-ok">Organisatiebeheerder</span></h4>
+      <p>Beheert één organisatie. Heeft elk recht behalve de vier rechten die alleen voor superbeheerders zijn. Ziet rollen, maar kan ze niet aanmaken of wijzigen.</p>
+    </div>
+    <div class="card">
+      <h4><span class="badge b-plan">Eigen rol</span></h4>
+      <p>Een rol per organisatie, gemaakt door een superbeheerder, bijvoorbeeld &lsquo;Helpdesk&rsquo;. Kan alleen rechten bevatten die niet alleen voor superbeheerders zijn.</p>
+    </div>
+    <div class="card">
+      <h4>Gebruiker</h4>
+      <p>Een lid zonder beheerrechten. Ziet de groep <span class="ui">Beheer</span> niet. Je maakt iemand gebruiker door hem uit te nodigen met een eigen rol zonder beheerrechten, of door na activatie zijn rollen weg te halen (zie <a href="#uitnodigingen">Iemand uitnodigen</a>).</p>
+    </div>
+  </div>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/SuperAdminGate.php:9-26; app/Authorization/Role.php:11-15; app/Authorization/Permission.php:28-47; app/Policies/UserPolicy.php:70-74; app/Policies/RolePolicy.php:11-48</p></details>
+
+  <h4>De veiligheidsregels in gewone taal</h4>
+  <ul>
+    <li><strong>Je beheert alleen mensen die niet méér mogen dan jij.</strong> Bewerken, uitschakelen, verwijderen, herstellen of &lsquo;inloggen als&rsquo; kan alleen als de rechten van de ander binnen jouw rechten vallen. Gelijke rechten mogen, dus organisatiebeheerders kunnen elkaar beheren. Een helpdeskrol met <code>users.update</code> kan een organisatiebeheerder niet bewerken, uitschakelen of verwijderen. Dit geldt niet voor superbeheerders.</li>
+    <li><strong>Superbeheerders zijn onaantastbaar voor anderen.</strong> Wie geen superbeheerder is, ziet ze niet in de lijst en kan er niets mee.</li>
+    <li><strong>Rollen geven of afnemen kan alleen met rollen waarvan je alle rechten zelf hebt:</strong> <span class="ui">Je kunt alleen rollen geven of afnemen waarvan je zelf alle rechten hebt.</span></li>
+    <li><strong>Er blijft altijd iemand over.</strong> <span class="ui">Er moet minstens één actieve superbeheerder overblijven.</span> en <span class="ui">Een organisatie heeft minstens één actieve organisatiebeheerder nodig.</span></li>
+    <li><strong>Jezelf uitsluiten kan niet.</strong> Niemand verwijdert of schakelt zichzelf uit, ook een superbeheerder niet. <span class="ui">Je kunt je eigen rol als organisatiebeheerder niet verwijderen.</span></li>
+    <li><strong>Riskante stappen vragen je wachtwoord opnieuw:</strong> een organisatie definitief verwijderen, superbeheer aan- of uitzetten en het e-mailadres van iemand anders wijzigen.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/UserAbilities.php:13-20,111-137,204-210; app/Actions/Users/UpdateUserRoles.php:110-151; app/Authorization/LockoutGuard.php:13-79; app/Policies/UserPolicy.php:36-46; docs/decisions.md:132 (18)</p></details>
+
+  <h3 id="organisaties">Organisaties</h3>
+  <p><span class="ui">Organisaties</span> toont <span class="ui">Naam</span>, <span class="ui">Adres</span> (het volledige webadres, zoals <code>acme.mijnapp.test</code>) en <span class="ui">Acties</span>. Op een organisatiehost zie je alleen je eigen organisatie. Centraal heeft een superbeheerder de keuze <span class="ui">Actief</span> / <span class="ui">Gearchiveerd</span> en de knop <span class="ui">Nieuwe organisatie</span>.</p>
+
+  <h4>Nieuwe organisatie <span class="badge b-super">superbeheerder · centraal</span></h4>
+  <ul>
+    <li>Velden: <span class="ui">Naam</span>, <span class="ui">Adres</span>, <span class="ui">Omschrijving</span>, en onder <span class="ui">Eerste beheerder</span> het <span class="ui">E-mailadres</span> en de <span class="ui">Taal</span>.</li>
+    <li><span class="ui">Adres</span> is het webadres van de organisatie: het deel vóór je domein, <code>acme</code> in <code>acme.mijnapp.test</code>. Het is geen postadres. Het volgt de naam tot je het zelf aanpast. Je ziet direct of het vrij is: <span class="ui">Dit adres is beschikbaar.</span></li>
+    <li>Regels: <span class="ui">Kleine letters, cijfers en koppeltekens, 3 tot 63 tekens.</span> Gereserveerde woorden geven <span class="ui">Dit adres is gereserveerd.</span> Namen en webadressen zijn uniek over alle organisaties, ook gearchiveerde.</li>
+    <li>Klik <span class="ui">Organisatie aanmaken</span>. De organisatie, de eerste beheerder (met de rol Organisatiebeheerder) en de uitnodiging ontstaan in één keer: <span class="ui">Organisatie <em>Acme</em> is aangemaakt. De eerste beheerder is uitgenodigd.</span></li>
+  </ul>
+
+  <h4>Bewerken</h4>
+  <p>Met <span class="ui">Bewerken</span> pas je <span class="ui">Naam</span> en <span class="ui">Omschrijving</span> aan (recht <code>organisations.update</code>). Alleen een superbeheerder wijzigt het <span class="ui">Adres</span>; anderen zien <span class="ui">Alleen een platformbeheerder kan het adres wijzigen.</span></p>
+  <div class="note warn">
+    <p class="note-title">Webadres wijzigen</p>
+    <p><span class="ui">Een ander adres verplaatst de organisatie naar een nieuwe host: iedereen daar wordt uitgelogd en oude links werken niet meer.</span> Het oude webadres is meteen vrij en verwijst niet door. Uitnodigingen die eerder zijn verstuurd, wijzen naar het oude webadres tot je ze opnieuw verstuurt.</p>
+  </div>
+
+  <h4>Archiveren, herstellen, definitief verwijderen <span class="badge b-super">superbeheerder</span></h4>
+  <ul>
+    <li><strong><span class="ui">Archiveren</span></strong>: <span class="ui">De organisatie en haar gebruikers worden gearchiveerd en iedereen daar wordt uitgelogd. Je kunt haar herstellen vanuit de weergave Gearchiveerd.</span></li>
+    <li><strong><span class="ui">Herstellen</span></strong> (alleen centraal) brengt de organisatie terug met alles wat met haar gearchiveerd werd. Dat lukt niet als het e-mailadres van een terugkerende gebruiker nu door een ander account gebruikt wordt.</li>
+    <li><strong><span class="ui">Definitief verwijderen</span></strong> kan alleen bij een gearchiveerde organisatie, alleen centraal. Eerst bevestig je je wachtwoord, daarna typ je het organisatieadres over, bijvoorbeeld <code>acme</code> (<span class="ui">Typ <em>acme</em> om te bevestigen.</span>). Dit verwijdert de organisatie, haar gebruikers, uitnodigingen en rollen. Superbeheerders die bij de organisatie hoorden, houden hun account. <strong>Het activiteitenlog blijft bewaard</strong> tot de bewaartermijn verstrijkt. Dit kan niet ongedaan worden gemaakt.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/organisations/{index,create,edit}/*; app/Actions/Organisations/*.php; app/Policies/OrganisationPolicy.php:30-51; app/Rules/OrganisationSlug.php:17-31; docs/decisions.md:132 (13, 30, 33)</p></details>
+
+  <h3 id="gebruikers">Gebruikers</h3>
+  <p><span class="ui">Gebruikers</span> (<span class="ui">Zoek mensen, bekijk hun rollen en beheer hun accounts.</span>) toont 25 mensen per pagina, op naam. Je filtert op naam of e-mailadres, status, rol en (centraal) organisatie, en wisselt tussen <span class="ui">Actief</span> en <span class="ui">Gearchiveerd</span>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Betekenis</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ui">Wacht op activatie</span></td><td>Uitgenodigd, nog niet geaccepteerd. Kun je niet met de hand instellen.</td></tr>
+        <tr><td><span class="ui">Actief</span></td><td>Kan inloggen.</td></tr>
+        <tr><td><span class="ui">Uitgeschakeld</span></td><td>Kan niet inloggen. Uitschakelen meldt de persoon overal af; weer inschakelen brengt oude sessies niet terug.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul>
+    <li>Klik op een naam om de gebruiker te openen. Zonder bewerkrechten is het een alleen-lezen profiel. Bij iemand die nog moet activeren, opent de naam de openstaande uitnodigingen.</li>
+    <li><strong>Account</strong>: <span class="ui">Naam</span>, <span class="ui">E-mailadres</span>, <span class="ui">Status</span> en <span class="ui">Opslaan</span>. Je eigen e-mailadres wijzig je op je profielpagina. Het e-mailadres van een ander wijzigen vraagt eerst je wachtwoord; wat je al had ingevuld komt daarna terug.</li>
+    <li><strong>Rollen</strong>: vink <span class="ui">Organisatiebeheerder</span> en/of eigen rollen aan en klik <span class="ui">Rollen opslaan</span>. Bij een uitgenodigde gebruiker: uitnodiging intrekken en opnieuw uitnodigen met de nieuwe rollen. Bij jezelf zie je geen rollen om te wijzigen.</li>
+    <li><strong>Superbeheerder</strong> (alleen voor superbeheerders, niet op jezelf): <span class="ui">Superbeheerders beheren alle organisaties. Voor deze wijziging vragen we je wachtwoord.</span></li>
+  </ul>
+  <p><strong>Verwijderen</strong> doe je in de lijst <span class="ui">Gebruikers</span> met het prullenbakje in de rij van die persoon. Het venster <span class="ui">Gebruiker verwijderen</span> zegt: <span class="ui"><em>Jan Jansen</em> kan dan niet meer inloggen. Je kunt het account herstellen vanuit de gearchiveerde weergave.</span> Een uitgenodigde gebruiker verwijder je niet; je trekt de uitnodiging in.</p>
+  <p><strong><span class="ui">Herstellen</span></strong> doe je in de gearchiveerde weergave van die lijst. Dat gaat niet als de organisatie gearchiveerd is of het e-mailadres inmiddels door een ander gebruikt wordt.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/index/index.blade.php:115-145; resources/views/pages/users/edit/edit.blade.php:19,72,109; app/Enums/UserStatus.php:9-29; app/Actions/Users/{DeleteUser,RestoreUser,UpdateUser,UpdateUserStatus}.php</p></details>
+
+  <h3 id="uitnodigingen">Uitnodigingen</h3>
+  <h4>Iemand uitnodigen</h4>
+  <p>Klik <span class="ui">Gebruiker uitnodigen</span>. Op een organisatiehost heb je daarvoor <code>users.create</code> én <code>roles.assign</code> nodig; centraal kan het alleen als superbeheerder, en kies je eerst een organisatie.</p>
+  <ul>
+    <li>Velden: <span class="ui">E-mailadres</span>, <span class="ui">Taal</span> (<span class="ui">Nederlands</span> of <span class="ui">Engels</span>) en minstens één rol. Klik <span class="ui">Uitnodiging versturen</span>.</li>
+    <li>De mail <span class="ui">Je bent uitgenodigd voor <em>Acme</em></span> komt in de gekozen taal, met de knop <span class="ui">Uitnodiging accepteren</span>. Hij is standaard 7 dagen geldig.</li>
+    <li>Foutmeldingen voor het e-mailadres: <span class="ui">Voor dit adres staat al een uitnodiging open.</span>, <span class="ui">Dit adres wordt al gebruikt in deze organisatie.</span> of (andere organisatie of superbeheerder) <span class="ui">Dit adres kan niet worden gebruikt.</span></li>
+  </ul>
+  <div class="note warn">
+    <p class="note-title">Een gewone gebruiker uitnodigen</p>
+    <p>Een uitnodiging heeft minstens één rol nodig (anders: <span class="ui">Kies minstens één rol.</span>). Zonder eigen rollen kun je alleen <span class="ui">Organisatiebeheerder</span> kiezen, en eigen rollen maakt alleen een superbeheerder. Bestaat er nog geen eigen rol zoals &lsquo;Medewerker&rsquo;, vraag dan een superbeheerder er een aan te maken. Of nodig uit als Organisatiebeheerder en haal de rol na activatie weg bij <span class="ui">Gebruikers</span> → <em>naam</em> → <span class="ui">Rollen</span> (alle vinkjes uit, <span class="ui">Rollen opslaan</span>). Tot dat moment is de genodigde organisatiebeheerder.</p>
+  </div>
+
+  <h4>Openstaande uitnodigingen</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Actie</th><th>Wat er gebeurt</th><th>Benodigd recht</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ui">Opnieuw versturen</span></td><td>Stuurt een herinnering en verlengt de geldigheid. Dezelfde link, werkt ook bij verlopen uitnodigingen</td><td>Uitnodigingen opnieuw versturen <code>users.invite.resend</code></td></tr>
+        <tr><td><span class="ui">Uitnodigingslink kopiëren</span></td><td>Toont de link om zelf te delen. <span class="ui">Iedereen met deze link kan de uitnodiging accepteren. Deel hem alleen met de genodigde.</span></td><td>zoals hierboven, plus Rollen toewijzen <code>roles.assign</code>; en de rechten van de genodigde moeten binnen die van jou vallen</td></tr>
+        <tr><td><span class="ui">Uitnodiging intrekken</span></td><td>De link werkt niet meer, het e-mailadres komt vrij om opnieuw uit te nodigen</td><td>Gebruikers verwijderen <code>users.delete</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Wat de genodigde ziet</h4>
+  <p>De link werkt alleen op het webadres van de organisatie, in de taal die de uitnodiger koos. De pagina toont een van vier situaties:</p>
+  <ul>
+    <li><span class="ui">Uitnodiging al geaccepteerd</span>, met een knop <span class="ui">Inloggen</span>.</li>
+    <li><span class="ui">Deze uitnodiging is verlopen</span>: <span class="ui">Vraag een beheerder om je een nieuwe uitnodiging te sturen.</span></li>
+    <li>Er is al iemand ingelogd: <span class="ui">Log eerst uit om deze uitnodiging te accepteren.</span></li>
+    <li>Het formulier <span class="ui">Welkom bij <em>Acme</em></span>: <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span>, <span class="ui">Wachtwoord bevestigen</span> en <span class="ui">Account activeren</span>. Het wachtwoord moet lokaal minimaal 8 tekens hebben; in productie minimaal 12 tekens met hoofd- en kleine letters, cijfers, symbolen en niet gelekt. Daarna ben je meteen ingelogd: <span class="ui">Welkom, je account is klaar.</span></li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/invite/*; resources/views/pages/invitations/{pending,accept}/*; app/Actions/Invitations/*.php; app/Actions/Invitations/InviteUser.php:84-88; app/Actions/Invitations/AcceptInvitation.php:38; app/Providers/AppServiceProvider.php:56-64; app/Policies/InvitationPolicy.php:25-73 (viewLink :44-59); app/Actions/Users/UpdateUserRoles.php:41-74; app/Rules/AvailableEmail.php:52-59; config/skv.php:12-15</p></details>
+
+  <h3 id="rechten">Rollen en rechten</h3>
+  <p><span class="ui">Rollen</span> toont de <span class="ui">Systeemrollen</span> (beschermd, niet te wijzigen) en de <span class="ui">Eigen rollen</span> per organisatie. Alleen een superbeheerder maakt, wijzigt of verwijdert eigen rollen (<span class="ui">Nieuwe rol</span>, <span class="ui">Bewerken</span>, <span class="ui">Verwijderen</span>). Verwijder je een rol die mensen hebben, dan raken zij hem kwijt.</p>
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>Recht</th><th>Label in de app</th><th>Wat het toestaat</th><th>Org.-beheerder</th><th>Eigen rol</th></tr></thead>
+      <tbody>
+        <tr><td><code>users.view</code></td><td>Gebruikers bekijken</td><td>De gebruikers van de organisatie en hun gegevens bekijken</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>users.create</code></td><td>Gebruikers uitnodigen</td><td>Nieuwe gebruikers per e-mail uitnodigen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>users.update</code></td><td>Gebruikers bewerken</td><td>Naam, e-mailadres en status van een gebruiker wijzigen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>users.delete</code></td><td>Gebruikers verwijderen</td><td>Gebruikers verwijderen en openstaande uitnodigingen intrekken</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>users.invite.resend</code></td><td>Uitnodigingen opnieuw versturen</td><td>Een openstaande uitnodiging opnieuw versturen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>users.impersonate</code></td><td>Inloggen als gebruiker</td><td>Tijdelijk als een andere gebruiker werken om te helpen</td><td class="yes">ja</td><td>alleen als de module aan staat</td></tr>
+        <tr><td><code>roles.view</code></td><td>Rollen bekijken</td><td>Rollen en hun rechten bekijken</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>roles.assign</code></td><td>Rollen toewijzen</td><td>Rollen aan gebruikers geven of afnemen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>roles.manage</code></td><td>Rollen beheren</td><td>Rollen aanmaken, hernoemen, verwijderen en hun rechten instellen</td><td class="no">nee</td><td class="no">nee</td></tr>
+        <tr><td><code>organisations.view</code></td><td>Organisaties bekijken</td><td>Organisatiegegevens bekijken</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>organisations.create</code></td><td>Organisaties aanmaken</td><td>Nieuwe organisaties toevoegen</td><td class="no">nee</td><td class="no">nee</td></tr>
+        <tr><td><code>organisations.update</code></td><td>Organisaties bewerken</td><td>Naam en instellingen van een organisatie wijzigen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>organisations.delete</code></td><td>Organisaties verwijderen</td><td>Organisaties archiveren, herstellen en definitief verwijderen</td><td class="no">nee</td><td class="no">nee</td></tr>
+        <tr><td><code>activity_log.view</code></td><td>Activiteitenlog bekijken</td><td>Zien wie wat wanneer heeft gedaan</td><td class="yes">ja</td><td class="yes">ja</td></tr>
+        <tr><td><code>system.health</code></td><td>Systeemstatus bekijken</td><td>Gezondheidscontroles, back-ups en de planner bekijken (nog geen pagina, M7)</td><td class="no">nee</td><td class="no">nee</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Een superbeheerder heeft alle rechten via de instelling op zijn account. De vier rechten met &lsquo;nee&rsquo; in beide kolommen zijn alleen voor superbeheerders. In de roleditor staan de rechten in de groepen <span class="ui">Gebruikers</span>, <span class="ui">Rollen</span>, <span class="ui">Organisaties</span> en <span class="ui">Activiteitenlog</span>. Rechten die alleen voor superbeheerders zijn (en <code>users.impersonate</code> als de module uit staat) worden daar niet aangeboden.</p>
+  <p>Een rolnaam is uniek per organisatie (hoofdletters tellen niet) en mag niet lijken op een systeemrol, zoals &lsquo;organisation-admin&rsquo; of &lsquo; super admin &rsquo;: <span class="ui">Deze naam is gereserveerd voor een systeemrol.</span></p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/Permission.php:10-116; app/Authorization/PermissionGroup.php:15-23; resources/views/pages/roles/index/index.php:229-243; lang/nl.json; app/Concerns/ManagesCustomRoles.php:23-54; app/Actions/Roles/DeleteRole.php:20-63</p></details>
+
+  <h3 id="inloggen-als">Inloggen als gebruiker</h3>
+  <p>Hiermee werk je tijdelijk als iemand anders, om te helpen. Het is een optionele module (<code>MODULE_IMPERSONATION</code>, standaard aan).</p>
+  <ol class="steps">
+    <li><div><p>Ga naar <span class="ui">Gebruikers</span> <strong>op de host van de organisatie</strong>. Een superbeheerder opent de organisatie eerst met <span class="ui">Openen</span>.</p></div></li>
+    <li><div><p>Klik bij de persoon <span class="ui">Inloggen als deze gebruiker</span>. Vul een <span class="ui">Reden</span> in (verplicht, hoogstens 500 tekens): <span class="ui">Geef een reden op. Die wordt vastgelegd in het activiteitenlog.</span> Klik <span class="ui">Doorgaan als deze gebruiker</span>.</p></div></li>
+    <li><div><p>Je komt op het dashboard. Bovenaan elke pagina staat een amberkleurige balk <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p></div></li>
+    <li><div><p>Klaar? Klik <span class="ui">Terug naar je eigen account</span>. Je ziet <span class="ui">Je bent terug in je eigen account.</span></p></div></li>
+  </ol>
+  <h4>Wie mag wie</h4>
+  <ul>
+    <li>De ander hoort bij de organisatie van deze host, is actief, is geen superbeheerder en is niet jezelf.</li>
+    <li>Superbeheerders mogen dan iedereen. Anderen hebben <code>users.impersonate</code> nodig, de ander mag geen Organisatiebeheerder zijn (organisatiebeheerders loggen dus niet als elkaar in), en de ander mag niet meer rechten hebben dan jij.</li>
+    <li>Eén niveau diep: tijdens een inloggen-als-sessie kun je niet nóg een keer als iemand anders inloggen.</li>
+  </ul>
+  <h4>Wanneer het vanzelf stopt</h4>
+  <p>Bij elk verzoek controleert de kit of het nog mag. Het stopt als de module uitgaat, als jouw of zijn wachtwoord verandert, als de ander wordt uitgeschakeld of verwijderd, of als de regels niet meer kloppen. Je ziet dan <span class="ui">Inloggen als deze gebruiker is beëindigd. Je bent terug in je eigen account.</span> Uitloggen stopt de inloggen-als-sessie eerst en logt je daarna zelf uit. Zo&rsquo;n sessie blijft altijd op de host waar je begon.</p>
+  <p>Alles wat je tijdens zo&rsquo;n sessie doet, komt in het log op jouw naam, bijvoorbeeld als &lsquo;<em>Beheerder</em> als <em>Jan Jansen</em>&rsquo;.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/skv.php:17-22; resources/views/pages/users/index/index.blade.php:121-167; app/Authorization/UserAbilities.php:60-91,180-202; app/Tenancy/Http/Middleware/EnforceImpersonation.php:17-91; resources/views/components/impersonation-banner.blade.php; app/Actions/Audit/LogActivity.php:60-87</p></details>
+
+  <h3 id="activiteitenlog">Activiteitenlog</h3>
+  <p><span class="ui">Activiteitenlog</span> (<span class="ui">Zien wie wat wanneer heeft gedaan</span>) toont 50 regels per pagina, nieuwste eerst. Filter op <span class="ui">Van</span>, <span class="ui">Tot en met</span>, <span class="ui">Actie</span>, <span class="ui">Onderwerp</span>, <span class="ui">Uitgevoerd door</span> en centraal op organisatie. Met <span class="ui">Details</span> zie je onder meer de <span class="ui">Gebeurtenissleutel</span>, het <span class="ui">IP-adres</span>, de <span class="ui">Browser</span> en de <span class="ui">Eigenschappen</span>.</p>
+  <ul>
+    <li>Op een organisatiehost zie je alleen de eigen organisatie. Centraal ziet een superbeheerder alles, ook gearchiveerde organisaties en platformregels.</li>
+    <li>Gaat een regel over iemand die geen gewoon lid van je organisatie is (bijvoorbeeld een superbeheerder die hielp), dan zie je als organisatiebeheerder geen IP-adres en browser. De naam blijft zichtbaar.</li>
+    <li>Wachtwoorden, tokens en links worden nooit opgeslagen. Bij een mislukte inlogpoging staat het getypte e-mailadres er alleen als het een geldig e-mailadres is.</li>
+    <li>Het log kan niet uit. Regels ouder dan 365 dagen ruim je op met <code>php artisan activitylog:clean</code>. Dat draait nog niet automatisch (M7). Een CSV-export komt ook in M7.</li>
+  </ul>
+  <h4>Wat er wordt vastgelegd</h4>
+  <div class="events">
+    <div class="grp"><span class="gname">authentication</span><ul>
+      <li>Ingelogd<code>auth.login</code></li><li>Inloggen mislukt<code>auth.login_failed</code></li><li>Uitgelogd<code>auth.logout</code></li><li>Wachtwoordherstel aangevraagd<code>auth.password_reset_requested</code></li><li>Wachtwoordherstel voltooid<code>auth.password_reset_completed</code></li><li>Ingelogd met een overdrachtslink<code>auth.handoff_consumed</code></li><li>Tweestapscode geweigerd<code>auth.two_factor_failed</code></li><li>Herstelcode gebruikt<code>auth.recovery_code_used</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">security</span><ul>
+      <li>Wachtwoord gewijzigd<code>security.password_changed</code></li><li>Tweestapsverificatie ingeschakeld<code>security.two_factor_enabled</code></li><li>Tweestapsverificatie uitgeschakeld<code>security.two_factor_disabled</code></li><li>Herstelcodes opnieuw gegenereerd<code>security.recovery_codes_regenerated</code></li><li>Passkey toegevoegd<code>security.passkey_registered</code></li><li>Passkey verwijderd<code>security.passkey_deleted</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">users</span><ul>
+      <li>Gebruiker bijgewerkt<code>user.updated</code></li><li>Status van gebruiker gewijzigd<code>user.status_changed</code></li><li>Gebruiker verwijderd<code>user.deleted</code></li><li>Gebruiker hersteld<code>user.restored</code></li><li>Rollen gewijzigd<code>user.roles_changed</code></li><li>Superbeheer toegekend<code>user.super_admin_granted</code></li><li>Superbeheer ingetrokken<code>user.super_admin_revoked</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">invitations</span><ul>
+      <li>Uitnodiging verstuurd<code>invitation.sent</code></li><li>Uitnodiging opnieuw verstuurd<code>invitation.reminder_sent</code></li><li>Uitnodiging geaccepteerd<code>invitation.accepted</code></li><li>Uitnodiging ingetrokken<code>invitation.cancelled</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">organisations</span><ul>
+      <li>Organisatie aangemaakt<code>organisation.created</code></li><li>Organisatie bijgewerkt<code>organisation.updated</code></li><li>Organisatie gearchiveerd<code>organisation.archived</code></li><li>Organisatie hersteld<code>organisation.restored</code></li><li>Organisatie definitief verwijderd<code>organisation.purged</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">roles</span><ul>
+      <li>Rol aangemaakt<code>role.created</code></li><li>Rol bijgewerkt<code>role.updated</code></li><li>Rol verwijderd<code>role.deleted</code></li>
+    </ul></div>
+    <div class="grp"><span class="gname">impersonation</span><ul>
+      <li>Inloggen als gebruiker gestart<code>impersonation.start</code></li><li>Inloggen als gebruiker beëindigd<code>impersonation.stop</code></li>
+    </ul></div>
+  </div>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Enums/ActivityEvent.php:18-114; app/Actions/Audit/RecordActivity.php:15-20; config/activitylog.php:15-19; docs/decisions.md:132 (7, 34), :134</p></details>
+</section>
+
+<!-- ============================ 6 ============================ -->
+<section class="chapter" id="dev">
+  <h2><span class="num">6</span>Voor ontwikkelaars</h2>
+  <p>De regels staan in <code>.ai/guidelines/skv3.md</code> (Boost kopieert ze naar <code>AGENTS.md</code>), <code>CLAUDE.md</code>, de spec en <code>docs/decisions.md</code>. Veel regels worden afgedwongen door arch-tests in <code>tests/Arch</code>, dus een overtreding breekt <code>composer check</code>.</p>
+
+  <h3 id="dev-routes">Routes en hosts</h3>
+  <ul>
+    <li>Routes voor één soort host groepeer je met <code>Route::tenant()</code> of <code>Route::central()</code>. Gebruik nooit <code>Route::domain()</code> of een <code>{tenant}</code>-parameter, dus route-namen en <code>route()</code>-aanroepen dragen geen tenant.</li>
+    <li>Een tenant-route geeft 404 op centrale hosts; een centrale route geeft 404 op organisatiehosts. Beide gelden ook voor <code>/livewire/update</code>.</li>
+    <li>Pagina&rsquo;s voor elke host staan in de <code>auth</code>-groep met <code>->can(Permission::…)</code>.</li>
+  </ul>
+<pre><code><span class="cm">// routes/admin.php</span>
+Route::middleware(['auth'])->group(function (): void {
+    Route::livewire('users', 'pages::users.index')
+        ->can(Permission::UsersView)
+        ->name('users.index');
+
+    <span class="cm">// Apex and admin host only; a tenant host answers 404.</span>
+    Route::central(function (): void {
+        Route::livewire('organisations/create', 'pages::organisations.create')
+            ->can(Permission::OrganisationsCreate)
+            ->name('organisations.create');
+    });
+});
+
+Route::tenant(function (): void {
+    Route::livewire('invitations/accept/{token}', 'pages::invitations.accept')
+        ->middleware(['signed:relative', SetReferrerPolicy::class])
+        ->name('invitations.accept');
+});</code></pre>
+  <div class="note">
+    <p class="note-title">Route × host-matrix</p>
+    <p>Elke nieuwe named GET-route gaat in <code>matrixRoutes()</code> in <code>tests/Feature/Tenancy/RouteHostMatrixTest.php</code>, of in de uitzonderingen daar. De matrix test vier actoren (gast, lid, organisatiebeheerder, superbeheerder) op drie hosts (tenant, apex, admin). Vergeet je het, dan faalt de test &lsquo;lists every named GET route in the matrix or the exclusions&rsquo;.</p>
+  </div>
+  <p class="src">app/Providers/TenancyServiceProvider.php:86-96; app/Tenancy/Http/Middleware/EnsureTenantHost.php:17; EnsureCentralHost.php:17; routes/admin.php:15-66; tests/Feature/Tenancy/RouteHostMatrixTest.php:8-121</p>
+
+  <h3 id="dev-livewire">Livewire-componenten</h3>
+  <ul>
+    <li>Alleen multi-file componenten: <code>&lt;naam&gt;/&lt;naam&gt;.php</code> + <code>&lt;naam&gt;.blade.php</code>, zonder ⚡ in het pad. Maak ze met <code>php artisan make:livewire pages::projects.index</code>; de config staat al op MFC zonder emoji.</li>
+    <li>Volledige pagina&rsquo;s staan in <code>resources/views/pages/**</code>, herbruikbare in <code>resources/views/components/**</code>.</li>
+    <li>Nooit <code>$this->view()</code>; geef data door met <code>with(): array</code> of <code>#[Computed]</code>.</li>
+    <li>Autoriseer in <code>mount()</code> en opnieuw in elke actie. Houd ids als <code>#[Locked]</code> property en zoek het model per verzoek opnieuw op.</li>
+    <li>Componenten roepen acties aan; de domeinlogica staat in <code>App\Actions</code>.</li>
+    <li>Een actie die alleen op een organisatiehost zin heeft, krijgt <code>#[RequiresTenant]</code>: centraal geeft hij 404, ook bij een vervalst Livewire-verzoek.</li>
+    <li><code>password.confirm</code> op een route dekt geen Livewire-updates. Gevoelige acties beginnen daarom met de trait <code>App\Concerns\ConfirmsPasswords</code>.</li>
+  </ul>
+<pre><code>use App\Tenancy\Attributes\RequiresTenant;
+
+#[RequiresTenant]
+public function startImpersonation(StartImpersonation $startImpersonation): void
+{
+    $target = $this->findUser($this->impersonatingUserId ?? abort(404));
+    $this->authorize('impersonate', $target);
+    <span class="cm">// …</span>
+}
+
+<span class="cm">// A sensitive action (uses ConfirmsPasswords); build the return URL yourself, never from the Referer.</span>
+if ($this->passwordConfirmationRequired(route('users.edit', ['user' => $target->id], absolute: false))) {
+    return;
+}</code></pre>
+  <p class="src">.ai/guidelines/skv3.md:3-5,23,26; config/livewire.php:34-36,73-75; tests/Arch/LivewireConventionsTest.php:17-42; resources/views/pages/users/index/index.php:181-192; resources/views/pages/users/edit/edit.php:167; app/Concerns/ConfirmsPasswords.php</p>
+
+  <h3 id="dev-tenant">Een tenant-model toevoegen</h3>
+  <p>Een model met <code>organisation_id</code> gebruikt <code>BelongsToOrganisation</code> en <code>SoftDeletes</code>, en staat in <code>config('tenancy.tenant_models')</code>. De trait voegt de <code>TenantScope</code> toe, vult <code>organisation_id</code> bij het aanmaken en geeft een <code>organisation()</code>-relatie. Zonder gekoppelde organisatie weigert hij het aanmaken, tenzij het model <code>mayExistWithoutOrganisation()</code> op <code>true</code> zet.</p>
+  <p class="figcap">Voorbeeld: een fictief model Project</p>
+<pre><code>&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Tenancy\Concerns\BelongsToOrganisation;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Project extends Model
+{
+    use BelongsToOrganisation;
+    use SoftDeletes;
+}
+
+<span class="cm">// config/tenancy.php</span>
+'tenant_models' => [
+    User::class,
+    Activity::class,
+    Invitation::class,
+    Project::class,
+],</code></pre>
+  <ul>
+    <li>Archiveren van een organisatie archiveert ook de rijen van elk model in die lijst; herstellen brengt alleen die rijen terug.</li>
+    <li><code>TenantModelsTest</code> faalt als een model met <code>organisation_id</code> ontbreekt in de lijst of een van de traits mist.</li>
+    <li>Maak <code>organisation_id</code> niet fillable.</li>
+  </ul>
+  <h4>Strict mode, <code>Tenant::run</code> en <code>Tenant::bypass</code></h4>
+<pre><code>use App\Tenancy\Facades\Tenant;
+
+<span class="cm">// Bind an organisation for a piece of work (jobs dispatched inside run under it).</span>
+Tenant::run($organisation, fn () => Project::query()->count());
+
+<span class="cm">// Read across organisations: only in App\Console, App\Setup, App\Tenancy,
+// App\Actions\Audit and Database\Seeders.</span>
+Tenant::bypass(fn () => Project::query()->count());</code></pre>
+  <p>Haal <code>TenantScope</code> nooit weg met <code>withoutGlobalScope(s)</code> of <code>newQueryWithoutScopes</code> buiten die namespaces. <code>TenancyRulesTest</code> zoekt daarnaar. Artisan-commando&rsquo;s draaien centraal, en elke job krijgt automatisch de <code>tenant_id</code> van het moment van dispatchen mee.</p>
+  <p class="src">.ai/guidelines/skv3.md:15-16; app/Tenancy/Concerns/BelongsToOrganisation.php:17-45; config/tenancy.php:21-37; app/Tenancy/SoftDeleteCascade.php:12-63; tests/Feature/Tenancy/TenantModelsTest.php:14-39; app/Tenancy/CurrentTenant.php:49-108; tests/Arch/TenancyRulesTest.php:9-54; TenancyServiceProvider.php:71-84</p>
+
+  <h3 id="dev-hostscope">HostScope voor pagina&rsquo;s op elke host</h3>
+  <ul>
+    <li><code>HostScope::read(fn () =&gt; …)</code>: op een organisatiehost gescoped; centraal alleen voor superbeheerders, binnen een bypass. Voer de query uit <em>in</em> de callback; een teruggegeven builder draait buiten de bypass.</li>
+    <li><code>HostScope::organisationId()</code>: het id van de organisatie op een tenant-host, <code>null</code> (alle) voor een superbeheerder centraal. Gebruik het voor centrale tabellen (organisaties, rollen, <code>sessions</code>) en negeer organisatie-ids van de client op een tenant-host.</li>
+    <li><code>HostScope::lockForWrite($organisation)</code>: binnen een transactie, vóór <code>Tenant::run()</code>. Weigert een andere organisatie en een gearchiveerde.</li>
+  </ul>
+<pre><code><span class="cm">// app/Actions/Invitations/InviteUser.php (shortened)</span>
+public function handle(User $actor, Organisation $organisation, string $email, array $roleIds, Locale $locale): Invitation
+{
+    Gate::forUser($actor)->authorize('create', [Invitation::class, $organisation]);
+
+    return DB::transaction(function () use ($actor, $organisation, $email, $roleIds, $locale): Invitation {
+        $organisation = HostScope::lockForWrite($organisation);
+
+        return Tenant::run($organisation, fn (): Invitation => $this->invite($actor, $organisation, $email, $roleIds, $locale));
+    });
+}</code></pre>
+  <p>Administratieve acties krijgen de handelende gebruiker als eerste argument en autoriseren met <code>Gate::forUser($actor)</code>.</p>
+  <p class="src">.ai/guidelines/skv3.md:24-25; app/Tenancy/HostScope.php:28-97; app/Actions/Invitations/InviteUser.php:53-70; resources/views/pages/users/index/index.php:225</p>
+
+  <h3 id="dev-perms">Rechten en rollen in code</h3>
+  <ul>
+    <li>Gebruik altijd de enum: <code>$user->can(Permission::UsersView)</code> en <code>->can(Permission::UsersView)</code> op routes. Een rechtnaam als string mag alleen in de enum staan (arch-test).</li>
+    <li>Wissel van Spatie-team alleen met <code>withPermissionsTeam($teamId, fn () =&gt; …)</code>, daarna <code>$user->unsetRelation('roles')</code>.</li>
+    <li>Iemand anders beheren mag alleen als diens rechten binnen die van de actor vallen. Lees ze met <code>App\Authorization\EffectivePermissions</code> en beslis met <code>App\Authorization\UserAbilities</code>, ook voor rijen in een lijst.</li>
+  </ul>
+  <h4>Eén schrijver per onderwerp</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Wat</th><th>Alleen via</th></tr></thead>
+      <tbody>
+        <tr><td>Superbeheerdervlag</td><td><code>App\Authorization\SetSuperAdmin</code> (pagina&rsquo;s via <code>App\Actions\Users\UpdateSuperAdmin</code>)</td></tr>
+        <tr><td>Rollen van een gebruiker</td><td><code>App\Actions\Users\UpdateUserRoles</code></td></tr>
+        <tr><td>Eigen rollen</td><td><code>App\Actions\Roles\{CreateRole,UpdateRole,DeleteRole}</code></td></tr>
+        <tr><td>Uitnodigingen</td><td><code>App\Actions\Invitations\InviteUser</code>; links uit <code>Invitation::acceptUrl()</code></td></tr>
+        <tr><td>Inloggen als</td><td><code>App\Actions\Users\{StartImpersonation,StopImpersonation}</code></td></tr>
+        <tr><td>Mag deze gebruiker hier inloggen?</td><td><code>App\Tenancy\Auth\HostLoginRule</code></td></tr>
+        <tr><td>Auditregels</td><td><code>App\Actions\Audit\RecordActivity</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h4>Een recht toevoegen</h4>
+  <ol class="steps">
+    <li><div><p>Voeg een case toe aan <code>App\Authorization\Permission</code>, met <code>label()</code>, <code>description()</code>, <code>group()</code> en zo nodig <code>superOnly()</code>.</p></div></li>
+    <li><div><p>Zet label en omschrijving (Engelse sleutel, Nederlandse tekst) in <code>lang/nl.json</code> én <code>lang/en.json</code>.</p></div></li>
+    <li><div><p>Werk de verwachte lijst in <code>PermissionCatalogueTest</code> bij.</p></div></li>
+    <li><div><p>Draai <code>php artisan permissions:sync</code>. Dat werkt de catalogus bij, houdt de Organisatiebeheerder-rol gelijk aan alle niet-super-only rechten en haalt super-only rechten uit eigen rollen.</p></div></li>
+  </ol>
+  <p class="src">.ai/guidelines/skv3.md:17-18,27-31; app/Authorization/Permission.php; app/Authorization/PermissionsTeam.php:10-50; app/Authorization/helpers.php:14-17; app/Authorization/SyncPermissions.php:13-43; tests/Arch/AuthorizationRulesTest.php:10-49</p>
+
+  <h3 id="dev-audit">Auditregels schrijven</h3>
+  <p>Schrijf alleen via <code>RecordActivity</code> met een <code>ActivityEvent</code>-case. Nooit <code>activity()</code>, de activitylog-facade of de trait <code>LogsActivity</code>, en nooit een wachtwoord, token of acceptatielink.</p>
+<pre><code>public function __construct(private RecordActivity $recordActivity) {}
+
+$this->recordActivity->handle(ActivityEvent::OrganisationArchived, $organisation, [
+    'name' => $organisation->name,
+    'slug' => $organisation->slug,
+    'users' => count($userIds),
+], causer: $actor);</code></pre>
+  <p>Een nieuw event: voeg een case <code>Naam = '&lt;prefix&gt;.&lt;actie&gt;'</code> en een <code>label()</code> toe aan <code>app/Enums/ActivityEvent.php</code>. Het prefix moet een groep hebben (<code>auth</code>, <code>security</code>, <code>user</code>, <code>invitation</code>, <code>organisation</code>, <code>role</code>, <code>impersonation</code>), anders volgt een <code>LogicException</code>. Zet het label in beide taalbestanden. Het filter in het log neemt het event vanzelf op. <code>LogActivity</code> voegt organisatie, IP-adres en browser toe, en zet tijdens een inloggen-als-sessie de echte gebruiker als veroorzaker.</p>
+  <p class="src">.ai/guidelines/skv3.md:29; app/Actions/Audit/RecordActivity.php:15-64; app/Actions/Organisations/ArchiveOrganisation.php:27,59-63; app/Enums/ActivityEvent.php:16-114; tests/Arch/AuditRulesTest.php:9-24</p>
+
+  <h3 id="dev-links">Links, mails en taal</h3>
+  <ul>
+    <li>Links die het huidige verzoek verlaten (mails, redirects naar een andere host) bouw je voor <code>Hosts::homeOf($user)</code>.</li>
+    <li>Ondertekende links: <code>URL::temporarySignedRoute(..., absolute: false)</code> met middleware <code>signed:relative</code>. Zo overleven ze een wisseling van http naar https of van host.</li>
+    <li>Een ingelogde gebruiker naar een andere host brengen gaat via <code>App\Actions\Auth\IssueHandoff</code>.</li>
+    <li>Mails implementeren <code>ShouldQueue</code> en roepen <code>afterCommit()</code> aan. Test ze op de sync-queue met de <code>array</code>-mailer, niet met <code>Mail::fake()</code>.</li>
+    <li>Elke nieuwe <code>__()</code>-sleutel komt in <code>lang/nl.json</code> én <code>lang/en.json</code>, in dezelfde volgorde. De Engelse tekst is de sleutel. Nederlandse teksten gebruiken &lsquo;je&rsquo;.</li>
+  </ul>
+<pre><code><span class="cm">// app/Models/Invitation.php</span>
+return tenant_url($organisation, URL::temporarySignedRoute(
+    'invitations.accept',
+    $this->expires_at->copy()->addDays((int) config('skv.invitations.signature_grace_days', 30)),
+    ['token' => $token],
+    absolute: false,
+));
+
+<span class="cm">// Move the signed-in actor to another host</span>
+$url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code></pre>
+  <p class="src">.ai/guidelines/skv3.md:20-22,30,32; app/Tenancy/Hosts.php:20-91; app/Support/helpers.php:8-16; app/Models/Invitation.php:70-81; app/Actions/Auth/IssueHandoff.php:17-85; app/Mail/InvitationMail.php:17-59; tests/Feature/LangFilesTest.php:6-13</p>
+
+  <h3 id="dev-tests">Tests</h3>
+  <p>Tests zijn Pest-functies (<code>it(...)</code>). Feature-tests gebruiken <code>RefreshDatabase</code>. <code>Livewire::test()</code> slaat alle middleware over, dus hostregels test je met HTTP-verzoeken.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Helper</th><th>Wat hij doet</th></tr></thead>
+      <tbody>
+        <tr><td><code>onTenant($organisation)</code></td><td>Zet de host op <code>{slug}.localhost</code> en koppelt de organisatie</td></tr>
+        <tr><td><code>onApex()</code> / <code>onAdminHost()</code></td><td>Naar <code>localhost</code> of <code>admin.localhost</code>, zonder organisatie</td></tr>
+        <tr><td><code>asSuperAdmin()</code></td><td>Maakt een superbeheerder en logt in</td></tr>
+        <tr><td><code>asOrgAdmin($organisation)</code></td><td>Maakt een organisatiebeheerder, logt in en zet de tenant-host</td></tr>
+        <tr><td><code>asMember($organisation)</code></td><td>Maakt een gewoon lid, logt in en zet de tenant-host</td></tr>
+        <tr><td><code>inviteMember($organisation)</code></td><td>Nodigt iemand uit via <code>InviteUser</code></td></tr>
+        <tr><td><code>useImpersonationModule(true)</code></td><td>Zet de module aan of uit voor de rest van de test. Nodig, want één CI-job draait met de module uit</td></tr>
+        <tr><td><code>pageSnapshot()</code> / <code>callPageAction()</code></td><td>Stuurt een vervalst <code>/livewire/update</code>, eventueel vanaf een andere host</td></tr>
+      </tbody>
+    </table>
+  </div>
+<pre><code>it('signs a member in on their own organisation host only', function (string $host, bool $allowed): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    useLoginHost($host, $organisation);
+
+    $response = $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password']);
+    <span class="cm">// …</span>
+})->with([ <span class="cm">/* own tenant, other tenant, apex, admin */</span> ]);</code></pre>
+  <p>Gebruik je <code>Event::fake()</code>, houd dan de tenancy-events echt: <code>Event::fake()->except([TenantResolved::class, TenantForgotten::class])</code>. Anders blijft het rechtenteam leeg.</p>
+  <p class="src">.ai/guidelines/skv3.md:7,19; tests/Pest.php:51-308; tests/Feature/Auth/HostScopedLoginTest.php:26-40; phpunit.xml:24-46</p>
+
+  <h3 id="dev-gate">Kwaliteitspoort</h3>
+  <p>Werk is pas af als <strong>beide</strong> slagen:</p>
+<pre><code>composer check        <span class="cm"># Pint (test), Rector (dry run), Larastan level 8, Pest parallel op SQLite</span>
+composer test:pgsql   <span class="cm"># dezelfde suite op PostgreSQL (database &lt;map&gt;_test, gebruiker root)</span></code></pre>
+  <ul>
+    <li><code>declare(strict_types=1)</code> in elk PHP-bestand. Draai <code>composer fix</code> na het bewerken van PHP.</li>
+    <li>Larastan level 8 zonder baseline: los fouten op, negeer ze niet.</li>
+    <li>Geen driver-specifieke SQL (<code>ilike</code>, ruwe <code>ALTER TABLE</code>); gebruik <code>whereLike(..., caseSensitive: false)</code>.</li>
+    <li>Geen <code>env()</code> buiten <code>config/</code>, geen <code>dd</code>/<code>dump</code>/<code>ray</code>, geen hardgecodeerde kitnaam (<code>skv</code>) in app-identiteit.</li>
+    <li>Alleen gratis Flux. <code>livewire/flux-pro</code> komt nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code>.</li>
+    <li>De pre-commit-hook draait Pint en PHPStan op de gestagede PHP-bestanden.</li>
+    <li>CI (<code>.github/workflows/tests.yml</code>) draait drie jobs: PHP 8.4 op PostgreSQL, PHP 8.4 op SQLite met <code>MODULE_IMPERSONATION=false</code>, en PHP 8.5 op SQLite.</li>
+    <li>Eén test: <code>php artisan test --compact --filter=&lt;naam&gt;</code>. Alleen arch-regels: <code>php artisan test --compact tests/Arch</code>.</li>
+  </ul>
+  <p class="src">CLAUDE.md (Commands, Conventions); composer.json:70-87; phpstan.neon:7-24; pint.json:2-7; tests/Arch/*; .githooks/pre-commit:5-9; .github/workflows/tests.yml:20-114</p>
+</section>
+
+<!-- ============================ 7 ============================ -->
+<section class="chapter" id="status">
+  <h2><span class="num">7</span>Status en roadmap</h2>
+  <p>Milestones M0 tot en met M4 zitten in <code>main</code>. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog. De statusregel in de README (&lsquo;milestone M1&rsquo;) loopt achter.</p>
+
+  <h3 id="wat-er-is">Wat er nu is</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Milestone</th><th>Inhoud</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="tabnum">M0 + M1</td><td>Fundament: starter kit, toolchain, composer-scripts, hooks, CI, Boost/Claude, PostgreSQL + SQLite</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M2</td><td>Tenancy en autorisatie: hosts, strict mode, route × host-matrix, queues per organisatie, rechtencatalogus</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M3</td><td>Inloggen: per host, passkeys op elk subdomein, wachtwoordherstel, e-mailwijziging, overdrachtslink</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M4</td><td>Beheer: organisaties, gebruikers, uitnodigingen, rollen, inloggen als, activiteitenlog</td><td><span class="badge b-ok">klaar</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab); CHANGELOG.md:5-50; README.md:5</p>
+
+  <h3 id="roadmap">Wat er komt</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
+      <tbody>
+        <tr><td><strong>M5 · UI</strong></td><td>Navigatie in Overzicht / Beheer / Systeem; licht, donker of systeem per gebruiker; een echt dashboard met organisatie- en rollenkaart en recente activiteit; taalwisselaar en taal in je profiel; Nederlandse tekst op alle standaardschermen; nette foutpagina&rsquo;s (ook voor ongeldige uitnodigingen); schakelaar <code>MODULE_PASSKEYS</code>; Flux Pro-laag; snel inloggen met demo-accounts (lokaal); browsertests</td></tr>
+        <tr><td><strong>M6 · Setup</strong></td><td>Installeren vanuit Herd met één klik; browserwizard op <code>/welcome-setup</code>; <code>skv:install</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code></td></tr>
+        <tr><td><strong>M7 · Beheer en extra&rsquo;s</strong></td><td><code>/health-check</code>, back-ups, scheduler en een Systeempagina; sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; automatisch opruimen van log en overdrachtslinks; rate limits op uitnodigen en e-mailwijziging</td></tr>
+        <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="src">spec:511-520,385-405; docs/decisions.md:127,134</p>
+
+  <h3 id="beperkingen">Bekende beperkingen nu</h3>
+  <ul>
+    <li>Het dashboard is nog dat van de starter kit: vier lege vlakken.</li>
+    <li>In de zijbalk staan nog de links <span class="ui">Repository</span> en <span class="ui">Documentation</span> van de Laravel starter kit.</li>
+    <li>Licht, donker of systeem kies je onder <span class="ui">Settings</span> → <span class="ui">Appearance</span>, maar die keuze wordt alleen in de browser bewaard, per adres: op <code>admin.mijnapp.test</code> en op elke organisatiehost kies je opnieuw. In M5 wordt de keuze per gebruiker opgeslagen.</li>
+    <li>Geen taalwisselaar. De taal van een uitnodiging bepaalt alleen de mail en de acceptatiepagina.</li>
+    <li>Standaardschermen en paginatitels deels in het Engels.</li>
+    <li>Het ontwikkelaccount <code>test@example.com</code> bestaat alleen na <code>php artisan db:seed</code> en is tijdelijk.</li>
+    <li>Passkeys kun je nog niet uitzetten; &lsquo;inloggen als&rsquo; is de enige optionele module.</li>
+    <li>Het log ruimt zichzelf nog niet op en heeft geen export.</li>
+    <li>Een ongeldige of ingetrokken uitnodigingslink geeft een kale 404.</li>
+    <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
+    <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
+  </ul>
+  <h4>Bewust niet in v1</h4>
+  <p>Een database per organisatie, eigen domeinen per organisatie, row-level security in Postgres, tenants via een pad, facturatie, Filament, andere talen dan Nederlands en Engels, Telescope, lidmaatschap van meer dan één organisatie en zelf je account verwijderen.</p>
+  <p class="src">resources/views/dashboard.blade.php:1-18; resources/views/layouts/app/sidebar.blade.php:2,58-64; resources/views/partials/head.blade.php:15; vendor/livewire/flux/src/AssetManager.php:170-192; routes/settings.php:12; resources/views/pages/settings/appearance/appearance.blade.php:6-7; docs/decisions.md:20 (DEC-12); config/fortify.php:174-176; config/skv.php:20-22; routes/console.php:1-10; docs/decisions.md:132 (15, 30, 33), :134; spec:18-25</p>
+</section>
+
+      <footer class="colofon">
+        <p>Gebaseerd op de code en documentatie van <code>main</code> @ <code>8c9ecab</code>. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  try {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc > ol > li > a'));
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+    var sections = Object.keys(map).map(function (id) { return document.getElementById(id); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !sections.length) { return; }
+    var visible = {};
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
+      var current = null;
+      for (var i = 0; i < sections.length; i++) { if (visible[sections[i].id]) { current = sections[i].id; break; } }
+      if (!current) { return; }
+      links.forEach(function (a) { a.removeAttribute('aria-current'); });
+      var active = map[current];
+      active.setAttribute('aria-current', 'true');
+      var bar = active.closest('ol');
+      if (bar && bar.scrollWidth > bar.clientWidth) {
+        bar.scrollLeft = active.offsetLeft - 16;
+      }
+    }, { rootMargin: '-20% 0px -60% 0px' });
+    sections.forEach(function (s) { observer.observe(s); });
+  } catch (err) { /* contents highlighting is optional */ }
+})();
+</script>
+</body>
+</html>
