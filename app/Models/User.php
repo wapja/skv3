@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Observers\UserActivityObserver;
 use App\Tenancy\Concerns\BelongsToOrganisation;
@@ -37,6 +38,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property int|null $organisation_id
  * @property bool $is_super_admin
  * @property UserStatus $status
+ * @property Locale $locale
  * @property Carbon|null $deleted_at
  * @property-read Organisation|null $organisation
  */
@@ -100,6 +102,7 @@ class User extends Authenticatable implements PasskeyUser
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
             'status' => UserStatus::class,
+            'locale' => Locale::class,
         ];
     }
 }

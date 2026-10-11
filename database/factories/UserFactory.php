@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
@@ -32,6 +33,7 @@ class UserFactory extends Factory
             'organisation_id' => Organisation::factory(),
             'is_super_admin' => false,
             'status' => UserStatus::Active,
+            'locale' => Locale::default(),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'password' => static::$password ??= Hash::make('password'),
