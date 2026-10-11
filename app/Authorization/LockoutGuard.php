@@ -17,8 +17,30 @@ use Illuminate\Validation\ValidationException;
  * deadlocking. Call inside the caller's transaction. pluck() instead of count() or exists(): PostgreSQL
  * refuses FOR UPDATE with aggregates and in EXISTS subqueries.
  */
-final class LockoutGuard
+final readonly class LockoutGuard
 {
+    public function __construct(private EffectivePermissions $effectivePermissions) {}
+
+    /**
+     * Both guards for removing an active user (disabling or deleting, W2, W12): the super-admin guard
+     * when $isSuperAdmin (the stored flag, FU2-5), and the organisation-admin guard of the target's team
+     * when the target holds the template there (by role id).
+     *
+     * @throws ValidationException
+     */
+    public function ensureAnotherActiveAdmin(User $target, bool $isSuperAdmin, string $field): void
+    {
+        if ($isSuperAdmin) {
+            $this->ensureAnotherActiveSuperAdmin($target, $field);
+        }
+
+        $teamId = $target->organisation_id;
+
+        if ($teamId !== null && $this->effectivePermissions->holdsTemplate([$target->id], $teamId) !== []) {
+            $this->ensureAnotherActiveOrganisationAdmin($target, $teamId, $field);
+        }
+    }
+
     /** @throws ValidationException */
     public function ensureAnotherActiveSuperAdmin(User $user, string $field): void
     {
