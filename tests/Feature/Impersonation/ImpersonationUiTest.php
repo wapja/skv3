@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Enums\UserStatus;
 use App\Livewire\Actions\Logout;
 use App\Models\Organisation;
 use App\Models\User;
@@ -147,6 +148,23 @@ it('stops the impersonation before signing out and leaves the target\'s remember
     expect(Impersonation::isActive())->toBeFalse()
         ->and(DB::table('users')->where('id', $member->id)->value('remember_token'))->toBe($rememberToken)
         ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('logout');
+});
+
+it('still signs the real user out when the impersonation stopped qualifying before the sign-out (RL-20)', function () use ($organisationAdmin): void {
+    // Fails before the fix: EnforceImpersonation ended the impersonation and redirected, so the sign-out never ran.
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    startImpersonatingOverHttp($admin, $member);
+    DB::table('users')->where('id', $member->id)->update(['status' => UserStatus::Disabled->value]);
+
+    $this->post(route('logout'))->assertRedirect();
+
+    $this->assertGuest();
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('target_unavailable')
+        ->and(recordedActivity(ActivityEvent::Logout)->sole()->causer_id)->toBe($admin->id);
 });
 
 it('stops the impersonation in the Logout action too (RK-M5)', function () use ($organisationAdmin): void {

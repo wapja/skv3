@@ -22,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
  * pair. Otherwise the impersonation ends, logged with the reason (module_disabled, impersonator_unavailable,
  * impersonator_credentials_changed, target_unavailable, target_credentials_changed, no_longer_allowed), and
  * the impersonator is back in their own account, or signed out when they no longer qualify themselves
- * (W3, RK-B4, RK-I1, RK-I2, RK-I3).
+ * (W3, RK-B4, RK-I1, RK-I2, RK-I3). A sign-out request then goes on, so it still signs the real user out.
  * Both users are read from the session through the unscoped provider; the guard is never asked.
  */
 final readonly class EnforceImpersonation
@@ -47,6 +47,11 @@ final readonly class EnforceImpersonation
         }
 
         $impersonator = $this->stopImpersonation->handle($reason);
+
+        // RL-20: signing out ends the impersonation and then signs the real user out, also when it ended here.
+        if ($request->routeIs('logout')) {
+            return $next($request);
+        }
 
         if (! $impersonator instanceof User) {
             return to_route('login')->with('status', __('The impersonation has ended. Sign in again.'));
