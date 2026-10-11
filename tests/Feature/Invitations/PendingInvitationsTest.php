@@ -143,6 +143,36 @@ it('shows the invite link only to users who could grant its roles and refuses a 
         ->assertSee($invitation->acceptUrl());
 });
 
+it('hides the invite link from a replayed snapshot that already holds the link id (RK-B3)', function () use ($adminOf, $invite): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = $invite($adminOf($organisation), $organisation, 'new-admin@example.com');
+    // May see the list, remind and assign roles, but lacks most organisation-admin permissions.
+    $helpdesk = User::factory()->for($organisation)->create();
+    $role = RoleModel::query()->create(['name' => 'helpdesk', 'guard_name' => 'web', 'team_id' => $organisation->id]);
+    $role->givePermissionTo([Permission::UsersView->value, Permission::UsersInviteResend->value, Permission::RolesAssign->value]);
+    withPermissionsTeam($organisation->id, fn () => $helpdesk->assignRole($role));
+    $helpdesk->unsetRelation('roles');
+    asOrgAdmin($organisation);
+
+    $shown = callPageAction(pageSnapshot(route('invitations.pending'), 'pages::invitations.pending'), 'showLink', [$invitation->id])
+        ->assertOk();
+    expect((string) $shown->json('components.0.effects.html'))->toContain('data-test="invite-link"', e($invitation->acceptUrl()));
+
+    /** @var array<string, mixed> $after */
+    $after = json_decode((string) $shown->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+    $this->actingAs($helpdesk);
+
+    $replayed = callPageAction($after, '$refresh')->assertOk();
+
+    /** @var array{data: array{showLinkModal: bool}} $returned */
+    $returned = json_decode((string) $replayed->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($returned['data']['showLinkModal'])->toBeTrue()
+        ->and((string) $replayed->json('components.0.effects.html'))
+        ->not->toContain('data-test="invite-link"')
+        ->not->toContain('/invitations/accept/');
+});
+
 it('refuses a forged id of another organisation\'s invitation', function (string $method) use ($adminOf, $invite): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $beta = Organisation::factory()->create(['slug' => 'beta']);
