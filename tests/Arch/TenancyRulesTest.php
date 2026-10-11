@@ -18,14 +18,14 @@ it('bypasses or removes the tenant scope only in the allowed places', function (
         fn (string $path): bool => ! Str::startsWith($path, $allowed),
     ));
 
-    // Removing TenantScope through Eloquent (by class, by name, by instance, through an aliased import, or by
-    // building a query without global scopes) reads across organisations just like a bypass, and suspending or
-    // resuming one changes the bypass state directly.
+    // Removing TenantScope through Eloquent (by class, by name, by instance, through an aliased import, by
+    // building a query without one or all global scopes, or by keeping only some of them) reads across
+    // organisations just like a bypass, and suspending or resuming one changes the bypass state directly.
     $pattern = '/Tenant::bypass\s*\(|->bypass\s*\(|\b(suspend|resume)Bypass\s*\('
         .'|withoutGlobalScope\s*\(\s*(\\\\?[\w\\\\]*\\\\)?TenantScope::class'
         .'|withoutGlobalScope\s*\(\s*[\'"](\\\\?[\w\\\\]*\\\\)?TenantScope[\'"]'
         .'|withoutGlobalScope\s*\(\s*new\s+(\\\\?[\w\\\\]*\\\\)?TenantScope\b'
-        .'|withoutGlobalScopes\s*\(|newQueryWithoutScopes\s*\(|newModelQuery\s*\('
+        .'|withoutGlobalScopes(Except)?\s*\(|newQueryWithoutScopes?\s*\(|newQueryForRestoration\s*\(|newModelQuery\s*\('
         .'|use\s+\\\\?App\\\\Tenancy\\\\Scopes\\\\TenantScope\s+as\s/';
 
     // FU3-16: the rule recognises every form it names, so it can fail.
@@ -39,6 +39,9 @@ it('bypasses or removes the tenant scope only in the allowed places', function (
         'User::withoutGlobalScope(new TenantScope);',
         'User::withoutGlobalScopes();',
         '(new User)->newQueryWithoutScopes();',
+        '(new User)->newQueryWithoutScope(TenantScope::class);',
+        '(new User)->newQueryForRestoration([1, 2]);',
+        'User::query()->withoutGlobalScopesExcept([]);',
         '(new User)->newModelQuery();',
         'use App\Tenancy\Scopes\TenantScope as Scope;',
     ];
