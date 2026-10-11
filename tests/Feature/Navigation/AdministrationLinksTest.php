@@ -94,3 +94,26 @@ it('shows the organisations link to organisation admins and super admins, not to
     onAdminHost();
     $this->get(route('dashboard'))->assertOk()->assertSee(route('organisations.index'), escape: false);
 });
+
+it('links to the roles page for actors who may view roles (ROLE-12)', function (string $actor, bool $linked): void {
+    $organisation = Organisation::factory()->create();
+
+    match ($actor) {
+        'member' => asMember($organisation),
+        'organisation admin' => asOrgAdmin($organisation),
+        default => asSuperAdmin(),
+    };
+
+    onTenant($organisation);
+    $response = $this->get(route('dashboard'))->assertOk();
+
+    if ($linked) {
+        $response->assertSee(route('roles.index'), false);
+    } else {
+        $response->assertDontSee(route('roles.index'), false);
+    }
+})->with([
+    'member' => ['member', false],
+    'organisation admin' => ['organisation admin', true],
+    'super admin' => ['super admin', true],
+]);

@@ -48,6 +48,9 @@ Route::middleware(['auth'])->group(function (): void {
         ->whereNumber('organisation')
         ->can(Permission::OrganisationsUpdate)
         ->name('organisations.edit');
+
+    // §4.6: any host. A tenant host shows its own team's roles; on central hosts only super admins get here.
+    Route::livewire('roles', 'pages::roles.index')->can(Permission::RolesView)->name('roles.index');
 });
 
 // §4.5 / §6.2: guests open the accept link, so it lives outside the auth group, on tenant hosts only.
