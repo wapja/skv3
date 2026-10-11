@@ -19,7 +19,8 @@ use Illuminate\Validation\ValidationException;
  * Soft-deletes a user (§4.4, DEC-26 (3)). delete is always checked, so nobody deletes themselves (W2).
  * Deleting an active user never removes the last active super admin or the last active organisation
  * admin, whoever asks (DEC-26 (10), W12). A pending user is removed by cancelling the invitation.
- * The user's sessions end and the remember token is cycled, so a restore revives neither (RL-28).
+ * The user's sessions end and the remember token is cycled, so a restore revives neither (RL-28); their reset
+ * links go too, because reset tokens are keyed by address and the address is free for another account now.
  * Every decision is taken on the stored row, never on a possibly stale model (FU2-5).
  */
 final readonly class DeleteUser
@@ -35,7 +36,7 @@ final readonly class DeleteUser
         Gate::forUser($actor)->authorize('delete', $target);
 
         DB::transaction(function () use ($actor, $target): void {
-            $stored = DB::table('users')->where('id', $target->id)->first(['status', 'is_super_admin', 'deleted_at']);
+            $stored = DB::table('users')->where('id', $target->id)->first(['email', 'status', 'is_super_admin', 'deleted_at']);
 
             if ($stored === null || $stored->deleted_at !== null) {
                 return;
@@ -50,6 +51,7 @@ final readonly class DeleteUser
             }
 
             Sessions::endFor([$target->id]);
+            DB::table('password_reset_tokens')->where('email', $stored->email)->delete();
             $target->forceFill(['remember_token' => null])->syncOriginalAttribute('remember_token');
             $target->delete();
 

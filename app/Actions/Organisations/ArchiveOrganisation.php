@@ -18,8 +18,9 @@ use Illuminate\Validation\ValidationException;
 /**
  * Archives (soft-deletes) an organisation in one transaction (§4.3, DEC-26 (10)): the observer cascades the
  * soft delete to the organisation's tenant rows and never archives a promoted super admin; the cascaded users
- * lose their sessions and remember tokens, so a later restore revives neither (RL-28); organisation.archived is
- * recorded. Super admins only (always checked).
+ * lose their sessions and remember tokens, so a later restore revives neither (RL-28), and their reset links,
+ * because reset tokens are keyed by address and the addresses are free for other accounts now;
+ * organisation.archived is recorded. Super admins only (always checked).
  */
 final readonly class ArchiveOrganisation
 {
@@ -36,19 +37,24 @@ final readonly class ArchiveOrganisation
         DB::transaction(function () use ($actor, $organisation): void {
             $locked = HostScope::lockForWrite($organisation);
 
-            // The users the cascade is about to archive, locked in id order (RL-27).
-            $userIds = array_values(DB::table('users')
+            // The users the cascade is about to archive, locked in id order (RL-27): id => email.
+            $users = DB::table('users')
                 ->where('organisation_id', $locked->id)
                 ->where('is_super_admin', false)
                 ->whereNull('deleted_at')
                 ->orderBy('id')
                 ->lockForUpdate()
-                ->pluck('id')
-                ->map(fn (mixed $id): int => (int) $id)
-                ->all());
+                ->pluck('email', 'id')
+                ->mapWithKeys(fn (mixed $email, mixed $id): array => [(int) $id => (string) $email])
+                ->all();
+            $userIds = array_keys($users);
 
             $locked->delete();
             Sessions::endFor($userIds);
+
+            if ($users !== []) {
+                DB::table('password_reset_tokens')->whereIn('email', array_values($users))->delete();
+            }
 
             $this->recordActivity->handle(ActivityEvent::OrganisationArchived, $locked, [
                 'name' => $locked->name,

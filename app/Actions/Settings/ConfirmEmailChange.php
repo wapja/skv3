@@ -42,8 +42,9 @@ final class ConfirmEmailChange
 
                 $user->forceFill(['email' => $email])->save();
 
-                // Reset links issued for the old address must not work any more.
-                DB::table('password_reset_tokens')->where('email', $previous)->delete();
+                // Reset links issued for the old address must not work any more, and reset tokens are keyed by
+                // address: one issued for the new address belongs to whoever held it before.
+                DB::table('password_reset_tokens')->whereIn('email', [$previous, $email])->delete();
             });
         } catch (UniqueConstraintViolationException) {
             // Another request took the address between validation and save (FU3-8).

@@ -19,8 +19,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * Cancels an open invitation (§4.5): the invitation is force-deleted (a tenant model with soft
  * deletes, so "hard delete" means forceDelete, C-8) and the pending user is soft-deleted, which
- * frees the address for a new invitation (INV-14) and keeps the user out of restore (C-9).
- * Refused once accepted.
+ * frees the address for a new invitation (INV-14) and keeps the user out of restore (C-9); the
+ * address's reset links go with the user. Refused once accepted.
  */
 final readonly class CancelInvitation
 {
@@ -50,6 +50,8 @@ final readonly class CancelInvitation
 
                 $locked->forceDelete();
                 $invitee->delete();
+                // The address is free for another account now, and reset tokens are keyed by address.
+                DB::table('password_reset_tokens')->where('email', $invitee->email)->delete();
 
                 $this->recordActivity->handle(ActivityEvent::InvitationCancelled, $invitee, [
                     'invitation_id' => $locked->id,

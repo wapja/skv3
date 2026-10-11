@@ -25,7 +25,8 @@ use Illuminate\Validation\ValidationException;
  * available (W9). Your own address changes only through the signed self-service link on the
  * profile page (E1), and a pending user's address only by cancelling and re-inviting. A changed
  * address applies at once: the old address loses its reset links and any pending self-service
- * change link (FU3-7) and gets a notice after commit (D-14). user.updated is recorded by
+ * change link (FU3-7) and gets a notice after commit (D-14); reset links issued for the new address
+ * belong to an earlier holder and go too. user.updated is recorded by
  * UserActivityObserver, not here.
  */
 final class UpdateUser
@@ -63,8 +64,9 @@ final class UpdateUser
                 $target->forceFill(['name' => $name, 'email' => $email])->save();
 
                 if ($changesEmail) {
-                    // Reset links issued for the old address must not work any more.
-                    DB::table('password_reset_tokens')->where('email', $previousEmail)->delete();
+                    // Reset links issued for the old address must not work any more, and reset tokens are keyed by
+                    // address: one issued for the new address belongs to whoever held it before.
+                    DB::table('password_reset_tokens')->whereIn('email', [$previousEmail, $email])->delete();
                 }
             });
         } catch (UniqueConstraintViolationException) {

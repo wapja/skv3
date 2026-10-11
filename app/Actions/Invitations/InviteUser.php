@@ -89,6 +89,9 @@ final readonly class InviteUser
             ],
         )->validate();
 
+        // Reset tokens are keyed by address: one issued for this address belongs to whoever held it before.
+        DB::table('password_reset_tokens')->where('email', $email)->delete();
+
         $invitee = new User;
         $invitee->forceFill([
             'organisation_id' => $organisation->id,
