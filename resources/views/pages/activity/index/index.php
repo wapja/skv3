@@ -133,10 +133,11 @@ new #[Title('Activity log')] class extends Component
         $names = $this->causerNames();
         $items = $this->activities()->items();
         $organisations = $this->organisationNames($items);
+        $members = $this->memberIdsAmong($this->userIdsOf($items));
         $rows = [];
 
         foreach ($items as $activity) {
-            $rows[] = $this->row($activity, $names, $organisations);
+            $rows[] = $this->row($activity, $names, $organisations, $members);
         }
 
         return $rows;
@@ -160,7 +161,9 @@ new #[Title('Activity log')] class extends Component
             return null;
         }
 
-        return $this->row($activity, UserNames::of($this->userIdsOf([$activity])), $this->organisationNames([$activity]));
+        $userIds = $this->userIdsOf([$activity]);
+
+        return $this->row($activity, UserNames::of($userIds), $this->organisationNames([$activity]), $this->memberIdsAmong($userIds));
     }
 
     /**
@@ -330,17 +333,23 @@ new #[Title('Activity log')] class extends Component
     }
 
     /**
-     * One entry as a display row.
+     * One entry as a display row. Platform staff show up in a tenant's log by name only (RL-7, RK-D1): an entry
+     * that names anyone other than this organisation's own users who are not super admins shows no IP address
+     * or user agent, and such a user's own field changes stay hidden.
      *
      * @param  array<int, string>  $names
      * @param  array<int, string>  $organisations
+     * @param  list<int>|null  $members  see memberIdsAmong()
      * @return array{id: int, when: string, event: string, event_key: string, causer: string, subject: string, organisation: string|null, changes: list<array{attribute: string, old: string, new: string}>, details: string|null, ip_address: string|null, user_agent: string|null, properties: string}
      */
-    private function row(Activity $activity, array $names, array $organisations): array
+    private function row(Activity $activity, array $names, array $organisations, ?array $members): array
     {
+        $hidesConnection = $members !== null && array_diff($this->userIdsOf([$activity]), $members) !== [];
+        $subjectId = $this->isUserType($activity->subject_type) ? (int) $activity->subject_id : null;
+        $hidesChanges = $members !== null && $subjectId !== null && ! in_array($subjectId, $members, true);
         $changes = [];
 
-        foreach ($activity->changeSummary() as $change) {
+        foreach ($hidesChanges ? [] : $activity->changeSummary() as $change) {
             $changes[] = [
                 'attribute' => $change['attribute'],
                 'old' => $this->displayValue($change['old']),
@@ -361,8 +370,8 @@ new #[Title('Activity log')] class extends Component
             'organisation' => $this->isCentral() ? $this->organisationLabel($activity->organisation_id, $organisations) : null,
             'changes' => $changes,
             'details' => $this->details($activity),
-            'ip_address' => $activity->ip_address,
-            'user_agent' => $activity->user_agent,
+            'ip_address' => $hidesConnection ? null : $activity->ip_address,
+            'user_agent' => $hidesConnection ? null : $activity->user_agent,
             'properties' => json_encode(
                 $activity->properties?->toArray() ?? [],
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
@@ -388,6 +397,31 @@ new #[Title('Activity log')] class extends Component
         }
 
         return array_values(array_unique(array_filter($ids, fn (?int $id): bool => $id !== null)));
+    }
+
+    /**
+     * On a tenant host, the ids among $ids of this organisation's own users who are not super admins, deleted
+     * ones included, read through the host scope; null on a central host, where every entry shows in full.
+     *
+     * @param  list<int>  $ids
+     * @return list<int>|null
+     */
+    private function memberIdsAmong(array $ids): ?array
+    {
+        if ($this->isCentral()) {
+            return null;
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return HostScope::read(fn (): array => array_values(User::withTrashed()
+            ->whereKey($ids)
+            ->where('is_super_admin', false)
+            ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all()));
     }
 
     /**

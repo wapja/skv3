@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.8, §6.2 */
 
 use App\Actions\Audit\RecordActivity;
+use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
 use App\Models\Activity;
 use App\Models\Organisation;
@@ -256,6 +257,68 @@ it('shows the changes and the reason, and every detail in the flyout', function 
         ->assertSee('203.0.113.9')
         ->assertSee('DetailAgent/1.0')
         ->assertSee(ActivityEvent::UserUpdated->value);
+});
+
+it('hides platform staff\'s IP address, user agent and own field changes from tenant viewers, not from central ones (RL-7)', function (): void {
+    // Fails before the fix: a super admin's entries on an organisation's host or data showed their IP address and
+    // user agent to that organisation's viewers. Names stay visible (RK-D1).
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $leaver = User::factory()->for($organisation)->create();
+    $promoted = User::factory()->for($organisation)->create();
+    app(SetSuperAdmin::class)->handle($promoted, true);
+    $superAdmin = User::factory()->superAdmin()->create();
+    $located = function (Activity $activity, string $ip): Activity {
+        $activity->forceFill(['ip_address' => $ip, 'user_agent' => 'Agent/'.$ip])->save();
+
+        return $activity;
+    };
+    $staffSignIn = $located(Tenant::run($organisation, fn (): Activity => app(RecordActivity::class)->handle(
+        ActivityEvent::Login,
+        $superAdmin,
+        causer: $superAdmin,
+        defaultCauser: false,
+    )), '198.51.100.11');
+    $staffEdit = $located(app(RecordActivity::class)->handle(
+        ActivityEvent::UserUpdated,
+        $member,
+        changes: ['old' => ['name' => 'Old Member Name'], 'attributes' => ['name' => 'New Member Name']],
+        causer: $superAdmin,
+        organisation: $organisation,
+        defaultCauser: false,
+    ), '198.51.100.22');
+    $staffChange = $located(app(RecordActivity::class)->handle(
+        ActivityEvent::UserUpdated,
+        $promoted,
+        changes: ['old' => ['email' => 'promoted-old@example.com'], 'attributes' => ['email' => 'promoted-new@example.com']],
+        organisation: $organisation,
+        defaultCauser: false,
+    ), '198.51.100.33');
+    $memberEntry = $located(app(RecordActivity::class)->handle(
+        ActivityEvent::UserUpdated,
+        $leaver,
+        causer: $leaver,
+        organisation: $organisation,
+        defaultCauser: false,
+    ), '203.0.113.44');
+    $leaver->delete();
+    asOrgAdmin($organisation);
+
+    $component = Livewire::test('pages::activity.index')
+        ->assertSee('New Member Name')
+        ->assertDontSee('promoted-new@example.com');
+
+    $component->call('showDetail', $staffSignIn->id)->assertDontSee('198.51.100.11')->assertDontSee('Agent/198.51.100.11');
+    $component->call('showDetail', $staffEdit->id)->assertDontSee('198.51.100.22')->assertSee('New Member Name');
+    $component->call('showDetail', $staffChange->id)->assertDontSee('198.51.100.33')->assertDontSee('promoted-old@example.com');
+    $component->call('showDetail', $memberEntry->id)->assertSee('203.0.113.44')->assertSee('Agent/203.0.113.44');
+
+    asSuperAdmin();
+    onAdminHost();
+
+    $central = Livewire::test('pages::activity.index')->assertSee('promoted-new@example.com');
+    $central->call('showDetail', $staffSignIn->id)->assertSee('198.51.100.11')->assertSee('Agent/198.51.100.11');
+    $central->call('showDetail', $staffChange->id)->assertSee('198.51.100.33')->assertSee('promoted-old@example.com');
 });
 
 it('answers 200 for a hostile query string', function (string $host) use ($record): void {
