@@ -16,6 +16,16 @@
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
+
+                @canany([\App\Authorization\Permission::UsersView])
+                    <flux:sidebar.group :heading="__('Administration')" class="grid">
+                        @can(\App\Authorization\Permission::UsersView)
+                            <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>
+                                {{ __('Users') }}
+                            </flux:sidebar.item>
+                        @endcan
+                    </flux:sidebar.group>
+                @endcanany
             </flux:sidebar.nav>
 
             <flux:spacer />

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Authorization\Permission;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -11,7 +12,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(['auth'])->group(function (): void {
-    // Admin pages are added here, one task at a time (users, invitations, organisations, roles, activity).
+    // Any host: on central hosts only super admins pass; the page reads users through HostScope (RL-8).
+    Route::livewire('users', 'pages::users.index')->can(Permission::UsersView)->name('users.index');
 });
 
 // Signed routes that guests open (invitations.accept, Task 11) go below, outside the auth group.
