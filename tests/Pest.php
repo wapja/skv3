@@ -242,3 +242,12 @@ function acceptLinkFor(Invitation $invitation): string
 {
     return $invitation->acceptUrl();
 }
+
+/**
+ * Turns the impersonation module on or off for the rest of the test (§6.8, RL-21). The CI job sqlite-free
+ * boots the suite with MODULE_IMPERSONATION=false, so every test that needs the module on calls this first.
+ */
+function useImpersonationModule(bool $enabled): void
+{
+    config(['skv.modules.impersonation' => $enabled]);
+}

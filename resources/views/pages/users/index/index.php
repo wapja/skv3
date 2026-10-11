@@ -250,7 +250,7 @@ new #[Title('Users')] class extends Component
     /**
      * The controls each row may show, from one batch evaluation of the policy rules (RL-26, RK-I6).
      *
-     * @return array<int, array{view: bool, update: bool, updateStatus: bool, delete: bool, restore: bool}>
+     * @return array<int, array{view: bool, update: bool, updateStatus: bool, delete: bool, restore: bool, impersonate: bool}>
      */
     #[Computed]
     public function rowAbilities(): array
@@ -258,7 +258,7 @@ new #[Title('Users')] class extends Component
         $users = new EloquentCollection($this->pageUsers()->items());
         $actor = $this->currentUser();
 
-        /** @var array<int, array{view: bool, update: bool, updateStatus: bool, delete: bool, restore: bool}> $abilities */
+        /** @var array<int, array{view: bool, update: bool, updateStatus: bool, delete: bool, restore: bool, impersonate: bool}> $abilities */
         $abilities = HostScope::read(fn (): array => app(UserAbilities::class)->forPage($actor, $users));
 
         return $abilities;

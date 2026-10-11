@@ -7,6 +7,7 @@ namespace App\Policies;
 use App\Authorization\Permission;
 use App\Authorization\UserAbilities;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 
 /**
  * §4.4, §4.6. view, update, updateStatus, delete and restore are decided by UserAbilities, the same
@@ -70,5 +71,17 @@ final readonly class UserPolicy
     public function updateSuperAdmin(User $actor, User $target): bool
     {
         return $actor->isSuperAdmin() && $actor->isNot($target);
+    }
+
+    /**
+     * Always checked (§4.7, RL-20): the module is on, this session is not impersonating already (depth 1)
+     * and the impersonation matrix allows the pair. Super admins are granted inside the matrix, because
+     * Gate::before skips this ability (FU2-2).
+     */
+    public function impersonate(User $actor, User $target): bool
+    {
+        return Impersonation::enabled()
+            && ! Impersonation::isActive()
+            && $this->abilities->mayImpersonate($actor, $target);
     }
 }
