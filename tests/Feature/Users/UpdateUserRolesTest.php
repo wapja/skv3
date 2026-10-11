@@ -161,3 +161,44 @@ it('restores the permissions team after refusing to demote the last admin from t
     expect(PermissionsTeam::current())->toBeNull()
         ->and(roleNamesOf($onlyAdmin, $organisation))->toBe(['organisation_admin']);
 });
+
+it('treats only the template role, by id, as organisation admin (FU2-4)', function (): void {
+    // Fails on main: a team role named organisation_admin counted as the template, so removing it
+    // from the last "admin" was refused although the organisation has no real organisation admin.
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $legacy = teamRole($organisation, 'organisation_admin');
+    withPermissionsTeam($organisation->id, fn (): User => $member->assignRole($legacy));
+    $member->unsetRelation('roles');
+    $superAdmin = asSuperAdmin();
+    onTenant($organisation);
+
+    app(UpdateUserRoles::class)->handle($superAdmin, $member, []);
+
+    expect(roleNamesOf($member, $organisation))->toBe([]);
+});
+
+it('refuses team roles named like a system role in any case or spacing (FU2-4, W6)', function (string $name): void {
+    // Fails on main: these team roles were assignable like any other.
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    // The admin gets the template first: assignRole('organisation_admin') looks roles up by name.
+    $admin = asOrgAdmin($organisation);
+    $lookalike = teamRole($organisation, $name);
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($admin, $member, [(int) $lookalike->id]))
+        ->toThrow(ValidationException::class, __('One or more roles are not available for this organisation.'));
+    expect(roleNamesOf($member, $organisation))->toBe([]);
+})->with(['organisation_admin', 'Organisation_Admin', ' super admin ', 'organisation-admin', 'SUPER_ADMIN']);
+
+it('ignores roles of another guard (FU2-4)', function (): void {
+    // Fails on main: the role was resolved and syncRoles() threw Spatie's GuardDoesNotMatch instead of a validation error.
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $apiRole = RoleModel::query()->create(['name' => 'api-editor', 'guard_name' => 'api', 'team_id' => $organisation->id]);
+    $admin = asOrgAdmin($organisation);
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($admin, $member, [(int) $apiRole->id]))
+        ->toThrow(ValidationException::class, __('One or more roles are not available for this organisation.'));
+    expect(roleNamesOf($member, $organisation))->toBe([]);
+});

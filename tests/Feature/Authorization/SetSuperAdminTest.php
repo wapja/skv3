@@ -7,6 +7,9 @@ declare(strict_types=1);
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Authorization\SyncPermissions;
+use App\Enums\ActivityEvent;
+use App\Enums\UserStatus;
+use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -85,4 +88,52 @@ it('repairs badge drift in permissions:sync', function (): void {
         ->and(badgeRows($flaggedWithoutBadge))->toBe([null])
         ->and(badgeRows($badgeWithoutFlag))->toBe([])
         ->and(badgeRows($badgeWithTeam))->toBe([null]);
+});
+
+it('decides on the locked row, not on a stale model (FU2-5)', function (): void {
+    // Fails on main: the stale instance still said "super admin", so the demotion ran the last-super-admin
+    // check again and refused, although the stored flag was already off.
+    $organisation = Organisation::factory()->create();
+    $keeper = User::factory()->superAdmin()->create();
+    app(SetSuperAdmin::class)->handle($keeper, true);
+    $promoted = User::factory()->for($organisation)->create();
+    app(SetSuperAdmin::class)->handle($promoted, true);
+    $stale = $promoted->fresh() ?? throw new LogicException('The promoted user is missing.');
+
+    app(SetSuperAdmin::class)->handle($promoted, false);
+    DB::table('users')->where('id', $keeper->id)->update(['status' => UserStatus::Disabled->value]);
+
+    app(SetSuperAdmin::class)->handle($stale, false);
+
+    expect($stale->fresh()?->isSuperAdmin())->toBeFalse()
+        ->and($stale->isSuperAdmin())->toBeFalse()
+        ->and(badgeRows($stale))->toBe([])
+        ->and(recordedActivity(ActivityEvent::SuperAdminRevoked))->toHaveCount(1);
+});
+
+it('attaches the badge even when the flag was already set, and records nothing (OR-I4)', function (): void {
+    $user = User::factory()->superAdmin()->create();
+    expect(badgeRows($user))->toBe([]);
+
+    app(SetSuperAdmin::class)->handle($user, true);
+
+    expect(badgeRows($user))->toBe([null])
+        ->and(recordedActivity(ActivityEvent::SuperAdminGranted))->toBeEmpty();
+});
+
+it('refuses to demote a promoted super admin while their organisation is archived (FU3-4)', function (): void {
+    // Fails on main: the demotion went through and left a member whose home host is an archived organisation.
+    $keeper = User::factory()->superAdmin()->create();
+    app(SetSuperAdmin::class)->handle($keeper, true);
+    $organisation = Organisation::factory()->create();
+    $promoted = User::factory()->for($organisation)->create();
+    app(SetSuperAdmin::class)->handle($promoted, true);
+    $organisation->delete();
+
+    expect(fn () => app(SetSuperAdmin::class)->handle($promoted, false))
+        ->toThrow(ValidationException::class, __('Restore the organisation before removing super admin.'));
+
+    expect($promoted->fresh()?->isSuperAdmin())->toBeTrue()
+        ->and(badgeRows($promoted))->toBe([null])
+        ->and(recordedActivity(ActivityEvent::SuperAdminRevoked))->toBeEmpty();
 });
