@@ -21,7 +21,7 @@ function matrixRoutes(): array
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
         'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
         'users.invite', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
-        'roles.index',
+        'roles.index', 'activity.index',
     ];
 }
 
@@ -52,7 +52,7 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
         $route === 'security.edit' => 'confirm',
         $actor === 'member' && in_array($route, [
             'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
-            'organisations.edit', 'roles.index',
+            'organisations.edit', 'roles.index', 'activity.index',
         ], true) => 'forbidden',                          // the matrix member holds no permission
         default => 'ok',
     };

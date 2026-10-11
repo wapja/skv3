@@ -40,6 +40,30 @@ class Activity extends VendorActivity
         return $this->event === null ? null : ActivityEvent::tryFrom($this->event);
     }
 
+    /**
+     * The recorded diff as one row per attribute, for the viewer (§4.8). Attributes present on
+     * only one side get null on the other.
+     *
+     * @return list<array{attribute: string, old: mixed, new: mixed}>
+     */
+    public function changeSummary(): array
+    {
+        $changes = $this->attribute_changes?->toArray() ?? [];
+        $old = is_array($changes['old'] ?? null) ? $changes['old'] : [];
+        $new = is_array($changes['attributes'] ?? null) ? $changes['attributes'] : [];
+        $summary = [];
+
+        foreach (array_unique([...array_keys($old), ...array_keys($new)]) as $attribute) {
+            $summary[] = [
+                'attribute' => (string) $attribute,
+                'old' => $old[$attribute] ?? null,
+                'new' => $new[$attribute] ?? null,
+            ];
+        }
+
+        return $summary;
+    }
+
     /** Central events (super admins on the admin host, failed sign-ins on the apex) have no organisation. */
     public function mayExistWithoutOrganisation(): bool
     {

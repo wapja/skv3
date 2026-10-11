@@ -117,3 +117,26 @@ it('links to the roles page for actors who may view roles (ROLE-12)', function (
     'organisation admin' => ['organisation admin', true],
     'super admin' => ['super admin', true],
 ]);
+
+it('links to the activity log for actors who may view it (AUD-3)', function (string $actor, bool $linked): void {
+    $organisation = Organisation::factory()->create();
+
+    match ($actor) {
+        'member' => asMember($organisation),
+        'organisation admin' => asOrgAdmin($organisation),
+        default => asSuperAdmin(),
+    };
+
+    onTenant($organisation);
+    $response = $this->get(route('dashboard'))->assertOk();
+
+    if ($linked) {
+        $response->assertSee(route('activity.index'), false);
+    } else {
+        $response->assertDontSee(route('activity.index'), false);
+    }
+})->with([
+    'member' => ['member', false],
+    'organisation admin' => ['organisation admin', true],
+    'super admin' => ['super admin', true],
+]);
