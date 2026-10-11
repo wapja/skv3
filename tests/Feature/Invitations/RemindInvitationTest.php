@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
+use Livewire\Livewire;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mime\Email;
 
@@ -143,6 +144,40 @@ it('refuses another organisation\'s admin', function (): void {
 
     expect(fn () => app(RemindInvitation::class)->handle($betaAdmin, $invitation))->toThrow(AuthorizationException::class);
 });
+
+it('refuses a same-organisation user without users.invite.resend and sends nothing', function () use ($queuedReminders): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = inviteMember($organisation);
+    $member = asMember($organisation);
+    $this->travel(8)->days();
+
+    expect(fn () => app(RemindInvitation::class)->handle($member, $invitation))->toThrow(AuthorizationException::class);
+    expect($invitation->refresh()->reminder_sent_at)->toBeNull()
+        ->and($invitation->isExpired())->toBeTrue()
+        ->and($queuedReminders())->toBe(0);
+});
+
+it('refuses a forged resend on the accept page from a guest or a member (INV-11)', function (string $visitor) use ($queuedReminders): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = inviteMember($organisation);
+    $token = $invitation->token ?? throw new LogicException('The invitation keeps no token.');
+
+    if ($visitor === 'member') {
+        asMember($organisation);
+    } else {
+        onTenant($organisation);
+    }
+
+    $this->travel(8)->days();
+
+    Livewire::test('pages::invitations.accept', ['token' => $token])
+        ->call('resend')
+        ->assertForbidden();
+
+    expect($invitation->refresh()->reminder_sent_at)->toBeNull()
+        ->and($invitation->isExpired())->toBeTrue()
+        ->and($queuedReminders())->toBe(0);
+})->with(['guest', 'member']);
 
 it('records invitation.reminder_sent', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);

@@ -75,6 +75,25 @@ it('shows the expired page after the domain expiry and answers 403 after the sig
     $this->get($link)->assertForbidden();
 });
 
+it('refuses a forged accept on an expired invitation within the signature grace (INV-4)', function () use ($tokenOf): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = inviteMember($organisation);
+    onTenant($organisation);
+    $this->travel(8)->days();
+
+    // The page still mounts in the grace window and Livewire updates skip the signature, so the action's re-check decides.
+    Livewire::test('pages::invitations.accept', ['token' => $tokenOf($invitation)])
+        ->set('name', 'Mallory')
+        ->set('password', 'secret-password')
+        ->set('password_confirmation', 'secret-password')
+        ->call('accept')
+        ->assertHasErrors(['invitation' => __('This invitation has expired.')]);
+
+    expect(User::query()->findOrFail($invitation->user_id)->status)->toBe(UserStatus::PendingActivation)
+        ->and($invitation->refresh()->accepted_at)->toBeNull();
+    $this->assertGuest();
+});
+
 it('shows "already accepted — please log in" for an accepted invitation (W5)', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $invitation = inviteMember($organisation);
