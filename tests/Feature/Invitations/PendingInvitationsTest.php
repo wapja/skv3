@@ -112,6 +112,30 @@ it('reminds and cancels from the list', function () use ($invite): void {
         ->and(User::withTrashed()->find($second->user_id)?->trashed())->toBeTrue();
 });
 
+it('reminds from the list as a super admin on a central host, with one reminder mail (§6.2)', function (string $host) use ($adminOf, $invite): void {
+    // Fails before the fix: the action reloaded the invitation's user after the tenant was released, so the request
+    // answered 500 after the reminder was saved and queued, and a retry sent it again.
+    config(['queue.default' => 'database']);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = $invite($adminOf($organisation), $organisation, 'invitee@example.com');
+    DB::table('jobs')->delete();
+    asSuperAdmin();
+
+    if ($host === 'admin') {
+        onAdminHost();
+    } else {
+        onApex();
+    }
+
+    Livewire::test('pages::invitations.pending')
+        ->call('remind', $invitation->id)
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show');
+
+    expect(DB::table('invitations')->where('id', $invitation->id)->value('reminder_sent_at'))->not->toBeNull()
+        ->and(DB::table('jobs')->pluck('payload')->filter(fn (mixed $payload): bool => str_contains((string) $payload, 'InvitationReminderMail'))->count())->toBe(1);
+})->with(['admin', 'apex']);
+
 it('shows the invite link only to users who could grant its roles and refuses a forged showLink (INV-16, RK-B3)', function () use ($adminOf, $invite): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $invitation = $invite($adminOf($organisation), $organisation, 'new-admin@example.com');

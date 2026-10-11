@@ -60,9 +60,11 @@ final readonly class RemindInvitation
                 ], causer: $actor);
 
                 Mail::to($invitee->email)->locale($invitee->locale->value)->queue(new InvitationReminderMail($locked));
+
+                // The caller's model gets the stored values here: a refresh() after Tenant::run() would reload its
+                // loaded relations without a tenant, which fails on central hosts after the reminder went out.
+                $invitation->setRawAttributes($locked->getAttributes(), true);
             });
         });
-
-        $invitation->refresh();
     }
 }
