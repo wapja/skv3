@@ -66,7 +66,11 @@
 
                 <flux:table.row :key="$user->id" data-test="user-row">
                     <flux:table.cell variant="strong">
-                        <div>{{ $user->name }}</div>
+                        @if ($abilities['view'] && $this->view !== 'archived')
+                            <flux:link :href="route('users.edit', ['user' => $user->id])" wire:navigate>{{ $user->name }}</flux:link>
+                        @else
+                            <div>{{ $user->name }}</div>
+                        @endif
                         <flux:text size="sm">{{ $user->email }}</flux:text>
                     </flux:table.cell>
 

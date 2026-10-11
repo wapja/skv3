@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use App\Models\Organisation;
+use App\Models\User;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
 
@@ -18,7 +19,7 @@ function matrixRoutes(): array
 {
     return [
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
-        'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index',
+        'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
     ];
 }
 
@@ -42,13 +43,27 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
         },
         ! $signedIn => 'login',
         $route === 'security.edit' => 'confirm',
-        $actor === 'member' && $route === 'users.index' => 'forbidden', // the matrix member holds no permission
+        $actor === 'member' && in_array($route, ['users.index', 'users.edit'], true) => 'forbidden', // the matrix member holds no permission
         default => 'ok',
+    };
+}
+
+/**
+ * Route parameters for parameter pages (RL-10), created before the host switch (strict mode).
+ *
+ * @return array<string, int>
+ */
+function matrixParameters(string $route, Organisation $organisation): array
+{
+    return match ($route) {
+        'users.edit' => ['user' => User::factory()->for($organisation)->create()->id],
+        default => [],
     };
 }
 
 it('answers every route on every host for every role', function (string $route, string $actor, string $host): void {
     $organisation = Organisation::factory()->create();
+    $parameters = matrixParameters($route, $organisation);
 
     match ($actor) {
         'member' => asMember($organisation),
@@ -63,7 +78,7 @@ it('answers every route on every host for every role', function (string $route, 
         default => onAdminHost(),
     };
 
-    $response = $this->get(route($route));
+    $response = $this->get(route($route, $parameters));
 
     match (routeMatrixOutcome($route, $actor, $host)) {
         'ok' => $response->assertOk(),

@@ -17,11 +17,11 @@ use Livewire\Component;
 trait ConfirmsPasswords
 {
     /**
-     * Send the user to the password confirmation screen, and back to the security page afterwards, when
-     * their last confirmation is older than `auth.password_timeout`. True means the action must stop.
-     * The way back is fixed: the Referer of a Livewire update is client input.
+     * Send the user to the password confirmation screen when their last confirmation is older than
+     * `auth.password_timeout`, and back to $returnTo (the security page by default) afterwards. True means
+     * the action must stop. Callers build $returnTo themselves: the Referer of a Livewire update is client input.
      */
-    protected function passwordConfirmationRequired(): bool
+    protected function passwordConfirmationRequired(?string $returnTo = null): bool
     {
         $confirmedAt = (int) session('auth.password_confirmed_at', 0);
 
@@ -29,7 +29,7 @@ trait ConfirmsPasswords
             return false;
         }
 
-        redirect()->setIntendedUrl(route('security.edit'));
+        redirect()->setIntendedUrl($returnTo ?? route('security.edit'));
         $this->redirectRoute('password.confirm');
 
         return true;
