@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Actions\Users\DeleteUser;
 use App\Actions\Users\RestoreUser;
 use App\Actions\Users\UpdateUserStatus;
+use App\Authorization\Permission;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role as RoleModel;
 
 /**
  * The validation errors an action throws, or [] when it succeeds.
@@ -118,6 +120,54 @@ it('refuses to disable or delete yourself (W2, W12)', function () use ($adminOf)
             ->and($actor->trashed())->toBeFalse();
     }
 });
+
+it('re-authorises every action: another organisation\'s admin, a member without the permission and a role that does not cover the target are refused (DEC-26 (11), RL-26)', function (string $actorKind, string $action) use ($adminOf): void {
+    $organisation = Organisation::factory()->create();
+    // Two active organisation admins, so only the policy can refuse, never the lock-out guard (W12).
+    $targetAdmin = $adminOf($organisation, User::factory()->for($organisation)->create());
+    $adminOf($organisation, User::factory()->for($organisation)->create());
+    $plainMember = User::factory()->for($organisation)->create();
+
+    [$actor, $target] = match ($actorKind) {
+        'another organisation\'s admin' => [asOrgAdmin(Organisation::factory()->create()), $plainMember],
+        'member without the permission' => [asMember($organisation), $plainMember],
+        default => (function () use ($organisation, $targetAdmin): array {
+            // users.update and users.delete, but not the organisation admin's other permissions (subset rule).
+            $helpdesk = RoleModel::query()->create(['name' => 'helpdesk', 'guard_name' => 'web', 'team_id' => $organisation->id]);
+            $helpdesk->givePermissionTo([Permission::UsersView->value, Permission::UsersUpdate->value, Permission::UsersDelete->value]);
+            $actor = asMember($organisation);
+            withPermissionsTeam($organisation->id, fn (): User => $actor->assignRole($helpdesk));
+            $actor->unsetRelation('roles');
+
+            return [$actor, $targetAdmin];
+        })(),
+    };
+
+    if ($action === 'restore') {
+        $target->delete();
+    }
+
+    $before = (array) DB::table('users')->where('id', $target->id)->first();
+
+    expect(fn () => match ($action) {
+        'disable' => app(UpdateUserStatus::class)->handle($actor, $target, UserStatus::Disabled),
+        'delete' => app(DeleteUser::class)->handle($actor, $target),
+        default => app(RestoreUser::class)->handle($actor, $target),
+    })->toThrow(AuthorizationException::class);
+
+    $event = match ($action) {
+        'disable' => ActivityEvent::UserStatusChanged,
+        'delete' => ActivityEvent::UserDeleted,
+        default => ActivityEvent::UserRestored,
+    };
+
+    expect((array) DB::table('users')->where('id', $target->id)->first())->toBe($before)
+        ->and(recordedActivity($event))->toBeEmpty();
+})->with([
+    'another organisation\'s admin',
+    'member without the permission',
+    'role that does not cover an organisation admin',
+])->with(['disable', 'delete', 'restore']);
 
 it('never sets pending activation and never changes a pending user\'s status (W4, USR-13)', function () use ($errorsOf): void {
     $organisation = Organisation::factory()->create();
