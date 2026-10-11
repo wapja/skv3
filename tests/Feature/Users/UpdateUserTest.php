@@ -9,6 +9,7 @@ use App\Actions\Settings\RequestEmailChange;
 use App\Actions\Users\UpdateUser;
 use App\Authorization\Permission;
 use App\Authorization\Role;
+use App\Authorization\SetSuperAdmin;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\EmailChangedByAdministrator;
@@ -66,18 +67,19 @@ it('accepts an address that only a deleted user holds (W9)', function (): void {
 it('answers a generic message for an address used in another organisation or by a super admin (W9)', function (string $holder) use ($errorsOf): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create(['email' => 'member@example.com']);
-    if ($holder === 'super admin') {
-        User::factory()->superAdmin()->create(['email' => 'taken@example.com']);
-    } else {
-        User::factory()->create(['email' => 'taken@example.com']);
-    }
+    match ($holder) {
+        'super admin' => User::factory()->superAdmin()->create(['email' => 'taken@example.com']),
+        // SetSuperAdmin keeps the organisation, so only the super admin flag hides this holder.
+        'promoted super admin' => app(SetSuperAdmin::class)->handle(User::factory()->for($organisation)->create(['email' => 'taken@example.com']), true),
+        default => User::factory()->create(['email' => 'taken@example.com']),
+    };
 
     $admin = asOrgAdmin($organisation);
 
     expect($errorsOf(fn () => app(UpdateUser::class)->handle($admin, $member, $member->name, 'taken@example.com')))
         ->toBe(['email' => [__('This address can\'t be used.')]])
         ->and($member->refresh()->email)->toBe('member@example.com');
-})->with(['another organisation', 'super admin']);
+})->with(['another organisation', 'super admin', 'promoted super admin']);
 
 it('names the conflict for an address used in the own organisation', function () use ($errorsOf): void {
     $organisation = Organisation::factory()->create();
