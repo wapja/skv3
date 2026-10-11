@@ -20,7 +20,7 @@ function matrixRoutes(): array
     return [
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
         'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
-        'users.invite', 'invitations.pending', 'organisations.index',
+        'users.invite', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
     ];
 }
 
@@ -28,7 +28,7 @@ dataset('matrix routes', matrixRoutes());
 dataset('matrix actors', ['guest', 'member', 'organisation admin', 'super admin']);
 dataset('matrix hosts', ['tenant', 'apex', 'admin']);
 
-/** @return 'ok'|'login'|'dashboard'|'confirm'|'forbidden'|'organisations' */
+/** @return 'ok'|'login'|'dashboard'|'confirm'|'forbidden'|'organisations'|'not found' */
 function routeMatrixOutcome(string $route, string $actor, string $host): string
 {
     $signedIn = $actor !== 'guest';
@@ -47,9 +47,11 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
             default => 'ok',
         },
         ! $signedIn => 'login',
+        $route === 'organisations.create' && $host === 'tenant' => 'not found', // central page; host before can:
         $route === 'security.edit' => 'confirm',
         $actor === 'member' && in_array($route, [
             'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
+            'organisations.edit',
         ], true) => 'forbidden',                          // the matrix member holds no permission
         default => 'ok',
     };
@@ -64,6 +66,7 @@ function matrixParameters(string $route, Organisation $organisation): array
 {
     return match ($route) {
         'users.edit' => ['user' => User::factory()->for($organisation)->create()->id],
+        'organisations.edit' => ['organisation' => $organisation->id],
         default => [],
     };
 }
@@ -94,6 +97,7 @@ it('answers every route on every host for every role', function (string $route, 
         'confirm' => $response->assertRedirect(route('password.confirm')),
         'forbidden' => $response->assertForbidden(),
         'organisations' => $response->assertRedirect(route('organisations.index')),
+        'not found' => $response->assertNotFound(),
     };
 })->with('matrix routes')->with('matrix actors')->with('matrix hosts');
 

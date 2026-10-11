@@ -4,6 +4,14 @@
             <flux:heading size="xl" level="1">{{ __('Organisations') }}</flux:heading>
             <flux:subheading size="lg">{{ __('Organisations and their addresses') }}</flux:subheading>
         </div>
+
+        @if ($this->onCentralHost)
+            @can(\App\Authorization\Permission::OrganisationsCreate)
+                <flux:button variant="primary" icon="plus" :href="route('organisations.create')" wire:navigate data-test="new-organisation-button">
+                    {{ __('New organisation') }}
+                </flux:button>
+            @endcan
+        @endif
     </div>
 
     <flux:separator variant="subtle" class="my-6" />
@@ -65,6 +73,11 @@
                                         </flux:button>
                                     @endcan
                                 @endif
+                                @can('update', $organisation)
+                                    <flux:button size="sm" variant="ghost" icon="pencil-square" :href="route('organisations.edit', $organisation->id)" wire:navigate data-test="edit-organisation-{{ $organisation->id }}">
+                                        {{ __('Edit') }}
+                                    </flux:button>
+                                @endcan
                                 @can('delete', $organisation)
                                     <flux:button size="sm" variant="ghost" icon="archive-box" wire:click="confirmArchive({{ $organisation->id }})" data-test="archive-organisation-{{ $organisation->id }}">
                                         {{ __('Archive') }}

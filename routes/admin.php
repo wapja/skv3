@@ -35,6 +35,19 @@ Route::middleware(['auth'])->group(function (): void {
     Route::livewire('organisations', 'pages::organisations.index')
         ->can(Permission::OrganisationsView)
         ->name('organisations.index');
+
+    // §4.3: the wizard is a platform action, on the apex and the admin host only (a tenant host answers 404).
+    Route::central(function (): void {
+        Route::livewire('organisations/create', 'pages::organisations.create')
+            ->can(Permission::OrganisationsCreate)
+            ->name('organisations.create');
+    });
+
+    // Any host; the page resolves the id per request inside the host's scope (OR-M5).
+    Route::livewire('organisations/{organisation}/edit', 'pages::organisations.edit')
+        ->whereNumber('organisation')
+        ->can(Permission::OrganisationsUpdate)
+        ->name('organisations.edit');
 });
 
 // §4.5 / §6.2: guests open the accept link, so it lives outside the auth group, on tenant hosts only.
