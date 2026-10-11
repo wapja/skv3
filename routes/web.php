@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
@@ -53,3 +54,8 @@ Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
 
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
+
+// §6.8: the optional impersonation module registers its routes only while it is on.
+if (Impersonation::enabled()) {
+    require __DIR__.'/impersonation.php';
+}

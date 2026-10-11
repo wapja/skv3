@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Actions\Invitations\InviteUser;
+use App\Actions\Users\StartImpersonation;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
@@ -17,8 +18,12 @@ use App\Tenancy\Hosts;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Routing\RouteCollection;
+use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -29,6 +34,7 @@ use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\get;
+use function Pest\Laravel\post;
 use function Pest\Laravel\postJson;
 
 /*
@@ -244,10 +250,59 @@ function acceptLinkFor(Invitation $invitation): string
 }
 
 /**
- * Turns the impersonation module on or off for the rest of the test (§6.8, RL-21). The CI job sqlite-free
- * boots the suite with MODULE_IMPERSONATION=false, so every test that needs the module on calls this first.
+ * Turns the impersonation module on or off for the rest of the test (§6.8, RL-21): the flag, and the
+ * module's routes as routes/web.php registers them at boot for that value. The CI job sqlite-free boots
+ * the suite with MODULE_IMPERSONATION=false, so every test that needs the module on calls this first.
+ * RouteCollection has no remove API, so "off" swaps in a copy without the impersonation.* routes.
  */
 function useImpersonationModule(bool $enabled): void
 {
     config(['skv.modules.impersonation' => $enabled]);
+
+    $router = app(Router::class);
+
+    if ($enabled && ! $router->getRoutes()->hasNamedRoute('impersonation.stop')) {
+        Route::middleware('web')->group(base_path('routes/impersonation.php'));
+    }
+
+    if (! $enabled) {
+        $kept = new RouteCollection;
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            if (! str_starts_with((string) $route->getName(), 'impersonation.')) {
+                $kept->add($route);
+            }
+        }
+
+        $router->setRoutes($kept);
+    }
+
+    $router->getRoutes()->refreshNameLookups();
+    $router->getRoutes()->refreshActionLookups();
+}
+
+/**
+ * Signs $impersonator in through the login route on the current (tenant) host and starts impersonating
+ * $target in a real web request, so the swap runs the whole web middleware stack (§4.7). The guard's
+ * cached user is dropped before and after each request, as a new request in production would (RK-I9).
+ */
+function startImpersonatingOverHttp(User $impersonator, User $target, string $reason = 'Support ticket'): void
+{
+    Route::middleware(['web', 'auth'])->post('_start-impersonating', function () use ($target, $reason): string {
+        $actor = Auth::user();
+
+        if (! $actor instanceof User) {
+            throw new LogicException('Nobody is signed in.');
+        }
+
+        app(StartImpersonation::class)->handle($actor, $target, $reason);
+
+        return 'impersonating';
+    });
+
+    Auth::guard('web')->forgetUser();
+    post(route('login.store'), ['email' => $impersonator->email, 'password' => 'password'])->assertRedirect();
+    Auth::guard('web')->forgetUser();
+    post('/_start-impersonating')->assertOk();
+    Auth::guard('web')->forgetUser();
 }

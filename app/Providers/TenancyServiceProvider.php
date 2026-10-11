@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Tenancy\Auth\HostLoginRule;
+use App\Tenancy\Auth\ImpersonationAwareSessionHandler;
 use App\Tenancy\Auth\UnscopedPasskey;
 use App\Tenancy\Auth\UnscopedTwoFactorLoginRequest;
 use App\Tenancy\Auth\UnscopedUserProvider;
@@ -33,10 +34,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Fortify\Http\Requests\TwoFactorLoginRequest;
 use Laravel\Passkeys\Passkeys;
 use Livewire\Livewire;
+use SessionHandlerInterface;
 
 final class TenancyServiceProvider extends ServiceProvider
 {
@@ -91,5 +94,13 @@ final class TenancyServiceProvider extends ServiceProvider
 
         // Re-applied on the Livewire update request for components mounted on these routes (FQCN required).
         Livewire::addPersistentMiddleware([EnsureTenantHost::class, EnsureCentralHost::class]);
+
+        // §4.7 / RL-28: the database driver writes the impersonator, not the impersonated user, into sessions.user_id.
+        Session::extend('database', fn (Application $app): SessionHandlerInterface => new ImpersonationAwareSessionHandler(
+            $app->make('db')->connection(config('session.connection')),
+            (string) config('session.table'),
+            (int) config('session.lifetime'),
+            $app,
+        ));
     }
 }

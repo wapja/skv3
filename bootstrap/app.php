@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use App\Tenancy\Exceptions\TenantNotFoundException;
+use App\Tenancy\Http\Middleware\EnforceImpersonation;
 use App\Tenancy\Http\Middleware\EnsureCentralHost;
 use App\Tenancy\Http\Middleware\EnsureTenantHost;
 use App\Tenancy\Http\Middleware\InitializeTenancy;
 use App\Tenancy\Http\Middleware\VerifyTenantMembership;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,12 +25,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [VerifyTenantMembership::class, AuthenticateSession::class], prepend: [InitializeTenancy::class]);
+        $middleware->web(
+            append: [EnforceImpersonation::class, VerifyTenantMembership::class, AuthenticateSession::class],
+            prepend: [InitializeTenancy::class],
+        );
         // Before route-model binding (and so before can:): a tenant model bound on the wrong host
         // gives a 404, not a strict-mode error.
         $middleware->prependToPriorityList(SubstituteBindings::class, VerifyTenantMembership::class);
         $middleware->prependToPriorityList(SubstituteBindings::class, EnsureTenantHost::class);
         $middleware->prependToPriorityList(SubstituteBindings::class, EnsureCentralHost::class);
+        // §4.7 / RL-20: a running impersonation is re-checked from the session before Authenticate (or anything
+        // else) resolves the signed-in user, so a gone target never falls back to a remember-me sign-in.
+        $middleware->prependToPriorityList(AuthenticatesRequests::class, EnforceImpersonation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontReport([TenantNotFoundException::class]);

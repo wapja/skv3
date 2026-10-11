@@ -41,6 +41,8 @@ class UserFactory extends Factory
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
+            // Set explicitly so trashed() works in strict mode on a user that actingAs() marked as not recently created.
+            'deleted_at' => null,
         ];
     }
 

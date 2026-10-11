@@ -7,6 +7,7 @@ namespace App\Actions\Auth;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Hosts;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Str;
@@ -32,6 +33,12 @@ final class IssueHandoff
      */
     public function handle(User $user, string $targetHost, string $path = '/dashboard'): string
     {
+        // A handoff carries the signed-in identity into a clean session on another host; while impersonating
+        // that identity is borrowed (RL-20).
+        if (Impersonation::isActive()) {
+            throw new AuthorizationException('No handoff can be issued while impersonating.');
+        }
+
         $targetHost = Str::lower($targetHost);
 
         if (! str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '\\')) {

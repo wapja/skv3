@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
+use App\Actions\Users\StopImpersonation;
 use App\Events\HandoffConsumed;
 use App\Http\Controllers\Controller;
 use App\Models\HandoffToken;
 use App\Models\User;
 use App\Tenancy\Auth\HostLoginRule;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Hosts;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,9 +23,13 @@ use Illuminate\Support\Str;
  * for, already signed in here, just continues: no new sign-in, so the session and the remember token stay
  * as they are. A different signed-in user is asked first, and only the CSRF-protected confirmation POST
  * replaces this browser's session; a GET never replaces another user's session (FU3-2, RL-22).
+ * An impersonating session is always asked first, and consuming ends the impersonation (logged) before
+ * the sign-in (RL-20).
  */
 final class HandoffController extends Controller
 {
+    public function __construct(private readonly StopImpersonation $stopImpersonation) {}
+
     public function show(Request $request, HostLoginRule $rule, string $token): RedirectResponse|Response
     {
         $handoff = $this->usableHandoff($request, $token);
@@ -35,7 +41,7 @@ final class HandoffController extends Controller
 
         $current = $request->user();
 
-        if ($current instanceof User && ! $current->is($user)) {
+        if ($current instanceof User && (! $current->is($user) || Impersonation::isActive())) {
             return response()
                 ->view('pages::auth.handoff-confirm', [
                     'currentName' => $current->name,
@@ -70,9 +76,14 @@ final class HandoffController extends Controller
             return $this->refuse();
         }
 
+        // RL-20: a running impersonation ends (logged) before the session is replaced, and never takes the
+        // same-user shortcut below.
+        $wasImpersonating = Impersonation::isActive();
+        $this->stopImpersonation->handle('handoff');
+
         $current = $request->user();
 
-        if (! $current instanceof User || ! $current->is($user)) {
+        if ($wasImpersonating || ! $current instanceof User || ! $current->is($user)) {
             $this->signIn($request, $user);
         }
 

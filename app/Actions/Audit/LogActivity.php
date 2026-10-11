@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Actions\Audit;
 
 use App\Enums\ActivityEvent;
+use App\Models\Activity;
 use App\Models\Organisation;
+use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\CurrentTenant;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Actions\LogActivityAction;
@@ -33,6 +36,8 @@ final class LogActivity extends LogActivityAction
                 'user_agent' => $request->userAgent(),
             ]);
         }
+
+        $this->rewriteImpersonatedCauser($activity);
     }
 
     private function organisationIdFor(Model $activity): ?int
@@ -50,6 +55,35 @@ final class LogActivity extends LogActivityAction
         }
 
         return $this->subjectOrganisationId($activity) ?? $boundId;
+    }
+
+    /**
+     * While this session impersonates, an entry caused by the impersonated user is caused by the real user
+     * and records the impersonated user's id as impersonated_as (§4.7, IMP-6). Another explicit causer is
+     * kept. Independent of the module flag, like Impersonation::isActive() (RK-I3).
+     */
+    private function rewriteImpersonatedCauser(Model $activity): void
+    {
+        if (! $activity instanceof Activity || ! Impersonation::isActive()) {
+            return;
+        }
+
+        $targetId = Impersonation::targetId();
+
+        if ($targetId === null
+            || $activity->causer_type !== (new User)->getMorphClass()
+            || $activity->causer_id !== $targetId) {
+            return;
+        }
+
+        $impersonator = Impersonation::impersonator();
+
+        if (! $impersonator instanceof User) {
+            return;
+        }
+
+        $activity->causer()->associate($impersonator);
+        $activity->properties = collect([...($activity->properties?->all() ?? []), 'impersonated_as' => $targetId]);
     }
 
     /** The subject was associated by RecordActivity, so reading it never queries. */
