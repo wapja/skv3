@@ -41,7 +41,7 @@ final class RequestEmailChange
             return;
         }
 
-        Validator::make(['email' => $email], ['email' => $this->emailRules($user->id)])->validate();
+        Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();
 
         $nonce = Str::random(40);
         Cache::put(self::cacheKey($user), hash('sha256', $nonce.'|'.$email), now()->addMinutes(self::EXPIRES_IN_MINUTES));

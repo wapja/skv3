@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace App\Concerns;
 
-use App\Models\User;
+use App\Rules\AvailableEmail;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Validation\Rule;
 use Stringable;
 
 trait ProfileValidationRules
@@ -16,11 +15,11 @@ trait ProfileValidationRules
      *
      * @return array<string, array<int, ValidationRule|Stringable|array<mixed>|string>>
      */
-    protected function profileRules(?int $userId = null): array
+    protected function profileRules(?int $userId = null, ?int $organisationId = null): array
     {
         return [
             'name' => $this->nameRules(),
-            'email' => $this->emailRules($userId),
+            'email' => $this->emailRules($userId, $organisationId),
         ];
     }
 
@@ -35,11 +34,12 @@ trait ProfileValidationRules
     }
 
     /**
-     * Get the validation rules used to validate user emails.
+     * Get the validation rules used to validate user emails: lower case and available (W9). Pass the
+     * organisation the address will be used in, so conflicts there get a specific message.
      *
      * @return array<int, ValidationRule|Stringable|array<mixed>|string>
      */
-    protected function emailRules(?int $userId = null): array
+    protected function emailRules(?int $userId = null, ?int $organisationId = null): array
     {
         return [
             'required',
@@ -47,9 +47,7 @@ trait ProfileValidationRules
             'email',
             'lowercase',
             'max:255',
-            $userId === null
-                ? Rule::unique(User::class)->withoutTrashed()
-                : Rule::unique(User::class)->withoutTrashed()->ignore($userId),
+            new AvailableEmail($organisationId, $userId),
         ];
     }
 }

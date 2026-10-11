@@ -40,7 +40,7 @@ new #[Title('Profile settings')] class extends Component
 
         $this->email = Str::lower($this->email);
 
-        $validated = $this->validate($this->profileRules($user->id));
+        $validated = $this->validate($this->profileRules($user->id, $user->organisation_id));
 
         $user->fill(['name' => $validated['name']])->save();
 

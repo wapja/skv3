@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.10 */
 
+use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
@@ -62,7 +63,27 @@ test('the email uniqueness check ignores casing', function (): void {
     Livewire::test('pages::settings.profile')
         ->set('email', 'Taken@Example.com')
         ->call('updateProfileInformation')
-        ->assertHasErrors(['email' => 'unique']);
+        ->assertHasErrors(['email' => __('This address can\'t be used.')]);
+});
+
+it('answers the generic message on the profile page for an address used in another organisation (W9)', function (): void {
+    Notification::fake();
+    User::factory()->create(['email' => 'elsewhere@example.com']);
+    $organisation = Organisation::factory()->create();
+    User::factory()->for($organisation)->create(['email' => 'colleague@example.com']);
+    $user = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $this->actingAs($user);
+
+    Livewire::test('pages::settings.profile')
+        ->set('email', 'elsewhere@example.com')
+        ->call('updateProfileInformation')
+        ->assertHasErrors(['email' => __('This address can\'t be used.')])
+        ->set('email', 'colleague@example.com')
+        ->call('updateProfileInformation')
+        ->assertHasErrors(['email' => __('This address is already used in this organisation.')]);
+
+    Notification::assertNothingSent();
 });
 
 test('email address of a deleted user can be reused', function (): void {
