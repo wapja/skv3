@@ -101,6 +101,7 @@
     "This address is already used in this organisation.": "This address is already used in this organisation.",
     "This confirmation link is no longer valid.": "This confirmation link is no longer valid.",
     "This link expires in :count minutes.": "This link expires in :count minutes.",
+    "This organisation is archived.": "This organisation is archived.",
     "This passkey could not be verified.": "This passkey could not be verified.",
     "This password reset link will expire in :count minutes.": "This password reset link will expire in :count minutes.",
     "This sign-in link is invalid or has expired.": "This sign-in link is invalid or has expired.",

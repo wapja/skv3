@@ -18,9 +18,14 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\get;
+use function Pest\Laravel\postJson;
 
 /*
 |--------------------------------------------------------------------------
@@ -166,4 +171,48 @@ function recordedActivity(ActivityEvent $event): EloquentCollection
         ->where('event', $event->value)
         ->orderBy('id')
         ->get());
+}
+
+/**
+ * The snapshot of $component as the page at $url renders it for the signed-in user (generic form of the
+ * M3 security-page helper). The URL decides the host.
+ *
+ * @return array<string, mixed>
+ */
+function pageSnapshot(string $url, string $component): array
+{
+    preg_match_all('/wire:snapshot="([^"]*)"/', (string) get($url)->assertOk()->getContent(), $matches);
+
+    foreach ($matches[1] as $encoded) {
+        /** @var array<string, mixed> $snapshot */
+        $snapshot = json_decode(htmlspecialchars_decode($encoded, ENT_QUOTES), true, flags: JSON_THROW_ON_ERROR);
+
+        if (($snapshot['memo']['name'] ?? null) === $component) {
+            return $snapshot;
+        }
+    }
+
+    throw new LogicException("The page [{$url}] renders no [{$component}] component.");
+}
+
+/**
+ * Sends a Livewire update that calls $method on the snapshot's component, as a forged request would: with
+ * client-chosen parameters and property updates, from the current origin or from $host.
+ *
+ * @param  array<string, mixed>  $snapshot
+ * @param  list<mixed>  $params
+ * @param  array<string, mixed>  $updates
+ * @return TestResponse<Response>
+ */
+function callPageAction(array $snapshot, string $method, array $params = [], array $updates = [], ?string $host = null): TestResponse
+{
+    Livewire::flushState(); // a new request cycle, as in production: PersistentMiddleware remembers routes it already handled
+
+    $uri = $host === null ? Livewire::getUpdateUri() : Hosts::url($host, Livewire::getUpdateUri());
+
+    return postJson($uri, ['components' => [[
+        'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+        'updates' => $updates,
+        'calls' => [['method' => $method, 'params' => $params, 'path' => '', 'metadata' => []]],
+    ]]], ['X-Livewire' => '1']);
 }

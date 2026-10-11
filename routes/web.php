@@ -36,3 +36,4 @@ Route::get('auth/handoff/{token}', HandoffController::class)
     ->name('auth.handoff');
 
 require __DIR__.'/settings.php';
+require __DIR__.'/admin.php';
