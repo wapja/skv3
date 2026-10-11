@@ -95,7 +95,7 @@ it('lists every named GET route in the matrix or the exclusions', function (): v
         'well-known.passkeys', 'password.reset', 'password.confirmation', 'passkey.confirm-options',
         'passkey.login-options', 'passkey.registration-options', 'two-factor.qr-code',
         'two-factor.secret-key', 'two-factor.recovery-codes', 'storage.local', '__flux.flag', 'email-change.confirm',
-        'auth.handoff',
+        'auth.handoff', 'invitations.accept',
     ];
 
     $named = collect(Route::getRoutes()->getRoutes())

@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Actions\Invitations\InviteUser;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Models\Activity;
+use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
@@ -20,6 +23,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -215,4 +219,26 @@ function callPageAction(array $snapshot, string $method, array $params = [], arr
         'updates' => $updates,
         'calls' => [['method' => $method, 'params' => $params, 'path' => '', 'metadata' => []]],
     ]]], ['X-Livewire' => '1']);
+}
+
+/**
+ * Invites an address into an organisation with the organisation_admin template through InviteUser
+ * (§4.5). Without an actor a fresh super admin invites; this helper signs nobody in.
+ */
+function inviteMember(Organisation $organisation, ?User $actor = null, string $email = 'invitee@example.com'): Invitation
+{
+    if (! $actor instanceof User) {
+        $actor = User::factory()->superAdmin()->create();
+        app(SetSuperAdmin::class)->handle($actor, true);
+    }
+
+    $templateId = (int) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+
+    return app(InviteUser::class)->handle($actor, $organisation, $email, [$templateId], Locale::default());
+}
+
+/** The signed accept link of an invitation, on its organisation's host (Invitation::acceptUrl()). */
+function acceptLinkFor(Invitation $invitation): string
+{
+    return $invitation->acceptUrl();
 }
