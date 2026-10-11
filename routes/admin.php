@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Authorization\Permission;
+use App\Http\Middleware\SetReferrerPolicy;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -24,9 +25,9 @@ Route::middleware(['auth'])->group(function (): void {
 
 // §4.5 / §6.2: guests open the accept link, so it lives outside the auth group, on tenant hosts only.
 // The signature is relative (it survives scheme and host rewrites); the page looks the token up under the
-// tenant scope, so another host answers 404 (W14). The page itself arrives in Task 12.
+// tenant scope, so another host answers 404 (W14). The token is in the URL, so the page sends no referrer (RK-M12).
 Route::tenant(function (): void {
     Route::livewire('invitations/accept/{token}', 'pages::invitations.accept')
-        ->middleware(['signed:relative'])
+        ->middleware(['signed:relative', SetReferrerPolicy::class])
         ->name('invitations.accept');
 });

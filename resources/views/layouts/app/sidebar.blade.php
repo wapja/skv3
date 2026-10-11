@@ -106,6 +106,8 @@
             </flux:toast.group>
         @endpersist
 
+        <x-flash-toast />
+
         @fluxScripts
     </body>
 </html>
