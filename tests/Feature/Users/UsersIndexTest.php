@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 /** covers §4.4, §6.2 */
 
+use App\Actions\Invitations\InviteUser;
 use App\Authorization\Permission;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
@@ -291,4 +293,15 @@ it('answers 403 for a member without users.view', function (): void {
     asMember(Organisation::factory()->create());
 
     $this->get(route('users.index'))->assertForbidden();
+});
+
+it('links a pending user\'s row to the pending invitations (CV-20)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $admin = asOrgAdmin($organisation);
+    $templateId = (int) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+    $invitation = app(InviteUser::class)->handle($admin, $organisation, 'invitee@example.com', [$templateId], Locale::English);
+
+    $this->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('data-test="pending-user-link-'.$invitation->user_id.'"', false);
 });

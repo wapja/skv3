@@ -1,6 +1,16 @@
 <section class="w-full">
-    <flux:heading size="xl" level="1">{{ __('Users') }}</flux:heading>
-    <flux:subheading size="lg" class="mb-6">{{ __('Find people, check their roles and manage their accounts.') }}</flux:subheading>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <flux:heading size="xl" level="1">{{ __('Users') }}</flux:heading>
+            <flux:subheading size="lg" class="mb-6">{{ __('Find people, check their roles and manage their accounts.') }}</flux:subheading>
+        </div>
+
+        @if ($this->canInvite)
+            <flux:button variant="primary" icon="envelope" :href="route('users.invite')" wire:navigate data-test="invite-user-button">
+                {{ __('Invite user') }}
+            </flux:button>
+        @endif
+    </div>
     <flux:separator variant="subtle" class="mb-6" />
 
     <div class="mb-4 flex flex-wrap items-end gap-3">
@@ -66,7 +76,9 @@
 
                 <flux:table.row :key="$user->id" data-test="user-row">
                     <flux:table.cell variant="strong">
-                        @if ($abilities['view'] && $this->view !== 'archived')
+                        @if ($user->status === \App\Enums\UserStatus::PendingActivation)
+                            <flux:link :href="route('invitations.pending')" wire:navigate data-test="pending-user-link-{{ $user->id }}">{{ $user->name }}</flux:link>
+                        @elseif ($abilities['view'] && $this->view !== 'archived')
                             <flux:link :href="route('users.edit', ['user' => $user->id])" wire:navigate>{{ $user->name }}</flux:link>
                         @else
                             <div>{{ $user->name }}</div>

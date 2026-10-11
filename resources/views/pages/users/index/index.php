@@ -9,6 +9,7 @@ use App\Authorization\SyncPermissions;
 use App\Authorization\UserAbilities;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\UserStatus;
+use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Facades\Tenant;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
@@ -343,6 +345,17 @@ new #[Title('Users')] class extends Component
     public function central(): bool
     {
         return ! Tenant::check();
+    }
+
+    /** Tenant host: the invitation policy (users.create and roles.assign, OR-M7); central hosts: super admins (INV-17). */
+    #[Computed]
+    public function canInvite(): bool
+    {
+        $organisation = Tenant::current();
+
+        return $organisation === null
+            ? $this->currentUser()->isSuperAdmin()
+            : Gate::allows('create', [Invitation::class, $organisation]);
     }
 
     /**
