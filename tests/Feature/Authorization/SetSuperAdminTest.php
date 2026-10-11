@@ -60,13 +60,14 @@ it('refuses to revoke a super admin who has no organisation', function (): void 
 });
 
 it('refuses to revoke the last active super admin', function (): void {
-    $last = User::factory()->superAdmin()->create();
+    // A promoted super admin with an organisation: an unattached one would hit the W8 guard first.
+    $last = User::factory()->create();
     app(SetSuperAdmin::class)->handle($last, true);
     User::factory()->superAdmin()->disabled()->create();
     User::factory()->superAdmin()->create()->delete();
 
     expect(fn () => app(SetSuperAdmin::class)->handle($last, false))
-        ->toThrow(ValidationException::class);
+        ->toThrow(ValidationException::class, __('At least one active super admin must remain.'));
 
     expect($last->fresh()?->isSuperAdmin())->toBeTrue()
         ->and(badgeRows($last))->toBe([null]);

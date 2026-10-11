@@ -79,6 +79,25 @@ it('refuses granting roles with permissions the actor lacks (W1)', function (): 
     expect(roleNamesOf($actor, $organisation))->toBe(['assigner']);
 });
 
+it('refuses taking away roles with permissions the actor lacks (W1)', function (): void {
+    $organisation = Organisation::factory()->create();
+    [$firstAdmin, $secondAdmin] = User::factory()->for($organisation)->count(2)->create()->all();
+    withPermissionsTeam($organisation->id, function () use ($firstAdmin, $secondAdmin): void {
+        $firstAdmin->assignRole(Role::OrganisationAdmin->value);
+        $secondAdmin->assignRole(Role::OrganisationAdmin->value);
+    });
+    $assigner = teamRole($organisation, 'assigner');
+    $assigner->givePermissionTo([Permission::UsersView->value, Permission::RolesAssign->value]);
+    $actor = asMember($organisation);
+    withPermissionsTeam($organisation->id, fn (): User => $actor->assignRole($assigner));
+    $actor->unsetRelation('roles');
+
+    // Another active organisation admin remains, so only the escalation guard stands in the way.
+    expect(fn () => app(UpdateUserRoles::class)->handle($actor, $firstAdmin, []))
+        ->toThrow(ValidationException::class, __('You can only give or take away roles whose permissions you have yourself.'));
+    expect(roleNamesOf($firstAdmin, $organisation))->toBe(['organisation_admin']);
+});
+
 it('refuses targets outside the actor\'s organisation and super admin targets', function (): void {
     $organisation = Organisation::factory()->create();
     $outsider = User::factory()->create();

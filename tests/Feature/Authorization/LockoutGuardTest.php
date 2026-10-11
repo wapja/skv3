@@ -103,3 +103,18 @@ it('counts only active, non-deleted template holders of the same organisation as
         expect($exception->errors())->toBe(['roles' => [__('An organisation needs at least one active organisation admin.')]]);
     }
 });
+
+it('counts only active, non-deleted super admins as another super admin', function (): void {
+    $onlySuperAdmin = User::factory()->superAdmin()->create();
+    User::factory()->superAdmin()->create(['deleted_at' => now()]);
+    User::factory()->create();
+
+    // Each candidate is active, so each one alone would keep a super admin if its filter were dropped: the
+    // deleted_at filter (a deleted super admin) and the is_super_admin filter (a regular user).
+    try {
+        DB::transaction(fn () => app(LockoutGuard::class)->ensureAnotherActiveSuperAdmin($onlySuperAdmin, 'is_super_admin'));
+        $this->fail('Expected a ValidationException.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toBe(['is_super_admin' => [__('At least one active super admin must remain.')]]);
+    }
+});
