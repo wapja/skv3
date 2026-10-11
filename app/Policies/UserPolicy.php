@@ -5,10 +5,18 @@ declare(strict_types=1);
 namespace App\Policies;
 
 use App\Authorization\Permission;
+use App\Authorization\UserAbilities;
 use App\Models\User;
 
-final class UserPolicy
+/**
+ * §4.4, §4.6. view, update, updateStatus, delete and restore are decided by UserAbilities, the same
+ * code the users index evaluates for a page (RL-26). restore is not always-checked: super admins pass
+ * Gate::before and RestoreUser applies the domain guards (archived organisation, taken address).
+ */
+final readonly class UserPolicy
 {
+    public function __construct(private UserAbilities $abilities) {}
+
     public function viewAny(User $actor): bool
     {
         return $actor->can(Permission::UsersView);
@@ -16,44 +24,30 @@ final class UserPolicy
 
     public function view(User $actor, User $target): bool
     {
-        return $actor->can(Permission::UsersView) && $this->managesMember($actor, $target);
+        return $this->abilities->forTarget($actor, $target)['view'];
     }
 
     public function update(User $actor, User $target): bool
     {
-        return $actor->can(Permission::UsersUpdate) && $this->managesMember($actor, $target);
+        return $this->abilities->forTarget($actor, $target)['update'];
     }
 
     /** Always checked: nobody deletes themselves, super admins included (W2). */
     public function delete(User $actor, User $target): bool
     {
-        if ($actor->is($target)) {
-            return false;
-        }
-
-        if ($actor->isSuperAdmin()) {
-            return true;
-        }
-
-        return ! $target->isSuperAdmin()
-            && $actor->can(Permission::UsersDelete)
-            && $this->sameOrganisation($actor, $target);
+        return $this->abilities->forTarget($actor, $target)['delete'];
     }
 
     /** Always checked: nobody disables themselves (W12). */
     public function updateStatus(User $actor, User $target): bool
     {
-        if ($actor->is($target)) {
-            return false;
-        }
+        return $this->abilities->forTarget($actor, $target)['updateStatus'];
+    }
 
-        if ($actor->isSuperAdmin()) {
-            return true;
-        }
-
-        return ! $target->isSuperAdmin()
-            && $actor->can(Permission::UsersUpdate)
-            && $this->sameOrganisation($actor, $target);
+    /** users.delete + same organisation + the permission-subset rule (DEC-26 (11)). */
+    public function restore(User $actor, User $target): bool
+    {
+        return $this->abilities->forTarget($actor, $target)['restore'];
     }
 
     /** Always checked: roles belong to an organisation; super admins carry only the badge (W1). */
@@ -67,23 +61,14 @@ final class UserPolicy
             return true;
         }
 
-        return $actor->can(Permission::RolesAssign) && $this->sameOrganisation($actor, $target);
+        return $actor->can(Permission::RolesAssign)
+            && $actor->organisation_id !== null
+            && $actor->organisation_id === $target->organisation_id;
     }
 
     /** Always checked: only another super admin changes the flag (§6.3). */
     public function updateSuperAdmin(User $actor, User $target): bool
     {
         return $actor->isSuperAdmin() && $actor->isNot($target);
-    }
-
-    /** Organisation admins never act on super admins, even promoted ones that keep an organisation_id (§6.3). */
-    private function managesMember(User $actor, User $target): bool
-    {
-        return ! $target->isSuperAdmin() && $this->sameOrganisation($actor, $target);
-    }
-
-    private function sameOrganisation(User $actor, User $target): bool
-    {
-        return $actor->organisation_id !== null && $actor->organisation_id === $target->organisation_id;
     }
 }
