@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
+use App\Policies\RolePolicy;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Spatie\Permission\Models\Role as RoleModel;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -79,10 +81,13 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Super admins pass every gate check except the always-checked abilities (§4.6).
+     * Super admins pass every gate check except the always-checked abilities (§4.6). Spatie's
+     * role model lives outside App\Models, so policy discovery does not find RolePolicy.
      */
     protected function configureAuthorization(): void
     {
         Gate::before(SuperAdminGate::before(...));
+
+        Gate::policy(RoleModel::class, RolePolicy::class);
     }
 }
