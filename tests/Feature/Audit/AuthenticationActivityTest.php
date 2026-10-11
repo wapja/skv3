@@ -152,6 +152,33 @@ it('records nothing in another organisation\'s log when a reset is asked for the
     expect(recordedActivity(ActivityEvent::PasswordResetRequested))->toHaveCount(0);
 });
 
+it('records nothing in an organisation\'s log when a super admin\'s reset is asked for or completed on its host (R1)', function (): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $superAdmin = User::factory()->superAdmin()->create();
+    onTenant($organisation);
+
+    // Otherwise the organisation's admins could probe addresses and find the platform's super admins in their log.
+    $this->post(route('password.email'), ['email' => $superAdmin->email]);
+
+    $token = null;
+    Notification::assertSentTo($superAdmin, ResetPassword::class, function (ResetPassword $notification) use (&$token): bool {
+        $token = $notification->token;
+
+        return true;
+    });
+
+    $this->post(route('password.update'), [
+        'token' => $token,
+        'email' => $superAdmin->email,
+        'password' => 'new-password',
+        'password_confirmation' => 'new-password',
+    ])->assertSessionHasNoErrors();
+
+    expect(recordedActivity(ActivityEvent::PasswordResetRequested))->toHaveCount(0)
+        ->and(recordedActivity(ActivityEvent::PasswordResetCompleted))->toHaveCount(0);
+});
+
 it('records enabling and disabling two-factor authentication', function (): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create();

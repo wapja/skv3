@@ -28,8 +28,9 @@ use Laravel\Passkeys\Events\PasskeyRegistered;
  * Records sign-in and security events in the audit log (§4.8, RL-29). All of them are tagged with the
  * host's organisation (RL-5 host mode). A failed sign-in keeps the typed value only when it is a valid
  * email address, and never any other credential (R-4). Two-factor "enabled" is the confirmation: Fortify's
- * Enabled event fires before the code is confirmed. A password reset for a user of another organisation is
- * never recorded on a tenant host. Auto-discovered (one registration per union member).
+ * Enabled event fires before the code is confirmed. On a tenant host a password reset is recorded only for
+ * the host's own members, never for another organisation's member or a super admin (R1). Auto-discovered
+ * (one registration per union member).
  */
 final readonly class RecordAuthenticationActivity
 {
@@ -66,9 +67,12 @@ final readonly class RecordAuthenticationActivity
             return;
         }
 
-        // A reset asked for on another organisation's host names a user who does not belong here; the link
-        // goes to their own host (R1), and this host's log never names them. Central hosts still record it.
-        if (($event instanceof PasswordResetLinkSent || $event instanceof PasswordReset) && Tenant::current() !== null && ! $user->belongsToCurrentHost()) {
+        // R1: anyone can type an address into a host's reset form, so a tenant host's log names only its own
+        // members. Not a super admin either: the host's admins could then find the platform's super admins.
+        // The link goes to the user's own host (R1). Central hosts record every reset.
+        $organisation = Tenant::current();
+
+        if (($event instanceof PasswordResetLinkSent || $event instanceof PasswordReset) && $organisation !== null && $user->organisation_id !== $organisation->id) {
             return;
         }
 
