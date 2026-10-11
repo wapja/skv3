@@ -124,15 +124,16 @@ final class Impersonation
 
     /**
      * Sign this browser out. logoutCurrentDevice(), never logout(): logout() would cycle the impersonated
-     * user's remember token and sign them out on their own devices (RK-I1).
+     * user's remember token and sign them out on their own devices (RK-I1). It runs before clear(), so the
+     * audit listener still sees the impersonation and records no sign-out for the target.
      */
     public static function signOut(): void
     {
         $guard = self::guard();
 
         self::ignoreRememberCookie();
-        self::clear();
         $guard->logoutCurrentDevice();
+        self::clear();
         Cookie::queue(Cookie::forget($guard->getRecallerName()));
         Session::invalidate();
         Session::regenerateToken();

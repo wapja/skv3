@@ -8,7 +8,9 @@ use App\Actions\Audit\RecordActivity;
 use App\Enums\ActivityEvent;
 use App\Events\HandoffConsumed;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Facades\Tenant;
+use Illuminate\Auth\Events\CurrentDeviceLogout;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
@@ -28,9 +30,11 @@ use Laravel\Passkeys\Events\PasskeyRegistered;
  * Records sign-in and security events in the audit log (§4.8, RL-29). All of them are tagged with the
  * host's organisation (RL-5 host mode). A failed sign-in keeps the typed value only when it is a valid
  * email address, and never any other credential (R-4). Two-factor "enabled" is the confirmation: Fortify's
- * Enabled event fires before the code is confirmed. On a tenant host a password reset is recorded only for
- * the host's own members, never for another organisation's member or a super admin (R1). Auto-discovered
- * (one registration per union member).
+ * Enabled event fires before the code is confirmed. A sign-out of this device only (a confirmed handoff
+ * replacing the session, AuthenticateSession cutting a stale one) is a sign-out too, except while an
+ * impersonation is undone: its logged stop records that. On a tenant host a password reset is recorded only
+ * for the host's own members, never for another organisation's member or a super admin (R1).
+ * Auto-discovered (one registration per union member).
  */
 final readonly class RecordAuthenticationActivity
 {
@@ -38,6 +42,7 @@ final readonly class RecordAuthenticationActivity
     private const array EVENTS = [
         Login::class => ActivityEvent::Login,
         Logout::class => ActivityEvent::Logout,
+        CurrentDeviceLogout::class => ActivityEvent::Logout,
         PasswordResetLinkSent::class => ActivityEvent::PasswordResetRequested,
         PasswordReset::class => ActivityEvent::PasswordResetCompleted,
         HandoffConsumed::class => ActivityEvent::HandoffConsumed,
@@ -52,7 +57,7 @@ final readonly class RecordAuthenticationActivity
 
     public function __construct(private RecordActivity $recordActivity) {}
 
-    public function handle(Login|Failed|Logout|PasswordResetLinkSent|PasswordReset|TwoFactorAuthenticationConfirmed|TwoFactorAuthenticationDisabled|RecoveryCodesGenerated|TwoFactorAuthenticationFailed|RecoveryCodeReplaced|PasskeyRegistered|PasskeyDeleted|HandoffConsumed $event): void
+    public function handle(Login|Failed|Logout|CurrentDeviceLogout|PasswordResetLinkSent|PasswordReset|TwoFactorAuthenticationConfirmed|TwoFactorAuthenticationDisabled|RecoveryCodesGenerated|TwoFactorAuthenticationFailed|RecoveryCodeReplaced|PasskeyRegistered|PasskeyDeleted|HandoffConsumed $event): void
     {
         if ($event instanceof Failed) {
             $this->recordFailedSignIn($event);
@@ -64,6 +69,11 @@ final readonly class RecordAuthenticationActivity
         $activityEvent = self::EVENTS[$event::class] ?? null;
 
         if (! $user instanceof User || ! $activityEvent instanceof ActivityEvent) {
+            return;
+        }
+
+        // Impersonation::signOut() ends a session that impersonates: the target never signed in (RL-20).
+        if ($event instanceof CurrentDeviceLogout && Impersonation::isActive()) {
             return;
         }
 
@@ -82,7 +92,7 @@ final readonly class RecordAuthenticationActivity
         }
 
         // At Login the guard has not stored the user yet, so the signed-in user is named explicitly.
-        $signsInOrOut = $event instanceof Login || $event instanceof Logout || $event instanceof HandoffConsumed;
+        $signsInOrOut = $event instanceof Login || $event instanceof Logout || $event instanceof CurrentDeviceLogout || $event instanceof HandoffConsumed;
 
         $this->recordActivity->handle($activityEvent, $user, $this->propertiesOf($event), causer: $signsInOrOut ? $user : null);
     }

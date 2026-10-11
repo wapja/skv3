@@ -165,7 +165,9 @@ it('signs out when the impersonator is disabled and leaves the target\'s remembe
     $this->assertGuest();
     expect(Impersonation::isActive())->toBeFalse()
         ->and(DB::table('users')->where('id', $member->id)->value('remember_token'))->toBe($rememberToken)
-        ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('impersonator_unavailable');
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('impersonator_unavailable')
+        // The logged stop says it all; the target never signed in, so no sign-out is recorded for them.
+        ->and(recordedActivity(ActivityEvent::Logout))->toBeEmpty();
 });
 
 it('signs out and logs impersonator_credentials_changed when the impersonator\'s password changed (RK-B4)', function () use ($organisationAdmin): void {

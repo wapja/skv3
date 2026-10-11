@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §6.4 */
 
 use App\Actions\Auth\IssueHandoff;
+use App\Enums\ActivityEvent;
 use App\Events\HandoffConsumed;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
@@ -184,6 +185,21 @@ it('replaces the session only after the confirmation POST and keeps the other us
         ->and(DB::table('users')->where('id', $member->id)->value('remember_token'))->toBe('member-remember')
         ->and(HandoffToken::query()->sole()->consumed_at)->not->toBeNull();
     Event::assertDispatched(HandoffConsumed::class, fn (HandoffConsumed $event): bool => $event->user->is($superAdmin));
+});
+
+it('records the sign-out of the user whose session the confirmation POST replaced (§4.8)', function (): void {
+    // Fails before the fix: logoutCurrentDevice() fires CurrentDeviceLogout, which the audit listener ignored.
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $superAdmin = User::factory()->superAdmin()->create();
+    $url = app(IssueHandoff::class)->handle($superAdmin, Hosts::tenant('acme'));
+    $this->actingAs($member);
+
+    $this->post($url)->assertRedirect('http://acme.localhost/dashboard');
+
+    $this->assertAuthenticatedAs($superAdmin);
+    $signOut = recordedActivity(ActivityEvent::Logout)->sole();
+    expect([$signOut->subject_id, $signOut->causer_id, $signOut->organisation_id])->toBe([$member->id, $member->id, $organisation->id]);
 });
 
 it('refuses the confirmation POST without a CSRF token', function (): void {
