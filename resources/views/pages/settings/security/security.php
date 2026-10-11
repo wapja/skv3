@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Actions\Audit\RecordActivity;
 use App\Concerns\ConfirmsPasswords;
 use App\Concerns\PasswordValidationRules;
+use App\Enums\ActivityEvent;
 use App\Models\User;
 use Flux\Flux;
 use Illuminate\Auth\AuthenticationException;
@@ -78,7 +80,7 @@ new #[Title('Security settings')] class extends Component
     /**
      * Update the password for the currently authenticated user.
      */
-    public function updatePassword(): void
+    public function updatePassword(RecordActivity $recordActivity): void
     {
         try {
             $validated = $this->validate([
@@ -94,6 +96,9 @@ new #[Title('Security settings')] class extends Component
         $this->user()->update([
             'password' => $validated['password'],
         ]);
+
+        // §4.8: the page changes the password without an event, so it records the change itself.
+        $recordActivity->handle(ActivityEvent::PasswordChanged, $this->user());
 
         $this->reset('current_password', 'password', 'password_confirmation');
 
