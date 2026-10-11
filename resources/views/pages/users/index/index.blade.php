@@ -72,7 +72,7 @@
 
         <flux:table.rows>
             @forelse ($this->users as $user)
-                @php($abilities = $this->rowAbilities[$user->id] ?? ['view' => false, 'update' => false, 'updateStatus' => false, 'delete' => false, 'restore' => false])
+                @php($abilities = $this->rowAbilities[$user->id] ?? ['view' => false, 'update' => false, 'updateStatus' => false, 'delete' => false, 'restore' => false, 'impersonate' => false])
 
                 <flux:table.row :key="$user->id" data-test="user-row">
                     <flux:table.cell variant="strong">
@@ -117,6 +117,12 @@
                         @elseif ($abilities['delete'] && $user->status !== \App\Enums\UserStatus::PendingActivation)
                             <flux:button size="sm" variant="ghost" icon="trash" wire:click="confirmDelete({{ $user->id }})" :aria-label="__('Delete :name', ['name' => $user->name])" data-test="delete-user-button" />
                         @endif
+
+                        @if ($this->view !== 'archived' && $abilities['impersonate'])
+                            <flux:button size="sm" variant="ghost" icon="user-circle" wire:click="confirmImpersonation({{ $user->id }})" data-test="impersonate-{{ $user->id }}">
+                                {{ __('Log in as this user') }}
+                            </flux:button>
+                        @endif
                     </flux:table.cell>
                 </flux:table.row>
             @empty
@@ -140,4 +146,23 @@
             </div>
         </div>
     </flux:modal>
+
+    @if (\App\Tenancy\Auth\Impersonation::enabled())
+        <flux:modal name="impersonation-reason-modal" class="max-w-md md:min-w-md" @close="closeImpersonationModal" wire:model="showImpersonationModal" data-test="impersonation-reason-modal">
+            <form wire:submit="startImpersonation" class="space-y-6">
+                <div class="space-y-2">
+                    <flux:heading size="lg">{{ __('Log in as :name', ['name' => $impersonatingUserName]) }}</flux:heading>
+                    <flux:text>{{ __('Give a reason. It is recorded in the activity log.') }}</flux:text>
+                </div>
+
+                <flux:textarea wire:model="impersonationReason" :label="__('Reason')" rows="3" maxlength="500" required />
+                <flux:error name="reason" />
+
+                <div class="flex justify-end gap-3">
+                    <flux:button variant="outline" wire:click="closeImpersonationModal">{{ __('Cancel') }}</flux:button>
+                    <flux:button variant="primary" type="submit" data-test="start-impersonating">{{ __('Continue as this user') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+    @endif
 </section>

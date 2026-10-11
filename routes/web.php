@@ -7,8 +7,10 @@ use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use App\Models\User;
 use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Facades\Tenant;
+use App\Tenancy\Http\Middleware\StopImpersonationBeforeLogout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
 use Laravel\Fortify\Http\Controllers\NewPasswordController;
 
@@ -42,6 +44,12 @@ Route::post('forgot-password', SendPasswordResetLinkController::class)
 Route::post('reset-password', [NewPasswordController::class, 'store'])
     ->middleware(['guest:web', 'throttle:password-reset'])
     ->name('password.update');
+
+// §4.7: signing out while impersonating ends the impersonation first. Same method, URI and name as Fortify's
+// route, so this one replaces it.
+Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->middleware(['auth:web', StopImpersonationBeforeLogout::class])
+    ->name('logout');
 
 // §6.4: any host; the token is bound to its target host. The GET consumes it for a guest or the same
 // user and asks first when another user is signed in; only the CSRF-protected POST replaces a session.

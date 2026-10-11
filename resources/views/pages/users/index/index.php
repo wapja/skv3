@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\Users\DeleteUser;
 use App\Actions\Users\RestoreUser;
+use App\Actions\Users\StartImpersonation;
 use App\Authorization\Role;
 use App\Authorization\SyncPermissions;
 use App\Authorization\UserAbilities;
@@ -12,6 +13,8 @@ use App\Enums\UserStatus;
 use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Attributes\RequiresTenant;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\HostScope;
 use Flux\Flux;
@@ -57,6 +60,16 @@ new #[Title('Users')] class extends Component
 
     #[Locked]
     public string $deletingUserName = '';
+
+    public bool $showImpersonationModal = false;
+
+    #[Locked]
+    public ?int $impersonatingUserId = null;
+
+    #[Locked]
+    public string $impersonatingUserName = '';
+
+    public string $impersonationReason = '';
 
     /**
      * The current page, read once per request; private properties are never dehydrated.
@@ -142,6 +155,52 @@ new #[Title('Users')] class extends Component
         $this->showDeleteModal = false;
         $this->deletingUserId = null;
         $this->deletingUserName = '';
+    }
+
+    /**
+     * Ask for the reason before impersonating a user of this organisation (§4.7).
+     */
+    public function confirmImpersonation(int $userId): void
+    {
+        abort_unless(Impersonation::enabled(), 404);
+
+        $target = $this->findUser($userId);
+        $this->authorize('impersonate', $target);
+
+        $this->impersonatingUserId = $target->id;
+        $this->impersonatingUserName = $target->name;
+        $this->impersonationReason = '';
+        $this->resetErrorBag();
+        $this->showImpersonationModal = true;
+    }
+
+    /**
+     * Start impersonating the confirmed user and continue as them (§4.7). This action is the module's start
+     * route (§6.8): tenant hosts only, 404 while the module is off (RK-I12).
+     */
+    #[RequiresTenant]
+    public function startImpersonation(StartImpersonation $startImpersonation): void
+    {
+        abort_unless(Impersonation::enabled(), 404);
+
+        $target = $this->findUser($this->impersonatingUserId ?? abort(404));
+        $this->authorize('impersonate', $target);
+
+        $startImpersonation->handle($this->currentUser(), $target, $this->impersonationReason);
+
+        // A full page load: this page's snapshot belongs to the impersonator.
+        $this->redirect(route('dashboard'));
+    }
+
+    /**
+     * Close the impersonation reason modal.
+     */
+    public function closeImpersonationModal(): void
+    {
+        $this->showImpersonationModal = false;
+        $this->impersonatingUserId = null;
+        $this->impersonatingUserName = '';
+        $this->impersonationReason = '';
     }
 
     /**
@@ -248,7 +307,7 @@ new #[Title('Users')] class extends Component
     }
 
     /**
-     * The controls each row may show, from one batch evaluation of the policy rules (RL-26, RK-I6).
+     * The controls each row may show, impersonation included, from one batch evaluation of the policy rules (RL-26, RK-I6).
      *
      * @return array<int, array{view: bool, update: bool, updateStatus: bool, delete: bool, restore: bool, impersonate: bool}>
      */
