@@ -9,6 +9,7 @@ use App\Actions\Auth\IssueHandoff;
 use App\Actions\Users\StartImpersonation;
 use App\Authorization\Permission;
 use App\Authorization\Role;
+use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
 use App\Models\Organisation;
 use App\Models\User;
@@ -56,6 +57,69 @@ it('requires a reason that is not blank and at most 500 characters (IMP-1)', fun
     expect(Impersonation::isActive())->toBeTrue()
         ->and(recordedActivity(ActivityEvent::ImpersonationStarted)->sole()->getProperty('reason'))->toBe(str_repeat('a', 500));
 });
+
+it('refuses a disallowed start and leaves the session as it was (IMP-3, IMP-4, IMP-5, IMP-11)', function (string $case, string $exception) use ($organisationAdmin): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $admin = $organisationAdmin($organisation);
+    $roleWithoutImpersonate = RoleModel::query()->create(['name' => 'helpdesk-'.Str::lower(Str::random(6)), 'guard_name' => 'web', 'team_id' => $organisation->id]);
+    $roleWithoutImpersonate->givePermissionTo([Permission::UsersView->value, Permission::UsersUpdate->value]);
+    $helpdesk = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn (): User => $helpdesk->assignRole($roleWithoutImpersonate));
+    $helpdesk->unsetRelation('roles');
+    $promotedSuperAdmin = User::factory()->for($organisation)->create();
+    app(SetSuperAdmin::class)->handle($promotedSuperAdmin, true);
+    $promotedSuperAdmin->refresh();
+    onTenant($organisation);
+
+    [$signedIn, $actor, $target] = match ($case) {
+        'member → organisation admin' => [$member, $member, $admin],
+        'organisation admin → another organisation admin' => [$admin, $admin, $organisationAdmin($organisation)],
+        'organisation admin → super admin' => [$admin, $admin, $promotedSuperAdmin],
+        'actor without users.impersonate → member' => [$helpdesk, $helpdesk, $member],
+        'module off' => [$admin, $admin, $member],
+        'second start while impersonating' => [$member, $admin, User::factory()->for($organisation)->create()],
+        'an actor who is not the signed-in user' => [$helpdesk, $admin, $member],
+        default => throw new LogicException("Unknown case [{$case}]."),
+    };
+
+    actingAs($signedIn);
+
+    if ($case === 'module off') {
+        useImpersonationModule(false);
+    }
+
+    if ($case === 'second start while impersonating') {
+        actingAs($admin);
+        app(StartImpersonation::class)->handle($admin, $member, 'First ticket');
+    }
+
+    expect(fn () => app(StartImpersonation::class)->handle($actor, $target, 'Support ticket'))->toThrow($exception)
+        ->and(Auth::guard('web')->id())->toBe($signedIn->id);
+
+    if ($case === 'second start while impersonating') {
+        expect(Impersonation::impersonatorId())->toBe($admin->id)
+            ->and(Impersonation::targetId())->toBe($member->id)
+            ->and(recordedActivity(ActivityEvent::ImpersonationStarted)->sole()->subject_id)->toBe($member->id)
+            // The swap itself refuses a second level too, whatever its caller authorised (depth 1).
+            ->and(fn () => Impersonation::enter($admin, $target))->toThrow(LogicException::class)
+            ->and(Impersonation::impersonatorId())->toBe($admin->id)
+            ->and(Auth::guard('web')->id())->toBe($member->id);
+
+        return;
+    }
+
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::ImpersonationStarted))->toBeEmpty();
+})->with([
+    ['member → organisation admin', AuthorizationException::class],
+    ['organisation admin → another organisation admin', AuthorizationException::class],
+    ['organisation admin → super admin', AuthorizationException::class],
+    ['actor without users.impersonate → member', AuthorizationException::class],
+    ['module off', AuthorizationException::class],
+    ['second start while impersonating', AuthorizationException::class],
+    ['an actor who is not the signed-in user', LogicException::class],
+]);
 
 it('swaps to the target and back while the session stays valid across requests', function () use ($organisationAdmin): void {
     $organisation = Organisation::factory()->create();
