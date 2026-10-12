@@ -35,8 +35,10 @@ final readonly class Toolchain
 
     /**
      * The environment for child processes: the Herd bin dir, the newest Herd node, ~/.local/bin, then the system PATH.
+     * SHELL_VERBOSITY is removed (false), because Symfony Console exports it for --quiet and -v, and Symfony Console
+     * children such as herd would otherwise inherit it and print nothing.
      *
-     * @return array{HOME: string, PATH: string}
+     * @return array{HOME: string, PATH: string, SHELL_VERBOSITY: false}
      */
     public function environment(): array
     {
@@ -46,7 +48,7 @@ final readonly class Toolchain
             $this->home().'/.local/bin',
         ]);
 
-        return ['HOME' => $this->home(), 'PATH' => implode(':', [...$directories, self::SYSTEM_PATH])];
+        return ['HOME' => $this->home(), 'PATH' => implode(':', [...$directories, self::SYSTEM_PATH]), 'SHELL_VERBOSITY' => false];
     }
 
     /** The absolute path of the herd binary, or null when it is not installed. */

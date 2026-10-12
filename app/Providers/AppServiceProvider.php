@@ -6,11 +6,14 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Setup\Support\Bootstrap;
+use App\Setup\Support\Toolchain;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
 use Carbon\CarbonImmutable;
 use Composer\InstalledVersions;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\AliasLoader;
 use Illuminate\Foundation\DevCommands;
@@ -33,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         AliasLoader::getInstance()->alias('Skv', Skv::class);
+
+        $this->app->bind(Bootstrap::class, fn (Application $app): Bootstrap => new Bootstrap($app->basePath(), $app->make(Toolchain::class)));
 
         $this->configureModules();
     }
