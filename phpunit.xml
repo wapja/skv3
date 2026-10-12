@@ -32,8 +32,9 @@
         <env name="TENANCY_STRICT" value="true" force="true"/>
         <env name="PASSKEYS_RELYING_PARTY_ID" value=""/>
         <env name="TRUSTED_PROXIES" value=""/>
-        <!-- §6.8: no force, so CI's sqlite-free job can run the whole suite with the module off. -->
+        <!-- §6.8: no force, so CI's sqlite-free job can run the whole suite with the optional modules off. -->
         <env name="MODULE_IMPERSONATION" value="true"/>
+        <env name="MODULE_PASSKEYS" value="true"/>
         <env name="APP_LOCALE" value="en"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

@@ -58,6 +58,13 @@ it('runs the sqlite-free job with the impersonation module off (IMP-12)', functi
         ->and($ci)->toContain('MODULE_IMPERSONATION: ${{ matrix.impersonation }}');
 });
 
+it('runs the free job with the passkeys module off (§6.8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+
+    expect($workflow)->toContain('MODULE_PASSKEYS: ${{ matrix.passkeys }}')
+        ->and(preg_match("/name: sqlite-free.*?passkeys: 'false'/s", $workflow))->toBe(1);
+});
+
 it('lets the environment turn the module off in tests and pins the test hosts (IMP-12, FU2-9, FU3-17)', function (): void {
     $phpunit = (string) file_get_contents(base_path('phpunit.xml'));
 

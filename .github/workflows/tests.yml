@@ -25,18 +25,22 @@ jobs:
             php: '8.4'
             db: pgsql
             impersonation: 'true'
+            passkeys: 'true'
           - name: sqlite-free (PHP 8.4, SQLite)
             php: '8.4'
             db: sqlite
-            # §6.8: the free job runs the whole suite with the optional impersonation module off.
+            # §6.8: the free job runs the whole suite with both optional modules off.
             impersonation: 'false'
+            passkeys: 'false'
           - name: php85 (PHP 8.5, SQLite)
             php: '8.5'
             db: sqlite
             impersonation: 'true'
+            passkeys: 'true'
 
     env:
       MODULE_IMPERSONATION: ${{ matrix.impersonation }}
+      MODULE_PASSKEYS: ${{ matrix.passkeys }}
 
     services:
       postgres:

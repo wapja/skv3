@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\User;
+use App\Support\Skv;
 use App\Tenancy\Auth\HostLoginRule;
 use App\Tenancy\Auth\ImpersonationAwareSessionHandler;
 use App\Tenancy\Auth\UnscopedPasskey;
@@ -66,8 +67,13 @@ final class TenancyServiceProvider extends ServiceProvider
 
         Event::listen(TenantResolved::class, SetPermissionsTeam::class);
         Event::listen(TenantForgotten::class, SetPermissionsTeam::class);
-        Event::listen(TenantResolved::class, SetPasskeyOrigin::class);
-        Event::listen(TenantForgotten::class, SetPasskeyOrigin::class);
+
+        // §6.8 / RL-3: the passkey origin follows the host only while the passkeys module is on.
+        if (Skv::passkeysEnabled()) {
+            Event::listen(TenantResolved::class, SetPasskeyOrigin::class);
+            Event::listen(TenantForgotten::class, SetPasskeyOrigin::class);
+        }
+
         Event::listen(CommandStarting::class, function (): void {
             $this->app->make(CentralContext::class)->enter();
         });

@@ -22,8 +22,3 @@ Route::middleware(['auth'])->group(function (): void {
         ->whereNumber('user')
         ->name('email-change.confirm');
 });
-
-Route::get('.well-known/passkey-endpoints', fn () => response()->json([
-    'enroll' => route('security.edit'),
-    'manage' => route('security.edit'),
-]))->name('well-known.passkeys');

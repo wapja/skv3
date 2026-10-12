@@ -13,22 +13,29 @@ use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
+use App\Providers\FortifyServiceProvider;
 use App\Tenancy\CurrentTenant;
+use App\Tenancy\Events\TenantForgotten;
+use App\Tenancy\Events\TenantResolved;
 use App\Tenancy\Hosts;
+use App\Tenancy\Listeners\SetPasskeyOrigin;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Illuminate\Support\Uri;
 use Illuminate\Testing\TestResponse;
+use Laravel\Fortify\Features;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
@@ -283,6 +290,67 @@ function useImpersonationModule(bool $enabled): void
 
         foreach ($router->getRoutes()->getRoutes() as $route) {
             if (! str_starts_with((string) $route->getName(), 'impersonation.')) {
+                $kept->add($route);
+            }
+        }
+
+        $router->setRoutes($kept);
+    }
+
+    $router->getRoutes()->refreshNameLookups();
+    $router->getRoutes()->refreshActionLookups();
+}
+
+/**
+ * Turns the passkeys module on or off for the rest of the test (§6.8, RL-3): the flag, Fortify's passkeys
+ * feature and the passkey routes, as they would be at boot for that value. The sqlite-free CI job boots the
+ * suite with MODULE_PASSKEYS=false, so every test that needs passkeys calls this first. Fortify registers
+ * its routes from one file, so "on" replays that file on a scratch router (through the Route facade) and
+ * copies only the passkey routes; "off" swaps in a copy without them.
+ */
+function usePasskeysModule(bool $enabled): void
+{
+    config(['skv.modules.passkeys' => $enabled]);
+
+    /** @var list<string> $features */
+    $features = config('fortify.features', []);
+    $withoutPasskeys = array_values(array_filter($features, fn (string $feature): bool => $feature !== Features::passkeys()));
+    config(['fortify.features' => $enabled ? [...$withoutPasskeys, Features::passkeys(['confirmPassword' => true])] : $withoutPasskeys]);
+
+    $router = app(Router::class);
+    $isPasskeyRoute = fn (?string $name): bool => $name !== null && (str_starts_with($name, 'passkey.') || $name === 'well-known.passkeys');
+
+    if ($enabled && ! $router->getRoutes()->hasNamedRoute('passkey.login-options')) {
+        $scratch = new Router(app('events'), app());
+        Route::swap($scratch);
+
+        try {
+            $scratch->group([
+                'namespace' => 'Laravel\Fortify\Http\Controllers',
+                'domain' => config('fortify.domain'),
+                'prefix' => config('fortify.prefix'),
+            ], base_path('vendor/laravel/fortify/routes/routes.php'));
+            $scratch->middleware('web')->group(base_path('routes/passkeys.php'));
+        } finally {
+            Route::swap($router);
+        }
+
+        foreach ($scratch->getRoutes()->getRoutes() as $route) {
+            if ($isPasskeyRoute($route->getName())) {
+                $router->getRoutes()->add($route);
+            }
+        }
+
+        RateLimiter::for('passkeys', FortifyServiceProvider::passkeysLimiter());
+        Event::listen(TenantResolved::class, SetPasskeyOrigin::class);
+        Event::listen(TenantForgotten::class, SetPasskeyOrigin::class);
+    }
+
+    if (! $enabled) {
+        $kept = new RouteCollection;
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            if (! $isPasskeyRoute($route->getName())) {
                 $kept->add($route);
             }
         }

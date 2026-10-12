@@ -245,6 +245,7 @@ it('records a failed two-factor code and a used recovery code (RL-29)', function
 });
 
 it('records a registered and a deleted passkey', function (): void {
+    usePasskeysModule(true);
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();
     $authenticator = new SoftwareAuthenticator;

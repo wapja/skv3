@@ -36,6 +36,7 @@ it('lets a super admin pass the two-factor challenge on a central host', functio
 });
 
 it('loads a passkey user without the tenant scope on a central host', function (): void {
+    usePasskeysModule(true);
     $superAdmin = User::factory()->superAdmin()->create();
     $passkey = new UnscopedPasskey;
     $passkey->setAttribute('user_id', $superAdmin->id);

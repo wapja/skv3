@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use App\Models\User;
-use App\Tenancy\Auth\Impersonation;
+use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\Http\Middleware\StopImpersonationBeforeLogout;
 use Illuminate\Http\RedirectResponse;
@@ -64,6 +64,11 @@ require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
 
 // §6.8: the optional impersonation module registers its routes only while it is on.
-if (Impersonation::enabled()) {
+if (Skv::impersonationEnabled()) {
     require __DIR__.'/impersonation.php';
+}
+
+// §6.8: the optional passkeys module's routes.
+if (Skv::passkeysEnabled()) {
+    require __DIR__.'/passkeys.php';
 }

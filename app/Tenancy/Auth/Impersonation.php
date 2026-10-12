@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tenancy\Auth;
 
 use App\Models\User;
+use App\Support\Skv;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
@@ -26,10 +27,10 @@ final class Impersonation
     /** HMAC of the impersonator's password hash at start; a password change ends the impersonation (RK-B4). */
     public const string IMPERSONATOR_HASH_KEY = 'impersonation.impersonator_hash';
 
-    /** The module flag (§6.8): config('skv.modules.impersonation'), from MODULE_IMPERSONATION. */
+    /** The module flag (§6.8), kept for existing callers; Skv::impersonationEnabled() is the one source of truth. */
     public static function enabled(): bool
     {
-        return (bool) config('skv.modules.impersonation', false);
+        return Skv::impersonationEnabled();
     }
 
     /**

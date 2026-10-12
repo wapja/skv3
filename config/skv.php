@@ -15,10 +15,12 @@ return [
     ],
 
     /*
-    | Optional modules (§6.8). Impersonation is read from M4 Task 19 on.
+    | Optional modules (§6.8). Setup writes the MODULE_* keys; re-enabling = change the key and run
+    | `php artisan skv:doctor --fix` (M6). Migrations always run whatever the flags say.
     */
     'modules' => [
         'impersonation' => (bool) env('MODULE_IMPERSONATION', true),
+        'passkeys' => (bool) env('MODULE_PASSKEYS', true),
     ],
 
 ];

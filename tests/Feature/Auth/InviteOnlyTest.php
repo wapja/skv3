@@ -39,6 +39,7 @@ it('offers no self-service account deletion', function (): void {
 });
 
 it('registers no DELETE route other than disabling 2FA, removing a passkey and, with the module on, stopping an impersonation', function (): void {
+    usePasskeysModule(true);
     $deleteRoutes = collect(Route::getRoutes()->getRoutes())
         ->filter(fn (RoutingRoute $route): bool => in_array('DELETE', $route->methods(), true))
         ->mapWithKeys(fn (RoutingRoute $route): array => [$route->uri() => ltrim($route->getActionName(), '\\')])

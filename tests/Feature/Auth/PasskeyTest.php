@@ -18,6 +18,10 @@ use function Pest\Laravel\getJson;
 use function Pest\Laravel\postJson;
 use function Pest\Laravel\withSession;
 
+beforeEach(function (): void {
+    usePasskeysModule(true);
+});
+
 /** Register a passkey for the user through the real endpoints on the current host, then sign out. */
 function registerPasskeyFor(User $user, SoftwareAuthenticator $authenticator, string $origin): void
 {

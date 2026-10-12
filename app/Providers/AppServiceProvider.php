@@ -6,8 +6,10 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Support\Skv;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\AliasLoader;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Date;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Fortify\Features;
 use Spatie\Permission\Models\Role as RoleModel;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,7 +27,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        AliasLoader::getInstance()->alias('Skv', Skv::class);
+
+        $this->configureModules();
     }
 
     /**
@@ -35,6 +40,25 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->configureDevCommands();
         $this->configureAuthorization();
+    }
+
+    /**
+     * §6.8 / RL-3: with the passkeys module off, Fortify registers no passkey routes. This runs in register(),
+     * before Fortify's boot() reads config('fortify.features') to register its routes.
+     */
+    protected function configureModules(): void
+    {
+        if (Skv::passkeysEnabled()) {
+            return;
+        }
+
+        /** @var list<string> $features */
+        $features = config('fortify.features', []);
+
+        config(['fortify.features' => array_values(array_filter(
+            $features,
+            fn (string $feature): bool => $feature !== Features::passkeys(),
+        ))]);
     }
 
     /**
