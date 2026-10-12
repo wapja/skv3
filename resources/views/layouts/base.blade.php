@@ -7,12 +7,12 @@
     $pageTitle = filled($title) ? __((string) $title) : null;
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => $appearance === \App\Enums\Appearance::Dark])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-accent="{{ \App\Support\Branding::accent() }}" @class(['dark' => $appearance === \App\Enums\Appearance::Dark])>
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-        <title>{{ $pageTitle !== null ? $pageTitle.' - '.config('app.name', 'Laravel') : config('app.name', 'Laravel') }}</title>
+        <title>{{ $pageTitle !== null ? $pageTitle.' - '.\App\Support\Branding::platformName() : \App\Support\Branding::platformName() }}</title>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
