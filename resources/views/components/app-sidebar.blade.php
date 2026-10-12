@@ -1,49 +1,27 @@
-<flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+@php($navigation = \App\Support\Navigation\Navigation::for(auth()->user()))
+
+<flux:sidebar sticky collapsible class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
     <flux:sidebar.header>
         <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
-        <flux:sidebar.collapse class="lg:hidden" />
+        <flux:sidebar.collapse />
     </flux:sidebar.header>
 
     <flux:sidebar.nav>
-        <flux:sidebar.group :heading="__('Platform')" class="grid">
-            <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
-                {{ __('Dashboard') }}
-            </flux:sidebar.item>
-        </flux:sidebar.group>
-
-        @canany([\App\Authorization\Permission::UsersView, \App\Authorization\Permission::OrganisationsView, \App\Authorization\Permission::RolesView, \App\Authorization\Permission::ActivityLogView])
-            <flux:sidebar.group :heading="__('Administration')" class="grid">
-                @can(\App\Authorization\Permission::UsersView)
-                    <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>
-                        {{ __('Users') }}
+        @foreach ($navigation as $section)
+            <flux:sidebar.group :heading="$section['group']->label()" class="grid">
+                @foreach ($section['items'] as $item)
+                    <flux:sidebar.item
+                        :icon="$item->icon"
+                        :href="$item->url()"
+                        :current="$item->isCurrent()"
+                        wire:navigate
+                        data-test="nav-{{ $item->route }}"
+                    >
+                        {{ $item->label() }}
                     </flux:sidebar.item>
-                @endcan
-
-                @can(\App\Authorization\Permission::UsersView)
-                    <flux:sidebar.item icon="envelope" :href="route('invitations.pending')" :current="request()->routeIs('invitations.pending')" wire:navigate data-test="nav-pending-invitations">
-                        {{ __('Pending invitations') }}
-                    </flux:sidebar.item>
-                @endcan
-
-                @can(\App\Authorization\Permission::OrganisationsView)
-                    <flux:sidebar.item icon="building-office" :href="route('organisations.index')" :current="request()->routeIs('organisations.*')" wire:navigate>
-                        {{ __('Organisations') }}
-                    </flux:sidebar.item>
-                @endcan
-
-                @can(\App\Authorization\Permission::RolesView)
-                    <flux:sidebar.item icon="shield-check" :href="route('roles.index')" :current="request()->routeIs('roles.*')" wire:navigate>
-                        {{ __('Roles') }}
-                    </flux:sidebar.item>
-                @endcan
-
-                @can(\App\Authorization\Permission::ActivityLogView)
-                    <flux:sidebar.item icon="clipboard-document-list" :href="route('activity.index')" :current="request()->routeIs('activity.*')" wire:navigate>
-                        {{ __('Activity log') }}
-                    </flux:sidebar.item>
-                @endcan
+                @endforeach
             </flux:sidebar.group>
-        @endcanany
+        @endforeach
     </flux:sidebar.nav>
 
     <flux:spacer />

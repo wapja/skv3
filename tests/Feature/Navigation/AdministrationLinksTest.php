@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.5 (interim navigation, RL-11) */
+/** covers §6.5 */
 
 use App\Authorization\Permission;
 use App\Models\Organisation;
@@ -32,8 +32,8 @@ it('shows the administration links that match the actor\'s permissions', functio
     }
 
     $visible === []
-        ? $response->assertDontSee(__('Administration'))
-        : $response->assertSee(__('Administration'));
+        ? $response->assertDontSee(__('Management'))
+        : $response->assertSee(__('Management'));
 })->with([
     'member' => ['member', []],
     'organisation admin' => ['organisation admin', ['users.index']],
@@ -56,9 +56,9 @@ it('shows the pending invitations link to users who may view users', function (s
     $response = $this->get(route('dashboard'))->assertOk();
 
     if ($visible) {
-        $response->assertSee('data-test="nav-pending-invitations"', false);
+        $response->assertSee('data-test="nav-invitations.pending"', false);
     } else {
-        $response->assertDontSee('data-test="nav-pending-invitations"', false);
+        $response->assertDontSee('data-test="nav-invitations.pending"', false);
     }
 })->with([
     'member' => ['member', false],
