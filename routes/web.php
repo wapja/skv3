@@ -28,7 +28,7 @@ Route::get('/', function (): RedirectResponse {
 })->name('home');
 
 Route::middleware(['auth'])->group(function (): void {
-    Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
 });
 
 // §4.2: password confirmation is throttled. Same method, URI and name as Fortify's route, so this one replaces it.
