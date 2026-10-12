@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\SetLocale;
 use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
 use App\Tenancy\Http\Middleware\EnsureCentralHost;
@@ -26,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(
-            append: [EnforceImpersonation::class, VerifyTenantMembership::class, AuthenticateSession::class],
+            append: [EnforceImpersonation::class, VerifyTenantMembership::class, AuthenticateSession::class, SetLocale::class],
             prepend: [InitializeTenancy::class],
         );
         // Before route-model binding (and so before can:): a tenant model bound on the wrong host

@@ -6,24 +6,10 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Lang;
 
-it('has a Dutch translation for every __() key in the M4 paths (OR-I8)', function (): void {
-    // The paths M4 writes copy in. Starter screens (settings, auth views) get their Dutch copy in M5.
-    $directories = [
-        'app/Actions', 'app/Authorization', 'app/Concerns', 'app/Enums', 'app/Http/Controllers', 'app/Mail',
-        'app/Notifications', 'app/Rules', 'app/Tenancy', 'resources/views/pages/users', 'resources/views/pages/invitations',
-        'resources/views/pages/organisations', 'resources/views/pages/roles', 'resources/views/pages/activity',
-        'resources/views/mail',
-    ];
-    $singleFiles = [
-        'resources/views/pages/auth/handoff-confirm.blade.php',
-        'resources/views/components/impersonation-banner.blade.php',
-        'resources/views/layouts/base.blade.php',
-    ];
-
-    $files = [
-        ...kitSourceFiles(...$directories),
-        ...array_values(array_filter($singleFiles, fn (string $path): bool => is_file(base_path($path)))),
-    ];
+it('has a Dutch translation for every __() key in the app and its views (FU4-6)', function (): void {
+    // The sidebar is covered too: its group labels are __() literals in App\Enums\NavigationGroup, and its item
+    // labels are checked by NavigationTest.
+    $files = kitSourceFiles('app', 'resources/views');
     $dutch = dutchTranslationKeys();
     $missing = [];
 

@@ -12,6 +12,7 @@
             <div class="flex flex-col gap-6">
                 {{ $slot }}
             </div>
+            <x-language-toggle />
         </div>
     </div>
 </x-layouts::base>

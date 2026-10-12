@@ -13,10 +13,10 @@ enum Locale: string
     case Dutch = 'nl';
     case English = 'en';
 
-    /** The app locale when it is supported, otherwise Dutch (§4.11: nl is the kit default). */
+    /** The configured default when it is supported, otherwise Dutch (§4.11; RL-8: never app.locale). */
     public static function default(): self
     {
-        return self::tryFrom((string) config('app.locale')) ?? self::Dutch;
+        return self::tryFrom((string) config('skv.locale.default')) ?? self::Dutch;
     }
 
     public function label(): string

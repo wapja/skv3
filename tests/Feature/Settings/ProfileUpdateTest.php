@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.10 */
 
 use App\Authorization\SetSuperAdmin;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\Notification;
@@ -106,4 +107,16 @@ test('email address of a deleted user can be reused', function (): void {
     $this->withSession(['auth.password_confirmed_at' => time()])->get(confirmationLinkFor('former@example.com'));
 
     expect($user->refresh()->email)->toBe('former@example.com');
+});
+
+it('changes the language from the profile page (§4.10)', function (): void {
+    $user = asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    Livewire::test('pages::settings.profile')
+        ->set('locale', 'nl')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors()
+        ->assertRedirect(route('profile.edit'));
+
+    expect($user->fresh()?->locale)->toBe(Locale::Dutch);
 });

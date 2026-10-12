@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
+use App\Http\Controllers\LocaleController;
 use App\Models\User;
 use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
@@ -59,6 +60,9 @@ Route::get('auth/handoff/{token}', [HandoffController::class, 'show'])
 Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
     ->middleware('throttle:handoff')
     ->name('auth.handoff.store');
+
+// §6.5: the language toggle on every host, for guests (session) and users (account).
+Route::post('locale', LocaleController::class)->middleware('throttle:30,1')->name('locale.update');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';

@@ -15,6 +15,14 @@ return [
     ],
 
     /*
+    | Localisation (§4.11). The default locale is read once from APP_LOCALE: App::setLocale() rewrites
+    | app.locale during a request, so Locale::default() reads this key instead (RL-8).
+    */
+    'locale' => [
+        'default' => env('APP_LOCALE', 'nl'),
+    ],
+
+    /*
     | Optional modules (§6.8). Setup writes the MODULE_* keys; re-enabling = change the key and run
     | `php artisan skv:doctor --fix` (M6). Migrations always run whatever the flags say.
     */

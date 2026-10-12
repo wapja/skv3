@@ -23,15 +23,15 @@ it('translates the locale labels', function (): void {
         ->and(Locale::English->label())->toBe('Engels');
 });
 
-it('defaults a new user to the app locale', function (string $appLocale, Locale $expected): void {
-    config(['app.locale' => $appLocale]);
+it('defaults a new user to the configured default locale (RL-8)', function (string $default, Locale $expected): void {
+    config(['skv.locale.default' => $default]);
 
     expect(Locale::default())->toBe($expected)
         ->and(User::factory()->create()->locale)->toBe($expected);
 })->with([
-    'Dutch app' => ['nl', Locale::Dutch],
-    'English app' => ['en', Locale::English],
-    'unsupported app locale' => ['fr', Locale::Dutch],
+    'Dutch default' => ['nl', Locale::Dutch],
+    'English default' => ['en', Locale::English],
+    'unsupported default' => ['fr', Locale::Dutch],
 ]);
 
 it('fills the column with the app locale of the migration run when nothing is given (CV-21)', function (): void {
