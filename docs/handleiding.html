@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>main @ 8c9ecab</span><span>M0–M4 klaar</span><span>bijgewerkt 11-10-2026</span></div>
+    <div class="eyebrow"><span>m5-ui @ 0b24f1f</span><span>M0–M5 klaar</span><span>bijgewerkt 12-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand van <code>main</code> na milestone M4.</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M5 (branch <code>m5-ui</code>).</p>
   </header>
 
   <div class="page">
@@ -479,20 +479,24 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
           <ol>
             <li><a href="#env">.env-sleutels</a></li>
             <li><a href="#configkeys">Config-sleutels</a></li>
+            <li><a href="#fluxpro">Flux Pro</a></li>
           </ol>
         </li>
         <li><a href="#auth"><span class="num">4</span>Inloggen en beveiliging</a>
           <ol>
             <li><a href="#wie-waar">Wie logt waar in</a></li>
+            <li><a href="#instellingen">Instellingen, taal en weergave</a></li>
             <li><a href="#twofa">Tweestapsverificatie</a></li>
             <li><a href="#passkeys">Passkeys</a></li>
             <li><a href="#reset">Wachtwoord vergeten</a></li>
             <li><a href="#emailchange">E-mailadres wijzigen</a></li>
             <li><a href="#handoff">Wisselen van host</a></li>
+            <li><a href="#foutpaginas">Foutpagina&rsquo;s</a></li>
           </ol>
         </li>
         <li><a href="#beheer"><span class="num">5</span>Beheer</a>
           <ol>
+            <li><a href="#dashboard">Dashboard</a></li>
             <li><a href="#eerste-keer">Eerste keer als beheerder</a></li>
             <li><a href="#beheerders">Soorten gebruikers</a></li>
             <li><a href="#organisaties">Organisaties</a></li>
@@ -507,6 +511,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
           <ol>
             <li><a href="#dev-routes">Routes en hosts</a></li>
             <li><a href="#dev-livewire">Livewire</a></li>
+            <li><a href="#dev-ui">UI</a></li>
             <li><a href="#dev-tenant">Tenant-modellen</a></li>
             <li><a href="#dev-hostscope">HostScope</a></li>
             <li><a href="#dev-perms">Rechten</a></li>
@@ -577,11 +582,11 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
   </ul>
   <p class="src">.env.example:11-14; config/tenancy.php:17-19,39-42; app/Tenancy/Hosts.php:17-18,35-54; app/Tenancy/Resolvers/SubdomainResolver.php:31-37; app/Tenancy/Auth/HostLoginRule.php:9-18; DEC-13</p>
 
-  <div class="note warn">
+  <div class="note">
     <p class="note-title">Taal op het scherm</p>
-    <p>De standaardtaal is Nederlands. De beheerschermen, mails, meldingen en de banner zijn al vertaald. Een deel van de standaardschermen van de starter kit (inloggen, instellingen, beveiliging) toont nog Engelse teksten tot M5. Deze handleiding noemt de labels precies zoals de app ze nu laat zien, dus soms in het Engels. Waar een melding een naam, adres of getal invult, staat hier een <em>schuingedrukte</em> voorbeeldwaarde, zoals <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p>
+    <p>De standaardtaal is Nederlands, met een volledige Engelse versie. Alle schermen, paginatitels, mails, meldingen en foutpagina&rsquo;s zijn vertaald. Je kiest je taal in het gebruikersmenu of in je profiel; gasten krijgen de taal van hun browser en hebben taalknoppen onder het inlogvenster (zie <a href="#instellingen">Instellingen, taal en weergave</a>). Deze handleiding noemt de Nederlandse labels. Waar een melding een naam, adres of getal invult, staat hier een <em>schuingedrukte</em> voorbeeldwaarde, zoals <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p>
   </div>
-  <p class="src">.env.example:7-8; docs/decisions.md:132 (35), :134</p>
+  <p class="src">.env.example:9; config/skv.php (locale.default); app/Support/Locales.php; resources/views/components/language-toggle.blade.php; lang/nl.json; docs/decisions.md (DEC-29 (8))</p>
 </section>
 
 <!-- ============================ 2 ============================ -->
@@ -626,7 +631,7 @@ DB_DATABASE=mijnapp</code></pre>
       <p><strong>Zet <code>APP_URL</code> op het Herd-adres.</strong> <code>.env.example</code> begint met <code>http://localhost</code>. Laat je dat staan, dan is het apex <code>localhost</code> en geeft <code>mijnapp.test</code> de pagina <span class="ui">Organisatie niet gevonden</span>.</p>
 <pre><code>APP_NAME="Mijn App"
 APP_URL=http://mijnapp.test</code></pre>
-      <p>Heb je de config gecachet, draai dan <code>php artisan config:clear</code>. <code>APP_NAME</code> staat standaard op <code>Laravel</code>; die naam zie je in de zijbalk, de paginatitel en als afzender van mails.</p>
+      <p>Heb je de config gecachet, draai dan <code>php artisan config:clear</code>. <code>APP_NAME</code> staat standaard op <code>Laravel</code>; die naam zie je op centrale hosts in de zijbalk, in de paginatitel en als afzender van mails. Op een organisatiehost toont de zijbalk de naam van de organisatie.</p>
     </div></li>
     <li><div>
       <p><strong>Maak het ontwikkelaccount aan.</strong> <code>composer setup</code> seedt niet; dat doe je één keer zelf.</p>
@@ -657,6 +662,7 @@ APP_URL=http://mijnapp.test</code></pre>
         <tr><td><code>composer dev</code></td><td>Vite, queue, logs en scheduler (Herd serveert de site)</td></tr>
         <tr><td><code>composer check</code></td><td>Pint, Rector, Larastan en Pest op SQLite</td></tr>
         <tr><td><code>composer test:pgsql</code></td><td>Dezelfde Pest-suite op PostgreSQL (Herd Pro)</td></tr>
+        <tr><td><code>composer test:browser</code></td><td>De browsertests in Chromium (<code>tests/Browser</code>). Eerst één keer <code>npx playwright install chromium</code> en <code>npm run build</code></td></tr>
         <tr><td><code>composer fix</code></td><td>Rector, daarna Pint</td></tr>
         <tr><td><code>php artisan permissions:sync</code></td><td>Rechtencatalogus en systeemrollen bijwerken</td></tr>
         <tr><td><code>php artisan activitylog:clean</code></td><td>Logregels ouder dan <code>ACTIVITYLOG_RETENTION_DAYS</code> verwijderen</td></tr>
@@ -694,7 +700,7 @@ APP_URL=http://mijnapp.test</code></pre>
       </tbody>
     </table>
   </div>
-  <p>Na het inloggen kom je op het (nog lege) <span class="ui">Dashboard</span>. Open in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>. Dit account is tijdelijk: in M6 komen een demoseeder (organisaties <code>demo1</code> en <code>demo2</code>, elk met een beheerder en een gebruiker) en het commando <code>skv:create-super-admin</code>.</p>
+  <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>, met bovenaan de lijst <span class="ui">Aan de slag</span> (zie <a href="#dashboard">Dashboard</a>). Open in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>. Dit account is tijdelijk: in M6 komen een demoseeder (organisaties <code>demo1</code> en <code>demo2</code>, elk met een beheerder en een gebruiker), snel inloggen met die demo-accounts (alleen lokaal) en het commando <code>skv:create-super-admin</code>.</p>
   <p>Draai <code>db:seed</code> maar één keer. Een tweede keer loopt vast op het unieke e-mailadres <span class="badge b-unv">afgeleid, niet uitgeprobeerd</span>.</p>
   <p class="src">database/seeders/DatabaseSeeder.php:19-30; database/factories/UserFactory.php:39,76-82; config/fortify.php:78; routes/web.php:17-27; tests/Feature/Auth/HostScopedLoginTest.php:47-55; spec:203</p>
 
@@ -732,15 +738,18 @@ APP_URL=http://mijnapp.test</code></pre>
     <table>
       <thead><tr><th>Sleutel</th><th>Standaard</th><th>Effect</th></tr></thead>
       <tbody>
-        <tr><td><code>APP_NAME</code></td><td><code>Laravel</code></td><td>Naam in zijbalk, paginatitel en als afzender (<code>MAIL_FROM_NAME</code>)</td></tr>
+        <tr><td><code>APP_NAME</code></td><td><code>Laravel</code></td><td>Naam van het platform: in de zijbalk op centrale hosts, in de paginatitel en als afzender (<code>MAIL_FROM_NAME</code>)</td></tr>
+        <tr><td><code>BRANDING_ACCENT</code></td><td>leeg (<code>neutral</code>)</td><td>Accentkleur van knoppen en links: een van de Flux-presets <code>red</code>, <code>orange</code>, <code>amber</code>, <code>yellow</code>, <code>lime</code>, <code>green</code>, <code>emerald</code>, <code>teal</code>, <code>cyan</code>, <code>sky</code>, <code>blue</code>, <code>indigo</code>, <code>violet</code>, <code>purple</code>, <code>fuchsia</code>, <code>pink</code> of <code>rose</code>. Een onbekende waarde wordt <code>neutral</code></td></tr>
+        <tr><td><code>BRANDING_LOGO</code></td><td>leeg</td><td>Pad onder <code>public/</code> naar je logo, bijvoorbeeld <code>images/logo.svg</code>. Leeg betekent het standaardmerkteken</td></tr>
         <tr><td><code>APP_KEY</code></td><td>leeg</td><td>Wordt door <code>composer setup</code> alleen gemaakt als hij leeg is. Tweestapsgeheimen en passkeys hangen ervan af</td></tr>
         <tr><td><code>APP_URL</code></td><td><code>http://localhost</code></td><td>Basisadres. De host wordt het apex als <code>TENANCY_APEX_DOMAIN</code> leeg is; het schema geldt voor links uit de queue</td></tr>
-        <tr><td><code>APP_LOCALE</code> / <code>APP_FALLBACK_LOCALE</code></td><td><code>nl</code> / <code>en</code></td><td>Schermtaal Nederlands, terugval Engels</td></tr>
+        <tr><td><code>APP_LOCALE</code> / <code>APP_FALLBACK_LOCALE</code></td><td><code>nl</code> / <code>en</code></td><td>Standaardtaal Nederlands, terugval Engels. De standaardtaal geldt als account, eigen keuze en browser niets bepalen</td></tr>
         <tr><td><code>TENANCY_APEX_DOMAIN</code></td><td>leeg</td><td>Apex overschrijven; leeg betekent de host van <code>APP_URL</code></td></tr>
         <tr><td><code>TENANCY_ADMIN_SUBDOMAIN</code></td><td><code>admin</code></td><td>Subdomein van de beheerhost. Wordt nooit als organisatie gezien</td></tr>
         <tr><td><code>TENANCY_STRICT</code></td><td><code>true</code></td><td>Een tenant-model lezen zonder gekoppelde organisatie geeft een fout (behalve in de console en in <code>Tenant::bypass()</code>)</td></tr>
         <tr><td><code>INVITATION_EXPIRES_IN_DAYS</code></td><td class="tabnum"><code>7</code></td><td>Geldigheid van een uitnodiging; een herinnering verlengt hem</td></tr>
         <tr><td><code>MODULE_IMPERSONATION</code></td><td><code>true</code></td><td>Module &lsquo;Inloggen als gebruiker&rsquo;. Met <code>false</code> bestaan de routes niet</td></tr>
+        <tr><td><code>MODULE_PASSKEYS</code></td><td><code>true</code></td><td>Module Passkeys. Met <code>false</code> bestaan de passkeyroutes en <code>.well-known/passkey-endpoints</code> niet, en verdwijnen de passkeyknop en het onderdeel Passkeys</td></tr>
         <tr><td><code>PASSKEYS_RELYING_PARTY_ID</code></td><td>leeg</td><td>Passkeys gebruiken het apex als relying party id; alleen invullen als dat anders moet</td></tr>
         <tr><td><code>TRUSTED_PROXIES</code></td><td>leeg</td><td>Achter een load balancer of CDN: hun adressen (komma&rsquo;s) of <code>*</code>, zodat rate limits het IP van de bezoeker zien</td></tr>
         <tr><td><code>BCRYPT_ROUNDS</code></td><td class="tabnum"><code>12</code></td><td>Kosten van de wachtwoordhash</td></tr>
@@ -758,7 +767,7 @@ APP_URL=http://mijnapp.test</code></pre>
       </tbody>
     </table>
   </div>
-  <p class="src">.env.example:1-83; config/tenancy.php:9-25; config/fortify.php:148-153; config/auth.php:117,131; config/activitylog.php:18-19; config/skv.php:12-22; config/trustedproxy.php:7-20</p>
+  <p class="src">.env.example:1-94; config/branding.php; app/Support/Branding.php (ACCENTS); config/tenancy.php:9-25; config/fortify.php; config/auth.php:117,131; config/activitylog.php:18-19; config/skv.php; config/trustedproxy.php:7-20; app/Providers/AppServiceProvider.php (passkeys module)</p>
 
   <h3 id="configkeys">Config-sleutels van de kit</h3>
   <div class="table-wrap">
@@ -768,6 +777,9 @@ APP_URL=http://mijnapp.test</code></pre>
         <tr><td><code>skv.invitations.expires_in_days</code></td><td class="tabnum">7</td><td>Uit <code>INVITATION_EXPIRES_IN_DAYS</code></td></tr>
         <tr><td><code>skv.invitations.signature_grace_days</code></td><td class="tabnum">30</td><td>De handtekening van een uitnodigingslink leeft 30 dagen langer dan de uitnodiging. Een net verlopen link toont zo nog de pagina &lsquo;verlopen&rsquo;; pas oudere links geven 403</td></tr>
         <tr><td><code>skv.modules.impersonation</code></td><td>true</td><td>Uit <code>MODULE_IMPERSONATION</code></td></tr>
+        <tr><td><code>skv.modules.passkeys</code></td><td>true</td><td>Uit <code>MODULE_PASSKEYS</code></td></tr>
+        <tr><td><code>skv.locale.default</code></td><td><code>nl</code></td><td>Uit <code>APP_LOCALE</code>. <code>Locale::default()</code> leest deze sleutel, omdat <code>app.locale</code> per verzoek verandert</td></tr>
+        <tr><td><code>branding.name</code> / <code>branding.logo</code> / <code>branding.accent</code></td><td><code>APP_NAME</code> / leeg / <code>neutral</code></td><td>Uit <code>APP_NAME</code>, <code>BRANDING_LOGO</code> en <code>BRANDING_ACCENT</code>. In M6 vult de setup ze in</td></tr>
         <tr><td><code>tenancy.apex_domain</code></td><td>host van <code>APP_URL</code></td><td>Of <code>TENANCY_APEX_DOMAIN</code>, anders <code>localhost</code></td></tr>
         <tr><td><code>tenancy.admin_subdomain</code></td><td><code>admin</code></td><td>Uit <code>TENANCY_ADMIN_SUBDOMAIN</code></td></tr>
         <tr><td><code>tenancy.strict</code></td><td>true</td><td>Uit <code>TENANCY_STRICT</code></td></tr>
@@ -779,7 +791,28 @@ APP_URL=http://mijnapp.test</code></pre>
       </tbody>
     </table>
   </div>
-  <p class="src">config/skv.php:7-22; config/tenancy.php:17-42; config/activitylog.php:15-39; app/Tenancy/Hosts.php:47-54</p>
+  <p class="src">config/skv.php; config/branding.php; app/Enums/Locale.php; config/tenancy.php:17-42; config/activitylog.php:15-39; app/Tenancy/Hosts.php:47-54</p>
+
+  <h3 id="fluxpro">Flux Pro (optioneel)</h3>
+  <p>De kit werkt volledig op de gratis versie van Flux. Is <code>livewire/flux-pro</code> geïnstalleerd, dan schakelen deze varianten vanzelf in. De gegevens en rechten blijven hetzelfde; alleen de bediening verandert.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Onderdeel</th><th>Gratis Flux</th><th>Met Flux Pro</th></tr></thead>
+      <tbody>
+        <tr><td>Rollen kiezen (gebruiker bewerken, uitnodigen)</td><td>Vinkjes</td><td>Een keuzelijst met meerdere rollen</td></tr>
+        <tr><td><span class="ui">Actief</span> / <span class="ui">Gearchiveerd</span> (gebruikers, organisaties)</td><td>Schakelknop</td><td>Tabbladen</td></tr>
+        <tr><td><span class="ui">Van</span> / <span class="ui">Tot en met</span> in het activiteitenlog</td><td>Twee datumvelden</td><td>Twee datumkiezers</td></tr>
+        <tr><td>Navigatie zoeken</td><td>&mdash;</td><td><span class="ui">Zoeken…</span> bovenaan in de zijbalk, of <code>⌘K</code>: typ en spring naar een pagina</td></tr>
+        <tr><td>Dashboard</td><td>Tellers</td><td>Ook de grafiek <span class="ui">Inlogs in de afgelopen 14 dagen</span> (met <code>activity_log.view</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul>
+    <li><code>livewire/flux-pro</code> staat nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code> van de kit; een test bewaakt dat. Je hebt er een eigen Flux Pro-licentie voor nodig.</li>
+    <li>Het commando <code>php artisan skv:flux-pro</code>, dat Pro met je eigen licentie installeert, komt in M6 <span class="badge b-plan">M6</span>. Installeer je Pro eerder met de hand, draai daarna <code>php artisan view:clear</code> en <code>npm run build</code>: views die zonder Pro gecompileerd zijn, geven anders een melding om <code>view:clear</code> te draaien.</li>
+    <li>De Pro-varianten zijn één keer getest in een wegwerpkopie van de repo met Flux Pro 2.20.1.</li>
+  </ul>
+  <p class="src">spec §6.7; app/Support/Skv.php; app/Support/FluxProBranches.php; resources/views/components/command-palette.blade.php; resources/views/pages/dashboard/dashboard.blade.php; tests/Arch/FluxProLayerTest.php; tests/Feature/Tooling/CiWorkflowTest.php; docs/decisions.md (DEC-29 (12), (17), (30))</p>
 </section>
 
 <!-- ============================ 4 ============================ -->
@@ -809,8 +842,8 @@ APP_URL=http://mijnapp.test</code></pre>
     <li><span class="ui">Je account heeft geen toegang tot dit adres. Log in bij je eigen organisatie.</span></li>
     <li><span class="ui">Je account is niet actief. Neem contact op met je beheerder.</span></li>
   </ul>
-  <p>De inlogpagina toont nu: kop <span class="ui">Log in to your account</span>, velden <span class="ui">E-mailadres</span> en <span class="ui">Wachtwoord</span>, <span class="ui">Remember me</span>, de link <span class="ui">Forgot your password?</span>, de knop <span class="ui">Inloggen</span> en <span class="ui">Sign in with a passkey</span>. Uitloggen doe je met <span class="ui">Uitloggen</span> in het gebruikersmenu.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/HostLoginRule.php:9-18; config/fortify.php:78; routes/web.php:19-27; tests/Feature/Auth/HostScopedLoginTest.php:47-55; app/Tenancy/Auth/AuthenticateOnThisHost.php:15-58; lang/nl/auth.php:7,9; app/Tenancy/Http/Middleware/VerifyTenantMembership.php:14-41; resources/views/pages/auth/login.blade.php; app/Providers/FortifyServiceProvider.php:92-101</p></details>
+  <p>De inlogpagina toont: kop <span class="ui">Log in op je account</span>, velden <span class="ui">E-mailadres</span> en <span class="ui">Wachtwoord</span>, <span class="ui">Onthoud mij</span>, de link <span class="ui">Wachtwoord vergeten?</span>, de knop <span class="ui">Inloggen</span> en, als de passkeymodule aan staat, <span class="ui">Inloggen met een passkey</span>. Onder het venster staan de taalknoppen <span class="ui">Nederlands</span> en <span class="ui">Engels</span>. Uitloggen doe je met <span class="ui">Uitloggen</span> in het gebruikersmenu.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/HostLoginRule.php:9-18; config/fortify.php:78; routes/web.php; tests/Feature/Auth/HostScopedLoginTest.php:47-55; app/Tenancy/Auth/AuthenticateOnThisHost.php:15-58; lang/nl/auth.php:7,9; app/Tenancy/Http/Middleware/VerifyTenantMembership.php:14-41; resources/views/pages/auth/login.blade.php; resources/views/layouts/auth.blade.php; resources/views/components/passkey-verify.blade.php; app/Providers/FortifyServiceProvider.php</p></details>
 
   <h4>Sessies</h4>
   <ul>
@@ -821,30 +854,50 @@ APP_URL=http://mijnapp.test</code></pre>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127</p></details>
 
+  <h3 id="instellingen">Instellingen, taal en weergave</h3>
+  <p>Klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven). Het gebruikersmenu toont je naam en e-mailadres, <span class="ui">Instellingen</span>, de keuze <span class="ui">Taal</span> (<span class="ui">Nederlands</span> of <span class="ui">Engels</span>), de keuze <span class="ui">Weergave</span> (<span class="ui">Licht</span>, <span class="ui">Donker</span> of <span class="ui">Systeem</span>) en <span class="ui">Uitloggen</span>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Instellingen</th><th>Pad</th><th>Wat je er doet</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ui">Profiel</span></td><td><code>/settings/profile</code></td><td><span class="ui">Naam</span>, <span class="ui">E-mailadres</span> (zie <a href="#emailchange">E-mailadres wijzigen</a>) en <span class="ui">Taal</span></td></tr>
+        <tr><td><span class="ui">Beveiliging</span></td><td><code>/settings/security</code></td><td>Wachtwoord, tweestapsverificatie en (als de module aan staat) passkeys</td></tr>
+        <tr><td><span class="ui">Weergave</span></td><td><code>/settings/appearance</code></td><td><span class="ui">Licht</span>, <span class="ui">Donker</span> of <span class="ui">Systeem</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul>
+    <li><strong>Taal.</strong> Kies je een taal in het menu of in je profiel, dan wordt die bij je account bewaard en laadt de pagina opnieuw in die taal. De kit kiest de taal in deze volgorde: de taal van je account, als gast je keuze met de taalknoppen (bewaard voor dit bezoek), de taal van je browser, en anders de standaardtaal (<code>APP_LOCALE</code>, Nederlands).</li>
+    <li><strong>Uitnodigingen.</strong> De acceptatiepagina toont de taal die de uitnodiger koos, tenzij je zelf al een taal hebt gekozen of ingelogd bent.</li>
+    <li><strong>Weergave.</strong> Je keuze wordt bij je account bewaard. Hij geldt dus op elke host (centraal en op elke organisatiehost), ook in een andere browser, en de pagina flitst niet licht op voordat hij donker wordt. <span class="ui">Systeem</span> volgt de instelling van je besturingssysteem. Gasten volgen altijd hun systeem; mails blijven licht.</li>
+    <li>Taal en weergave komen niet in het activiteitenlog: het zijn voorkeuren, geen beheerwijzigingen.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/components/user-menu/*; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/profile/*; resources/views/pages/settings/appearance/*; resources/views/layouts/base.blade.php; app/Support/Locales.php; app/Http/Middleware/SetLocale.php; app/Http/Controllers/LocaleController.php; app/Actions/Settings/{UpdateLocale,UpdateAppearance}.php; resources/views/pages/invitations/accept/accept.php; tests/Browser/AppearanceTest.php; docs/decisions.md (DEC-29 (4), (7), (8), (29))</p></details>
+
   <h3 id="twofa">Tweestapsverificatie en herstelcodes</h3>
-  <p>Je beheert de tweede stap op de beveiligingspagina: klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven), dan <span class="ui">Settings</span> en <span class="ui">Security</span> (<code>/settings/security</code>). Die pagina vraagt eerst je wachtwoord (<span class="ui">Wachtwoord bevestigen</span>). Een bevestiging blijft 3 uur geldig; elke gevoelige actie controleert dat opnieuw.</p>
+  <p>Je beheert de tweede stap op de beveiligingspagina: klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven), dan <span class="ui">Instellingen</span> en <span class="ui">Beveiliging</span> (<code>/settings/security</code>). Die pagina vraagt eerst je wachtwoord (<span class="ui">Wachtwoord bevestigen</span>). Een bevestiging blijft 3 uur geldig; elke gevoelige actie controleert dat opnieuw.</p>
   <ol class="steps">
-    <li><div><p>Klik <span class="ui">Enable 2FA</span>. Scan de QR-code met je authenticator-app, of kies <span class="ui">or, enter the code manually</span>, en klik <span class="ui">Continue</span>.</p></div></li>
-    <li><div><p>Vul de 6-cijferige code in en klik <span class="ui">Confirm</span> (met <span class="ui">Terug</span> ga je een stap terug). Het venster sluit en de pagina toont nu <span class="ui">Disable 2FA</span> en je herstelcodes.</p></div></li>
-    <li><div><p>Bewaar je herstelcodes: <span class="ui">View recovery codes</span>, dan <span class="ui">Kopiëren</span> of <span class="ui">Downloaden</span> (een bestand <code>recovery-codes.txt</code>, één code per regel).</p></div></li>
+    <li><div><p>Klik <span class="ui">Tweestapsverificatie inschakelen</span>. Scan de QR-code met je authenticator-app, of kies <span class="ui">of vul de code handmatig in</span>, en klik <span class="ui">Doorgaan</span>.</p></div></li>
+    <li><div><p>Vul de 6-cijferige code in en klik <span class="ui">Bevestigen</span> (met <span class="ui">Terug</span> ga je een stap terug). Het venster sluit en de pagina toont nu <span class="ui">Tweestapsverificatie uitschakelen</span> en je herstelcodes.</p></div></li>
+    <li><div><p>Bewaar je herstelcodes: <span class="ui">Herstelcodes bekijken</span>, dan <span class="ui">Kopiëren</span> of <span class="ui">Downloaden</span> (een bestand <code>recovery-codes.txt</code> met de opgeslagen codes, één code per regel). Lukt kopiëren niet, dan zie je <span class="ui">Kopiëren is mislukt; selecteer de codes en kopieer ze zelf.</span></p></div></li>
   </ol>
-  <p>Bij het inloggen vraagt de pagina <span class="ui">Two-factor authentication</span> om je code. Kwijt? Kies <span class="ui">login using a recovery code</span>. Elke herstelcode werkt één keer. Met <span class="ui">Codes opnieuw genereren</span> maak je nieuwe; de vraag <span class="ui">Herstelcodes opnieuw genereren?</span> waarschuwt dat de oude dan niet meer werken. Uitzetten doe je met <span class="ui">Disable 2FA</span>.</p>
-  <p>Ook je wachtwoord wijzig je hier: onder <span class="ui">Update password</span> vul je <span class="ui">Current password</span>, <span class="ui">New password</span> en <span class="ui">Wachtwoord bevestigen</span> in, en klik je <span class="ui">Opslaan</span>.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:170-173; routes/settings.php:14-16; resources/views/components/desktop-user-menu.blade.php:23; resources/views/pages/settings/layout.blade.php:4-6; resources/views/pages/settings/security/security.blade.php:6-37; resources/views/pages/settings/two-factor-setup-modal/two-factor-setup-modal.php:60-147; lang/nl.json:38,57,212; resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php; resources/views/pages/auth/two-factor-challenge.blade.php; config/auth.php:117</p></details>
+  <p>Bij het inloggen vraagt de pagina <span class="ui">Tweestapsverificatie</span> om je <span class="ui">Verificatiecode</span>. Kwijt? Kies <span class="ui">inloggen met een herstelcode</span>. Elke herstelcode werkt één keer. Met <span class="ui">Codes opnieuw genereren</span> maak je nieuwe; de vraag <span class="ui">Herstelcodes opnieuw genereren?</span> waarschuwt dat de oude dan niet meer werken. Uitzetten doe je met <span class="ui">Tweestapsverificatie uitschakelen</span>.</p>
+  <p>Ook je wachtwoord wijzig je hier: onder <span class="ui">Wachtwoord wijzigen</span> vul je <span class="ui">Huidige wachtwoord</span>, <span class="ui">Nieuw wachtwoord</span> en <span class="ui">Wachtwoord bevestigen</span> in, en klik je <span class="ui">Opslaan</span>.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; routes/settings.php; resources/views/components/user-menu/user-menu.blade.php; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/security/security.blade.php:6-37; resources/views/pages/settings/two-factor-setup-modal/two-factor-setup-modal.php:60-147; lang/nl.json:38,57,212; resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php; resources/views/pages/auth/two-factor-challenge.blade.php; config/auth.php:117</p></details>
 
   <h3 id="passkeys">Passkeys</h3>
   <p>Met een passkey log je in zonder wachtwoord. Het relying party id is altijd het apex, dus één passkey werkt op het apex, de admin-host en elke organisatiehost, en blijft werken als het webadres van je organisatie verandert.</p>
   <ul>
-    <li>Toevoegen: op de beveiligingspagina (<span class="ui">Settings</span> → <span class="ui">Security</span>) onder <span class="ui">Passkeys</span> klik je <span class="ui">Add passkey</span>, geef je een <span class="ui">Passkey name</span> (bijvoorbeeld &lsquo;MacBook Pro&rsquo;) en klik je <span class="ui">Register passkey</span>.</li>
-    <li>Inloggen: <span class="ui">Sign in with a passkey</span> op de inlogpagina. Ook dan geldt de hostregel.</li>
+    <li>Toevoegen: op de beveiligingspagina (<span class="ui">Instellingen</span> → <span class="ui">Beveiliging</span>) onder <span class="ui">Passkeys</span> klik je <span class="ui">Passkey toevoegen</span>, geef je een <span class="ui">Naam van de passkey</span> (bijvoorbeeld &lsquo;MacBook Pro&rsquo;) en klik je <span class="ui">Passkey registreren</span>.</li>
+    <li>Inloggen: <span class="ui">Inloggen met een passkey</span> op de inlogpagina. Ook dan geldt de hostregel.</li>
     <li>Mislukt de controle, dan zie je <span class="ui">Deze passkey kon niet worden geverifieerd.</span></li>
     <li>Verwijderen vraagt een verse wachtwoordbevestiging.</li>
-    <li>Passkeys staan nu altijd aan. Een schakelaar <code>MODULE_PASSKEYS</code> komt in M5.</li>
+    <li>Passkeys zijn een optionele module: <code>MODULE_PASSKEYS</code>, standaard <code>true</code>. Met <code>false</code> registreert de kit geen passkeyroutes en geen <code>.well-known/passkey-endpoints</code>, en verdwijnen de knop op de inlogpagina en bij het bevestigen van je wachtwoord en het onderdeel <span class="ui">Passkeys</span> op de beveiligingspagina. Opgeslagen passkeys blijven in de database staan. Draai na het wijzigen <code>php artisan config:clear</code> als je de config cachet.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:148-153,174-176; spec:111; app/Tenancy/Listeners/SetPasskeyOrigin.php; bootstrap/app.php:48-52; resources/views/components/passkey-registration.blade.php:69-111</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; config/skv.php (modules.passkeys); app/Providers/AppServiceProvider.php; routes/passkeys.php; spec:111, §6.8; app/Tenancy/Listeners/SetPasskeyOrigin.php; resources/views/components/passkey-registration.blade.php; resources/views/pages/settings/security/security.blade.php; tests/Feature/Passkeys/PasskeysModuleTest.php</p></details>
 
   <h3 id="reset">Wachtwoord vergeten</h3>
-  <p>Klik op de inlogpagina <span class="ui">Forgot your password?</span>, vul je e-mailadres in en klik <span class="ui">Email password reset link</span>. Je krijgt altijd hetzelfde antwoord, of het adres nu bestaat of niet:</p>
+  <p>Klik op de inlogpagina <span class="ui">Wachtwoord vergeten?</span>, vul je e-mailadres in en klik <span class="ui">Link om je wachtwoord opnieuw in te stellen mailen</span>. Je krijgt altijd hetzelfde antwoord, of het adres nu bestaat of niet:</p>
   <span class="quote-ui">Als dit e-mailadres bij ons bekend is, hebben we je een link gestuurd om je wachtwoord opnieuw in te stellen.</span>
   <ul>
     <li>De link wijst altijd naar je eigen host (leden: hun organisatie, superbeheerders: de admin-host), ook als je hem ergens anders aanvroeg.</li>
@@ -854,7 +907,7 @@ APP_URL=http://mijnapp.test</code></pre>
   <details class="srcs"><summary>Bronnen</summary><p class="src">app/Providers/FortifyServiceProvider.php:59-63; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:17-27; lang/nl/passwords.php:7-10; config/auth.php:97-103</p></details>
 
   <h3 id="emailchange">E-mailadres wijzigen</h3>
-  <p>Op je profielpagina (je naam linksonder → <span class="ui">Settings</span> → <span class="ui">Profile</span>, <code>/settings/profile</code>) verander je je e-mailadres niet direct. Onder het veld staat: <span class="ui">Een nieuw adres wordt pas gebruikt nadat je het bevestigt via de link die we ernaartoe mailen.</span></p>
+  <p>Op je profielpagina (je naam linksonder → <span class="ui">Instellingen</span> → <span class="ui">Profiel</span>, <code>/settings/profile</code>) verander je je e-mailadres niet direct. Onder het veld staat: <span class="ui">Een nieuw adres wordt pas gebruikt nadat je het bevestigt via de link die we ernaartoe mailen.</span></p>
   <ol class="steps">
     <li><div><p>Sla het nieuwe adres op. Je ziet <span class="ui">We hebben een bevestigingslink gestuurd naar <em>jan@voorbeeld.nl</em>.</span> Je oude adres krijgt de mail <span class="ui">Je e-mailadres gaat veranderen</span>.</p></div></li>
     <li><div><p>Open de mail <span class="ui">Bevestig je nieuwe e-mailadres</span> en klik <span class="ui">E-mailadres bevestigen</span>. De link is 60 minuten geldig, werkt één keer en alleen de nieuwste link telt.</p></div></li>
@@ -873,6 +926,26 @@ APP_URL=http://mijnapp.test</code></pre>
     <li>Tijdens &lsquo;inloggen als&rsquo; worden geen overdrachtslinks uitgegeven.</li>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">app/Actions/Auth/IssueHandoff.php:17-85; app/Http/Controllers/Auth/HandoffController.php:21-145; resources/views/pages/auth/handoff-confirm.blade.php:1-18; resources/views/pages/organisations/index/index.php:63-77</p></details>
+
+  <h3 id="foutpaginas">Foutpagina&rsquo;s</h3>
+  <p>Gaat er iets mis, dan krijg je een eenvoudige pagina met een korte uitleg en een of twee knoppen. De pagina&rsquo;s laden geen scripts of stylesheets van buiten, volgen de licht- of donkerinstelling van je systeem en staan in je eigen taal (je account, anders de taal van je browser).</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Titel</th><th>Knoppen</th></tr></thead>
+      <tbody>
+        <tr><td class="tabnum">403</td><td><span class="ui">Geen toegang</span></td><td><span class="ui">Terug</span>, plus <span class="ui">Naar je organisatie</span> (ingelogd) of <span class="ui">Inloggen</span> (gast)</td></tr>
+        <tr><td class="tabnum">404</td><td><span class="ui">Pagina niet gevonden</span></td><td><span class="ui">Naar de startpagina</span></td></tr>
+        <tr><td class="tabnum">419</td><td><span class="ui">Pagina verlopen</span>: je sessie is verlopen</td><td><span class="ui">Laad de pagina opnieuw</span> en <span class="ui">Inloggen</span></td></tr>
+        <tr><td class="tabnum">429</td><td><span class="ui">Te veel verzoeken</span>: <span class="ui">Wacht een minuut en probeer het opnieuw.</span></td><td><span class="ui">Probeer het opnieuw</span></td></tr>
+        <tr><td class="tabnum">500</td><td><span class="ui">Er ging iets mis</span></td><td><span class="ui">Probeer het opnieuw</span></td></tr>
+        <tr><td class="tabnum">503</td><td><span class="ui">Zo terug</span> (onderhoud)</td><td><span class="ui">Probeer het opnieuw</span></td></tr>
+        <tr><td class="tabnum">404</td><td><span class="ui">Organisatie niet gevonden</span>: geen organisatie op dit adres</td><td><span class="ui">Naar de hoofdsite</span></td></tr>
+        <tr><td class="tabnum">404</td><td><span class="ui">Deze uitnodiging is niet meer geldig</span>: ingetrokken, of de link is onvolledig</td><td><span class="ui">Inloggen</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Een verlopen uitnodiging die nog bestaat, toont geen foutpagina maar de pagina <span class="ui">Deze uitnodiging is verlopen</span> (zie <a href="#uitnodigingen">Wat de genodigde ziet</a>). Een API-verzoek (JSON) naar een onbekende organisatie krijgt een JSON-antwoord met status 404.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/errors/*.blade.php; app/Exceptions/InvitationNotFoundException.php; app/Tenancy/Exceptions/TenantNotFoundException.php; app/Support/Locales.php (forErrorPage); tests/Feature/ErrorPagesTest.php; docs/decisions.md (DEC-29 (10))</p></details>
 </section>
 
 <!-- ============================ 5 ============================ -->
@@ -883,31 +956,53 @@ APP_URL=http://mijnapp.test</code></pre>
     <p class="note-title">Waar ben je?</p>
     <p><strong>Organisatiehost</strong> = het webadres van je organisatie, bijvoorbeeld <code>acme.mijnapp.test</code>. <strong>Centrale host</strong> = het hoofdadres (<code>mijnapp.test</code>) of <code>admin.mijnapp.test</code>; daar komen alleen superbeheerders (platformbeheerders). Meer in <a href="#hosttypes">Drie soorten hosts</a>.</p>
   </div>
-  <p>In de zijbalk staat de groep <span class="ui">Beheer</span> zodra je minstens één van de bekijkrechten hebt: <code>users.view</code>, <code>organisations.view</code>, <code>roles.view</code> of <code>activity_log.view</code>. Elk onderdeel heeft een eigen recht:</p>
+  <p>De zijbalk heeft drie groepen: <span class="ui">Overzicht</span>, <span class="ui">Beheer</span> en <span class="ui">Systeem</span>. Je ziet alleen de onderdelen waarvoor je het recht hebt, en een groep zonder zichtbare onderdelen verdwijnt. Met de knop naast de naam bovenaan klap je de zijbalk in, ook op een groot scherm.</p>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Menu-item</th><th>Pad</th><th>Benodigd recht</th></tr></thead>
+      <thead><tr><th>Groep</th><th>Menu-item</th><th>Pad</th><th>Benodigd recht</th></tr></thead>
       <tbody>
-        <tr><td><span class="ui">Gebruikers</span></td><td><code>/users</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
-        <tr><td><span class="ui">Openstaande uitnodigingen</span></td><td><code>/invitations/pending</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
-        <tr><td><span class="ui">Organisaties</span></td><td><code>/organisations</code></td><td>Organisaties bekijken <code>organisations.view</code></td></tr>
-        <tr><td><span class="ui">Rollen</span></td><td><code>/roles</code></td><td>Rollen bekijken <code>roles.view</code></td></tr>
-        <tr><td><span class="ui">Activiteitenlog</span></td><td><code>/activity</code></td><td>Activiteitenlog bekijken <code>activity_log.view</code></td></tr>
+        <tr><td><span class="ui">Overzicht</span></td><td><span class="ui">Dashboard</span></td><td><code>/dashboard</code></td><td>iedereen</td></tr>
+        <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Gebruikers</span></td><td><code>/users</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
+        <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Openstaande uitnodigingen</span></td><td><code>/invitations/pending</code></td><td>Gebruikers bekijken <code>users.view</code></td></tr>
+        <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Organisaties</span></td><td><code>/organisations</code></td><td>Organisaties bekijken <code>organisations.view</code></td></tr>
+        <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Rollen</span></td><td><code>/roles</code></td><td>Rollen bekijken <code>roles.view</code></td></tr>
+        <tr><td><span class="ui">Systeem</span></td><td><span class="ui">Activiteitenlog</span></td><td><code>/activity</code></td><td>Activiteitenlog bekijken <code>activity_log.view</code></td></tr>
       </tbody>
     </table>
   </div>
   <p>Deze pagina&rsquo;s werken op elke host. Op een organisatiehost zie je alleen je eigen organisatie. Op een centrale host komen alleen superbeheerders binnen, en zien die alles. Twee uitzonderingen: de wizard <span class="ui">Nieuwe organisatie</span> werkt alleen centraal, en &lsquo;inloggen als&rsquo; alleen op een organisatiehost.</p>
-  <p>De groep <span class="ui">Beheer</span> is tijdelijk. In M5 wordt de navigatie ingedeeld in Overzicht, Beheer en Systeem.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/layouts/app/sidebar.blade.php:20-50; routes/admin.php:9-66; app/Authorization/Permission.php:10-116; docs/decisions.md:132 (11), :134</p></details>
+  <p>In M7 krijgt <span class="ui">Systeem</span> ook de Systeempagina. Met Flux Pro staat bovenaan de zijbalk een zoekveld (<code>⌘K</code>) dat naar dezelfde pagina&rsquo;s springt.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/Navigation/Navigation.php; app/Enums/NavigationGroup.php; resources/views/components/app-sidebar.blade.php; routes/admin.php; app/Authorization/Permission.php; tests/Feature/Navigation/NavigationTest.php; docs/decisions.md (DEC-29 (6))</p></details>
+
+  <h3 id="dashboard">Dashboard</h3>
+  <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>. Wat erop staat, hangt af van je rechten en van de host.</p>
+  <ul>
+    <li><strong>Voor iedereen:</strong> de kaart <span class="ui">Organisatie</span> (de naam van de organisatie; op een centrale host <span class="ui">Platform</span>) en de kaart <span class="ui">Je rollen</span> met je rollen als labels, of <span class="ui">Geen rollen toegewezen</span>.</li>
+    <li><strong>Tellers</strong>, alleen met het recht: <span class="ui">Gebruikers</span> en <span class="ui">Openstaande uitnodigingen</span> (<code>users.view</code>) en, alleen centraal, <span class="ui">Organisaties</span> (<code>organisations.view</code>). Klik op een teller om de lijst te openen.</li>
+    <li><strong><span class="ui">Recente activiteit</span></strong> (<code>activity_log.view</code>): de laatste 10 regels van deze host met de actie, wie het deed en wanneer. <span class="ui">Alles bekijken</span> opent het <a href="#activiteitenlog">Activiteitenlog</a>. IP-adres en browser staan alleen in het log zelf.</li>
+    <li>Met Flux Pro en <code>activity_log.view</code> ook de grafiek <span class="ui">Inlogs in de afgelopen 14 dagen</span>.</li>
+  </ul>
+  <h4>Aan de slag</h4>
+  <p>Beheerders zien bovenaan de lijst <span class="ui">Aan de slag</span>. Een afgerond punt krijgt een vinkje en wordt doorgestreept; een open punt is een link naar de plek waar je het regelt. Is alles klaar, dan verdwijnt de lijst.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Wie</th><th>Punten</th></tr></thead>
+      <tbody>
+        <tr><td>Superbeheerder, op een centrale host</td><td><span class="ui">Maak een organisatie aan</span>; <span class="ui">Nodig de eerste beheerder van een organisatie uit</span> (klaar zodra er een uitnodiging of een organisatielid bestaat); <span class="ui">Tweestapsverificatie inschakelen</span>; <span class="ui">Stel je huisstijl in</span> (klaar met een accentkleur of logo, zie <code>BRANDING_ACCENT</code> en <code>BRANDING_LOGO</code> in <a href="#env">.env-sleutels</a>)</td></tr>
+        <tr><td>Organisatiebeheerder, op de eigen organisatiehost</td><td><span class="ui">Nodig een collega uit</span> (klaar zodra er nog een gebruiker in de organisatie is); <span class="ui">Tweestapsverificatie inschakelen</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/dashboard/*; app/Support/Dashboard/{OnboardingChecklist,LoginTrend}.php; app/Support/Branding.php (isCustomised); tests/Feature/DashboardTest.php; tests/Feature/Dashboard/*; docs/decisions.md (DEC-29 (11), (15), (23))</p></details>
 
   <h3 id="eerste-keer">Eerste keer als organisatiebeheerder</h3>
   <ol class="steps">
     <li><div><p>Open de mail <span class="ui">Je bent uitgenodigd voor <em>Acme</em></span> en klik <span class="ui">Uitnodiging accepteren</span>. De link werkt alleen op het webadres van je organisatie.</p></div></li>
-    <li><div><p>Vul <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span> en <span class="ui">Wachtwoord bevestigen</span> in en klik <span class="ui">Account activeren</span>. Je bent meteen ingelogd en komt op het <span class="ui">Dashboard</span>.</p></div></li>
+    <li><div><p>Vul <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span> en <span class="ui">Wachtwoord bevestigen</span> in en klik <span class="ui">Account activeren</span>. Je bent meteen ingelogd en komt op het <span class="ui">Dashboard</span>, met de lijst <span class="ui">Aan de slag</span>.</p></div></li>
     <li><div><p>Log daarna altijd in op het webadres van je eigen organisatie, bijvoorbeeld <code>http://acme.mijnapp.test/login</code>, niet op het hoofdadres. Daar krijg je <span class="ui">Deze combinatie van e-mailadres en wachtwoord is niet geldig.</span>, ook als je wachtwoord klopt.</p></div></li>
     <li><div><p>Een collega uitnodigen: zijbalk → <span class="ui">Beheer</span> → <span class="ui">Gebruikers</span> → <span class="ui">Gebruiker uitnodigen</span>. Zie <a href="#uitnodigingen">Uitnodigingen</a>.</p></div></li>
   </ol>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/mail/invitation.blade.php:7; lang/nl.json:8,310; resources/views/pages/invitations/accept/accept.php:118-123; app/Tenancy/Auth/HostLoginRule.php:9-18; lang/nl/auth.php:7; resources/views/layouts/app/sidebar.blade.php:20-52; resources/views/pages/users/index/index.blade.php:9-10</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/mail/invitation.blade.php:7; lang/nl.json:8,310; resources/views/pages/invitations/accept/accept.php; app/Tenancy/Auth/HostLoginRule.php:9-18; lang/nl/auth.php:7; app/Support/Navigation/Navigation.php; resources/views/pages/users/index/index.blade.php</p></details>
 
   <h3 id="beheerders">Soorten gebruikers</h3>
   <div class="grid-2">
@@ -925,7 +1020,7 @@ APP_URL=http://mijnapp.test</code></pre>
     </div>
     <div class="card">
       <h4>Gebruiker</h4>
-      <p>Een lid zonder beheerrechten. Ziet de groep <span class="ui">Beheer</span> niet. Je maakt iemand gebruiker door hem uit te nodigen met een eigen rol zonder beheerrechten, of door na activatie zijn rollen weg te halen (zie <a href="#uitnodigingen">Iemand uitnodigen</a>).</p>
+      <p>Een lid zonder beheerrechten. Ziet in de zijbalk alleen <span class="ui">Overzicht</span>. Je maakt iemand gebruiker door hem uit te nodigen met een eigen rol zonder beheerrechten, of door na activatie zijn rollen weg te halen (zie <a href="#uitnodigingen">Iemand uitnodigen</a>).</p>
     </div>
   </div>
   <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/SuperAdminGate.php:9-26; app/Authorization/Role.php:11-15; app/Authorization/Permission.php:28-47; app/Policies/UserPolicy.php:70-74; app/Policies/RolePolicy.php:11-48</p></details>
@@ -1168,6 +1263,26 @@ if ($this->passwordConfirmationRequired(route('users.edit', ['user' => $target->
 }</code></pre>
   <p class="src">.ai/guidelines/skv3.md:3-5,23,26; config/livewire.php:34-36,73-75; tests/Arch/LivewireConventionsTest.php:17-42; resources/views/pages/users/index/index.php:181-192; resources/views/pages/users/edit/edit.php:167; app/Concerns/ConfirmsPasswords.php</p>
 
+  <h3 id="dev-ui">UI</h3>
+  <ul>
+    <li>Elke pagina rendert via <code>layouts/base</code> (de app- en auth-layouts wikkelen hem in). Schrijf nergens anders <code>&lt;html&gt;</code>. Foutpagina&rsquo;s zijn de uitzondering: ze gebruiken de zelfstandige <code>errors.layout</code>.</li>
+    <li>Een menu-item zet je in <code>App\Support\Navigation\Navigation::items()</code>, nooit in een Blade-bestand. De zijbalk, de actieve markering en (met Pro) het zoekvenster lezen die ene lijst.</li>
+    <li>Titels zijn Engelse sleutels: <code>#[Title('Projects')]</code>; de layout vertaalt ze. Zet de sleutel in <code>lang/nl.json</code> én <code>lang/en.json</code>; <code>LangCoverageTest</code> controleert alle <code>__()</code>-aanroepen en titels.</li>
+    <li>Pro-componenten (bijvoorbeeld <code>flux:tabs</code>, <code>flux:date-picker</code>, <code>flux:select variant="listbox"</code>) staan alleen in een <code>@if (Skv::hasFluxPro())</code>-tak met een volledige gratis <code>@else</code> en dezelfde Livewire-properties. <code>tests/Arch/FluxProLayerTest.php</code> bewaakt dat.</li>
+    <li>Voorkeuren van gebruikers schrijf je via <code>App\Actions\Settings\{UpdateLocale,UpdateAppearance}</code>. De standaardtaal lees je met <code>Locale::default()</code>, nooit met <code>config('app.locale')</code>.</li>
+  </ul>
+<pre><code><span class="cm">// app/Support/Navigation/Navigation.php, in items()</span>
+new NavigationItem('projects.index', 'Projects', 'folder', Permission::ProjectsView, 'projects.*', NavigationGroup::Management),
+
+<span class="cm">// A Pro variant next to its free branch</span>
+@if (Skv::hasFluxPro())
+    &lt;flux:tabs variant="segmented" wire:model.live="view"&gt;…&lt;/flux:tabs&gt;
+@else
+    &lt;flux:radio.group variant="segmented" wire:model.live="view"&gt;…&lt;/flux:radio.group&gt;
+@endif</code></pre>
+  <p class="muted"><code>Permission::ProjectsView</code> en de route <code>projects.index</code> zijn fictief; voeg ze eerst toe (zie <a href="#dev-perms">Een recht toevoegen</a>).</p>
+  <p class="src">.ai/guidelines/skv3.md (UI); app/Support/Navigation/{Navigation,NavigationItem}.php; resources/views/layouts/base.blade.php; resources/views/pages/users/index/index.blade.php; tests/Feature/LangCoverageTest.php; tests/Feature/Localisation/LangFilesTest.php; tests/Support/FluxProLint.php</p>
+
   <h3 id="dev-tenant">Een tenant-model toevoegen</h3>
   <p>Een model met <code>organisation_id</code> gebruikt <code>BelongsToOrganisation</code> en <code>SoftDeletes</code>, en staat in <code>config('tenancy.tenant_models')</code>. De trait voegt de <code>TenantScope</code> toe, vult <code>organisation_id</code> bij het aanmaken en geeft een <code>organisation()</code>-relatie. Zonder gekoppelde organisatie weigert hij het aanmaken, tenzij het model <code>mayExistWithoutOrganisation()</code> op <code>true</code> zet.</p>
   <p class="figcap">Voorbeeld: een fictief model Project</p>
@@ -1306,6 +1421,9 @@ $url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code>
         <tr><td><code>asMember($organisation)</code></td><td>Maakt een gewoon lid, logt in en zet de tenant-host</td></tr>
         <tr><td><code>inviteMember($organisation)</code></td><td>Nodigt iemand uit via <code>InviteUser</code></td></tr>
         <tr><td><code>useImpersonationModule(true)</code></td><td>Zet de module aan of uit voor de rest van de test. Nodig, want één CI-job draait met de module uit</td></tr>
+        <tr><td><code>usePasskeysModule(true)</code></td><td>Hetzelfde voor de passkeymodule; elke test die passkeys nodig heeft, roept hem eerst aan</td></tr>
+        <tr><td><code>browserUser($organisation)</code></td><td>Browsertests: maakt een lid (of met <code>superAdmin: true</code> een superbeheerder) met het standaardwachtwoord van de factory</td></tr>
+        <tr><td><code>sameOrigin($page->url(), '/pad')</code></td><td>Browsertests: het absolute adres van een pagina op de huidige host</td></tr>
         <tr><td><code>pageSnapshot()</code> / <code>callPageAction()</code></td><td>Stuurt een vervalst <code>/livewire/update</code>, eventueel vanaf een andere host</td></tr>
       </tbody>
     </table>
@@ -1319,29 +1437,42 @@ $url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code>
     <span class="cm">// …</span>
 })->with([ <span class="cm">/* own tenant, other tenant, apex, admin */</span> ]);</code></pre>
   <p>Gebruik je <code>Event::fake()</code>, houd dan de tenancy-events echt: <code>Event::fake()->except([TenantResolved::class, TenantForgotten::class])</code>. Anders blijft het rechtenteam leeg.</p>
-  <p class="src">.ai/guidelines/skv3.md:7,19; tests/Pest.php:51-308; tests/Feature/Auth/HostScopedLoginTest.php:26-40; phpunit.xml:24-46</p>
+  <h4>Browsertests</h4>
+  <p>Browsertests staan in <code>tests/Browser</code> en draaien in Chromium met de Pest browser-plugin: <code>composer test:browser</code>. De gewone runs laden die map nooit. Kies de host per bezoek met <code>->withHost()</code>; dat geldt alleen voor de eerste pagina, dus open een volgende pagina met een absoluut adres op dezelfde host.</p>
+<pre><code>$page = visit('/login')->withHost('acme.localhost')
+    ->fill('email', $member->email)
+    ->fill('password', 'password')
+    ->press('@login-button')
+    ->assertPathIs('/dashboard');
+
+$page->navigate(sameOrigin($page->url(), '/settings/profile'))
+    ->assertPathIs('/settings/profile');</code></pre>
+  <p class="src">.ai/guidelines/skv3.md:7,19, (UI); tests/Pest.php; tests/Feature/Auth/HostScopedLoginTest.php:26-40; tests/Browser/LoginTest.php; phpunit.xml; composer.json (test:browser)</p>
 
   <h3 id="dev-gate">Kwaliteitspoort</h3>
   <p>Werk is pas af als <strong>beide</strong> slagen:</p>
 <pre><code>composer check        <span class="cm"># Pint (test), Rector (dry run), Larastan level 8, Pest parallel op SQLite</span>
 composer test:pgsql   <span class="cm"># dezelfde suite op PostgreSQL (database &lt;map&gt;_test, gebruiker root)</span></code></pre>
+  <p>Raak je de modules, de browser of de layout, draai dan ook:</p>
+<pre><code>php artisan config:clear &amp;&amp; MODULE_IMPERSONATION=false MODULE_PASSKEYS=false vendor/bin/pest --parallel
+composer test:browser <span class="cm"># de browsertests in Chromium</span></code></pre>
   <ul>
     <li><code>declare(strict_types=1)</code> in elk PHP-bestand. Draai <code>composer fix</code> na het bewerken van PHP.</li>
     <li>Larastan level 8 zonder baseline: los fouten op, negeer ze niet.</li>
     <li>Geen driver-specifieke SQL (<code>ilike</code>, ruwe <code>ALTER TABLE</code>); gebruik <code>whereLike(..., caseSensitive: false)</code>.</li>
     <li>Geen <code>env()</code> buiten <code>config/</code>, geen <code>dd</code>/<code>dump</code>/<code>ray</code>, geen hardgecodeerde kitnaam (<code>skv</code>) in app-identiteit.</li>
-    <li>Alleen gratis Flux. <code>livewire/flux-pro</code> komt nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code>.</li>
+    <li>Gratis Flux is de standaard; Pro-componenten alleen in een Pro-tak (zie <a href="#dev-ui">UI</a>). <code>livewire/flux-pro</code> komt nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code>.</li>
     <li>De pre-commit-hook draait Pint en PHPStan op de gestagede PHP-bestanden.</li>
-    <li>CI (<code>.github/workflows/tests.yml</code>) draait drie jobs: PHP 8.4 op PostgreSQL, PHP 8.4 op SQLite met <code>MODULE_IMPERSONATION=false</code>, en PHP 8.5 op SQLite.</li>
+    <li>CI (<code>.github/workflows/tests.yml</code>) draait vier jobs: PHP 8.4 op PostgreSQL, PHP 8.4 op SQLite met <code>MODULE_IMPERSONATION=false</code> en <code>MODULE_PASSKEYS=false</code>, PHP 8.5 op SQLite, en de browsertests in Chromium (met screenshots en traces als een test faalt).</li>
     <li>Eén test: <code>php artisan test --compact --filter=&lt;naam&gt;</code>. Alleen arch-regels: <code>php artisan test --compact tests/Arch</code>.</li>
   </ul>
-  <p class="src">CLAUDE.md (Commands, Conventions); composer.json:70-87; phpstan.neon:7-24; pint.json:2-7; tests/Arch/*; .githooks/pre-commit:5-9; .github/workflows/tests.yml:20-114</p>
+  <p class="src">CLAUDE.md (Commands, Conventions); composer.json (scripts); phpstan.neon:7-24; pint.json:2-7; tests/Arch/*; .githooks/pre-commit:5-9; .github/workflows/tests.yml</p>
 </section>
 
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M4 zitten in <code>main</code>. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog. De statusregel in de README (&lsquo;milestone M1&rsquo;) loopt achter.</p>
+  <p>Milestones M0 tot en met M4 zitten in <code>main</code>; M5 is af op de branch <code>m5-ui</code> en gaat na de review naar <code>main</code>. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog. De statusregel in de README (&lsquo;milestone M1&rsquo;) loopt achter.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1352,46 +1483,42 @@ composer test:pgsql   <span class="cm"># dezelfde suite op PostgreSQL (database 
         <tr><td class="tabnum">M2</td><td>Tenancy en autorisatie: hosts, strict mode, route × host-matrix, queues per organisatie, rechtencatalogus</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M3</td><td>Inloggen: per host, passkeys op elk subdomein, wachtwoordherstel, e-mailwijziging, overdrachtslink</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M4</td><td>Beheer: organisaties, gebruikers, uitnodigingen, rollen, inloggen als, activiteitenlog</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M5</td><td>UI: één basislayout, weergave per gebruiker, huisstijl, zijbalk met Overzicht / Beheer / Systeem, gebruikersmenu, Nederlands en Engels overal, foutpagina&rsquo;s, dashboard met &lsquo;Aan de slag&rsquo;, passkeymodule, optionele Flux Pro-laag, browsertests</td><td><span class="badge b-ok">klaar</span></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab); CHANGELOG.md:5-50; README.md:5</p>
+  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab; m5-ui 0b24f1f); CHANGELOG.md; README.md:5</p>
 
   <h3 id="roadmap">Wat er komt</h3>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M5 · UI</strong></td><td>Navigatie in Overzicht / Beheer / Systeem; licht, donker of systeem per gebruiker; een echt dashboard met organisatie- en rollenkaart en recente activiteit; taalwisselaar en taal in je profiel; Nederlandse tekst op alle standaardschermen; nette foutpagina&rsquo;s (ook voor ongeldige uitnodigingen); schakelaar <code>MODULE_PASSKEYS</code>; Flux Pro-laag; snel inloggen met demo-accounts (lokaal); browsertests</td></tr>
-        <tr><td><strong>M6 · Setup</strong></td><td>Installeren vanuit Herd met één klik; browserwizard op <code>/welcome-setup</code>; <code>skv:install</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code></td></tr>
-        <tr><td><strong>M7 · Beheer en extra&rsquo;s</strong></td><td><code>/health-check</code>, back-ups, scheduler en een Systeempagina; sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; automatisch opruimen van log en overdrachtslinks; rate limits op uitnodigen en e-mailwijziging</td></tr>
+        <tr><td><strong>M6 · Setup</strong></td><td>Installeren vanuit Herd met één klik; browserwizard op <code>/welcome-setup</code> (ook voor huisstijl en modules); <code>skv:install</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code>; snel inloggen met de demo-accounts (alleen lokaal)</td></tr>
+        <tr><td><strong>M7 · Beheer en extra&rsquo;s</strong></td><td><code>/health-check</code>, back-ups, scheduler en een Systeempagina in de groep Systeem; sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; automatisch opruimen van log en overdrachtslinks; rate limits op uitnodigen en e-mailwijziging</td></tr>
         <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">spec:511-520,385-405; docs/decisions.md:127,134</p>
+  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence)</p>
 
   <h3 id="beperkingen">Bekende beperkingen nu</h3>
   <ul>
-    <li>Het dashboard is nog dat van de starter kit: vier lege vlakken.</li>
-    <li>In de zijbalk staan nog de links <span class="ui">Repository</span> en <span class="ui">Documentation</span> van de Laravel starter kit.</li>
-    <li>Licht, donker of systeem kies je onder <span class="ui">Settings</span> → <span class="ui">Appearance</span>, maar die keuze wordt alleen in de browser bewaard, per adres: op <code>admin.mijnapp.test</code> en op elke organisatiehost kies je opnieuw. In M5 wordt de keuze per gebruiker opgeslagen.</li>
-    <li>Geen taalwisselaar. De taal van een uitnodiging bepaalt alleen de mail en de acceptatiepagina.</li>
-    <li>Standaardschermen en paginatitels deels in het Engels.</li>
-    <li>Het ontwikkelaccount <code>test@example.com</code> bestaat alleen na <code>php artisan db:seed</code> en is tijdelijk.</li>
-    <li>Passkeys kun je nog niet uitzetten; &lsquo;inloggen als&rsquo; is de enige optionele module.</li>
+    <li>Het ontwikkelaccount <code>test@example.com</code> bestaat alleen na <code>php artisan db:seed</code> en is tijdelijk. Snel inloggen met demo-accounts komt in M6.</li>
+    <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); er is nog geen pagina of setupstap voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
+    <li>Flux Pro installeer je nog met de hand; <code>skv:flux-pro</code> komt in M6.</li>
     <li>Het log ruimt zichzelf nog niet op en heeft geen export.</li>
-    <li>Een ongeldige of ingetrokken uitnodigingslink geeft een kale 404.</li>
+    <li>Er is nog geen Systeempagina (M7).</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
     <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
   </ul>
   <h4>Bewust niet in v1</h4>
   <p>Een database per organisatie, eigen domeinen per organisatie, row-level security in Postgres, tenants via een pad, facturatie, Filament, andere talen dan Nederlands en Engels, Telescope, lidmaatschap van meer dan één organisatie en zelf je account verwijderen.</p>
-  <p class="src">resources/views/dashboard.blade.php:1-18; resources/views/layouts/app/sidebar.blade.php:2,58-64; resources/views/partials/head.blade.php:15; vendor/livewire/flux/src/AssetManager.php:170-192; routes/settings.php:12; resources/views/pages/settings/appearance/appearance.blade.php:6-7; docs/decisions.md:20 (DEC-12); config/fortify.php:174-176; config/skv.php:20-22; routes/console.php:1-10; docs/decisions.md:132 (15, 30, 33), :134; spec:18-25</p>
+  <p class="src">database/seeders/DatabaseSeeder.php; config/branding.php; resources/views/components/app-logo.blade.php; resources/views/layouts/auth.blade.php; routes/console.php:1-10; docs/decisions.md (DEC-28 (15, 30, 33), DEC-29 Consequence); spec:18-25</p>
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van <code>main</code> @ <code>8c9ecab</code>. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van de branch <code>m5-ui</code> @ <code>0b24f1f</code> (M5). Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
       </footer>
     </main>
   </div>

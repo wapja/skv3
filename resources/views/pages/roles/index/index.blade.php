@@ -145,6 +145,8 @@
                 <flux:text>{{ __('Delete the role ":name"? :count users hold it and lose it.', ['name' => $deletingRoleName, 'count' => $this->holderCount]) }}</flux:text>
             </div>
 
+            <flux:error name="organisation" />
+
             <div class="flex justify-end gap-3">
                 <flux:button variant="outline" wire:click="closeDeleteModal">{{ __('Cancel') }}</flux:button>
                 <flux:button variant="danger" wire:click="delete" data-test="confirm-delete-role-button">{{ __('Delete role') }}</flux:button>

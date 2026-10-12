@@ -11,6 +11,8 @@ use App\Tenancy\Hosts;
 use App\Tenancy\Resolvers\SubdomainResolver;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
+use Livewire\Livewire;
 
 beforeEach(function (): void {
     Route::middleware('web')->get('/_probe', fn (): array => [
@@ -112,4 +114,18 @@ it('never resolves the configured admin subdomain as a tenant (FU3-5)', function
     $this->getJson(Hosts::url(Hosts::admin(), '/_probe'))
         ->assertOk()
         ->assertExactJson(['tenant' => null, 'team' => null]);
+});
+
+it('answers an unknown organisation with JSON when JSON is expected (FU2-1)', function (): void {
+    URL::useOrigin('http://nobody.localhost');
+
+    $this->getJson('/login')->assertNotFound()->assertExactJson(['message' => __('Organisation not found')]);
+});
+
+it('keeps the friendly HTML page for Livewire updates on an unknown organisation (FU2-1)', function (): void {
+    URL::useOrigin('http://nobody.localhost');
+
+    $this->post(Livewire::getUpdateUri(), [], ['X-Livewire' => '1'])
+        ->assertNotFound()
+        ->assertSee(__('Organisation not found'));
 });

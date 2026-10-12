@@ -22,3 +22,17 @@ it('generates the Boost guidelines during setup', function (): void {
 
     expect($composer['scripts']['setup'])->toContain('@php artisan boost:update --ansi');
 });
+
+it('checks Playwright and the Vite build before running the browser suite (§7.4)', function (): void {
+    /** @var array{scripts: array<string, list<string>>} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+    $script = implode("\n", $composer['scripts']['test:browser']);
+
+    expect($script)->toContain('node_modules/.bin/playwright')
+        ->toContain('public/build/manifest.json')
+        ->toContain('pest --testsuite=Browser');
+});
+
+it('keeps the browser suite out of the default test run (§7.2)', function (): void {
+    expect((string) file_get_contents(base_path('phpunit.xml')))->toContain('defaultTestSuite="Unit,Feature,Arch"');
+});

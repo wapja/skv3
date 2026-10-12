@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
+use App\Support\Skv;
 use App\Tenancy\Auth\AuthenticateOnThisHost;
 use App\Tenancy\Hosts;
 use Closure;
@@ -46,6 +47,26 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+    }
+
+    /**
+     * The passkeys limiter (§4.2): failed ceremonies per credential (or session) and IP, plus a backstop that
+     * counts every request. Public so tests that turn the module on after boot can register it (RL-3).
+     *
+     * @return Closure(Request): list<Limit>
+     */
+    public static function passkeysLimiter(): Closure
+    {
+        return static function (Request $request): array {
+            $credentialId = $request->input('credential.id');
+
+            return [
+                Limit::perMinute(10)
+                    ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
+                    ->after(self::failedAttempt($request)),
+                Limit::perMinute(30)->by('passkeys-burst:'.$request->ip()),
+            ];
+        };
     }
 
     /**
@@ -94,10 +115,10 @@ class FortifyServiceProvider extends ServiceProvider
 
             return [
                 Limit::perMinute(5)->by('login:'.$email.'|'.$request->ip())
-                    ->after($this->failedAttempt($request))
+                    ->after(self::failedAttempt($request))
                     ->response($this->loginThrottled(...)),
                 Limit::perMinute(20)->by('login-ip:'.$request->ip())
-                    ->after($this->failedAttempt($request))
+                    ->after(self::failedAttempt($request))
                     ->response($this->loginThrottled(...)),
                 Limit::perMinute(30)->by('login-burst:'.$email.'|'.$request->ip())
                     ->response($this->loginThrottled(...)),
@@ -108,7 +129,7 @@ class FortifyServiceProvider extends ServiceProvider
             $challenge = $request->session()->get('login.id');
 
             return [
-                Limit::perMinute(5)->by('two-factor:'.$challenge)->after($this->failedAttempt($request)),
+                Limit::perMinute(5)->by('two-factor:'.$challenge)->after(self::failedAttempt($request)),
                 Limit::perMinute(10)->by('two-factor-burst:'.$challenge),
             ];
         });
@@ -116,16 +137,10 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('password-confirm', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('password-confirm:'.$request->user()?->getAuthIdentifier()));
 
-        RateLimiter::for('passkeys', function (Request $request): array {
-            $credentialId = $request->input('credential.id');
-
-            return [
-                Limit::perMinute(10)
-                    ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
-                    ->after($this->failedAttempt($request)),
-                Limit::perMinute(30)->by('passkeys-burst:'.$request->ip()),
-            ];
-        });
+        // §6.8 / RL-3: the passkeys limiter exists only while the module is on.
+        if (Skv::passkeysEnabled()) {
+            RateLimiter::for('passkeys', self::passkeysLimiter());
+        }
 
         RateLimiter::for('password-email', fn (Request $request): array => [
             Limit::perMinute(5)->by('password-email:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
@@ -141,7 +156,7 @@ class FortifyServiceProvider extends ServiceProvider
     }
 
     /** @return Closure(Response): bool */
-    private function failedAttempt(Request $request): Closure
+    private static function failedAttempt(Request $request): Closure
     {
         return fn (Response $response): bool => $response->getStatusCode() >= 400
             || in_array('errors', (array) $request->session()->get('_flash.new', []), true);

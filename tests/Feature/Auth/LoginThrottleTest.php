@@ -165,6 +165,7 @@ it('bounds a burst of parallel two-factor guesses for one challenge', function (
 });
 
 it('bounds a burst of parallel passkey attempts from one IP address', function (): void {
+    usePasskeysModule(true);
     $request = burstRequest('http://acme.localhost/passkeys/login');
 
     expect(admittedInBurst('passkeys', $request, 50))->toBe(30);

@@ -6,8 +6,11 @@ use App\Actions\Invitations\AcceptInvitation;
 use App\Actions\Invitations\RemindInvitation;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
+use App\Enums\Locale;
+use App\Exceptions\InvitationNotFoundException;
 use App\Models\Invitation;
 use App\Models\User;
+use App\Support\Locales;
 use App\Tenancy\Auth\HostLoginRule;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -46,7 +49,7 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
         $invitation = Invitation::findByToken($token);
 
         if (! $invitation instanceof Invitation) {
-            abort(404);
+            throw new InvitationNotFoundException;
         }
 
         $this->invitationId = $invitation->id;
@@ -144,8 +147,16 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
         return $this->resolvedInvitation ??= Invitation::query()->findOrFail($this->invitationId);
     }
 
+    /**
+     * Answer in the invitee's language unless the visitor chose one: a signed-in visitor's account
+     * language or a guest's language toggle wins, as SetLocale already applied it (DEC-29).
+     */
     private function useInviteeLocale(): void
     {
-        app()->setLocale($this->invitation()->user->locale->value);
+        if (Auth::check() || Locale::tryFrom((string) session('locale')) instanceof Locale) {
+            return;
+        }
+
+        Locales::apply($this->invitation()->user->locale);
     }
 };

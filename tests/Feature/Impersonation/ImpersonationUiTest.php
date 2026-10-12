@@ -11,6 +11,7 @@ use App\Livewire\Actions\Logout;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Auth\Impersonation;
+use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -90,9 +91,57 @@ it('refuses a forged start from the apex and the admin host with 404 (TEN-3)', f
     $snapshot = pageSnapshot(route('users.index'), 'pages::users.index');
 
     callPageAction($snapshot, 'startImpersonation', [], ['impersonationReason' => 'Ticket 42'])->assertNotFound();
-    callPageAction($snapshot, 'confirmImpersonation', [$member->id])->assertForbidden();
+    callPageAction($snapshot, 'confirmImpersonation', [$member->id])->assertNotFound();
     expect(Impersonation::isActive())->toBeFalse();
 })->with(['apex', 'admin']);
+
+/**
+ * A users-index snapshot taken right after a real confirm on the tenant host, so the locked
+ * impersonatingUserId is set. A fresh snapshot would not pin anything: startImpersonation answers 404
+ * through `$this->impersonatingUserId ?? abort(404)` even without the attribute or the module check.
+ *
+ * @return array<string, mixed>
+ */
+$confirmedSnapshot = function (User $target): array {
+    $snapshot = pageSnapshot(route('users.index'), 'pages::users.index');
+    $confirmed = callPageAction($snapshot, 'confirmImpersonation', [$target->id])->assertOk();
+
+    /** @var array<string, mixed> $next */
+    $next = json_decode((string) $confirmed->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+
+    return $next;
+};
+
+it('answers 404 to a forged impersonation start or confirm from a central host (FU4-2, FU4-3)', function () use ($confirmedSnapshot): void {
+    useImpersonationModule(true);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $target = User::factory()->for($organisation)->create();
+    asSuperAdmin();
+    onTenant($organisation);
+    $snapshot = pageSnapshot(route('users.index'), 'pages::users.index');
+    $afterConfirm = $confirmedSnapshot($target);
+
+    callPageAction($afterConfirm, 'startImpersonation', [], ['impersonationReason' => 'Ticket 42'], host: Hosts::admin())->assertNotFound();
+    callPageAction($snapshot, 'confirmImpersonation', [$target->id], host: Hosts::admin())->assertNotFound();
+
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::ImpersonationStarted))->toHaveCount(0);
+});
+
+it('answers 404 to a forged impersonation start while the module is off (FU4-3)', function () use ($confirmedSnapshot): void {
+    useImpersonationModule(true);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $target = User::factory()->for($organisation)->create();
+    asOrgAdmin($organisation);
+    $afterConfirm = $confirmedSnapshot($target);
+    useImpersonationModule(false);
+
+    // Without the page's module check the policy would answer 403, so 404 pins abort_unless(Impersonation::enabled()).
+    callPageAction($afterConfirm, 'startImpersonation', [], ['impersonationReason' => 'Ticket 42'])->assertNotFound();
+
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::ImpersonationStarted))->toHaveCount(0);
+});
 
 it('shows the sticky banner with a stop button while impersonating', function () use ($organisationAdmin): void {
     $organisation = Organisation::factory()->create();

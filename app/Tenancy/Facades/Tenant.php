@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool check()
  * @method static void set(Organisation $organisation)
  * @method static void forget()
- * @method static TReturn run<TReturn>(Organisation $organisation, Closure(): TReturn $callback)
+ * @method static (TReturn is \Illuminate\Foundation\Bus\PendingDispatch ? null : TReturn) run<TReturn>(Organisation $organisation, Closure(): TReturn $callback)
  * @method static TReturn bypass<TReturn>(Closure(): TReturn $callback)
  * @method static bool isBypassed()
  *

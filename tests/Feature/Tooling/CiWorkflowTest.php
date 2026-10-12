@@ -58,6 +58,13 @@ it('runs the sqlite-free job with the impersonation module off (IMP-12)', functi
         ->and($ci)->toContain('MODULE_IMPERSONATION: ${{ matrix.impersonation }}');
 });
 
+it('runs the free job with the passkeys module off (§6.8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+
+    expect($workflow)->toContain('MODULE_PASSKEYS: ${{ matrix.passkeys }}')
+        ->and(preg_match("/name: sqlite-free.*?passkeys: 'false'/s", $workflow))->toBe(1);
+});
+
 it('lets the environment turn the module off in tests and pins the test hosts (IMP-12, FU2-9, FU3-17)', function (): void {
     $phpunit = (string) file_get_contents(base_path('phpunit.xml'));
 
@@ -69,4 +76,28 @@ it('lets the environment turn the module off in tests and pins the test hosts (I
         ->toContain('<env name="TENANCY_STRICT" value="true" force="true"/>')
         ->toContain('<env name="PASSKEYS_RELYING_PARTY_ID" value=""/>')
         ->toContain('<env name="TRUSTED_PROXIES" value=""/>');
+});
+
+it('runs the browser suite in its own CI job (§8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+
+    expect($workflow)->toContain('npx playwright install --with-deps chromium')
+        ->toContain('composer test:browser')
+        ->toContain('tests/Browser/Traces')
+        ->and(preg_match('/uses: actions\/upload-artifact@[0-9a-f]{40}/', $workflow))->toBe(1);
+});
+
+it('caches Composer and the Playwright browsers in the browser job and keeps failure traces briefly (§8)', function (): void {
+    $browser = Str::after((string) file_get_contents(base_path('.github/workflows/tests.yml')), "\n  browser:\n");
+
+    expect($browser)->toContain('composer config cache-files-dir')
+        ->toContain('${{ steps.composer-cache.outputs.dir }}')
+        ->toContain('path: ~/.cache/ms-playwright')
+        ->toContain("require('./package-lock.json').packages['node_modules/playwright'].version")
+        ->toContain('key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}')
+        ->toContain("if: steps.playwright-cache.outputs.cache-hit != 'true'")
+        ->toContain("if: steps.playwright-cache.outputs.cache-hit == 'true'")
+        ->toContain('npx playwright install-deps chromium')
+        ->toContain('retention-days: 7')
+        ->and(preg_match_all('/uses: actions\/cache@[0-9a-f]{40}/', $browser))->toBe(2);
 });

@@ -158,8 +158,10 @@ new #[Title('Users')] class extends Component
     }
 
     /**
-     * Ask for the reason before impersonating a user of this organisation (§4.7).
+     * Ask for the reason before impersonating a user of this organisation (§4.7). Tenant hosts only, like
+     * the start it leads to (FU4-2).
      */
+    #[RequiresTenant]
     public function confirmImpersonation(int $userId): void
     {
         abort_unless(Impersonation::enabled(), 404);

@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Models\HandoffToken;
 use App\Models\Organisation;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 it('edits the own organisation as its admin', function (): void {
@@ -25,7 +26,8 @@ it('edits the own organisation as its admin', function (): void {
         ->call('save')
         ->assertHasNoErrors()
         ->assertNoRedirect()
-        ->assertDispatched('toast-show');
+        ->assertDispatched('toast-show')
+        ->assertSee('Acme Renamed');
 
     expect($acme->fresh()?->name)->toBe('Acme Renamed')
         ->and($acme->fresh()?->description)->toBe('Now with a description')
@@ -122,4 +124,24 @@ it('has no second-factor setting yet (RL-17)', function (): void {
 
     expect(property_exists($component, 'requireSecondFactor'))->toBeFalse()
         ->and(property_exists($component, 'require_second_factor'))->toBeFalse();
+});
+
+it('shows the archived-organisation error on the edit page (FU4-1)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    asSuperAdmin();
+    onAdminHost();
+    $component = Livewire::test('pages::organisations.edit', ['organisation' => $organisation->id]);
+
+    // Archive the row the moment save() reads it: the page's own read succeeds, the action's lock sees the archive.
+    $armed = true;
+    Organisation::retrieved(function (Organisation $retrieved) use (&$armed): void {
+        if ($armed) {
+            $armed = false;
+            DB::table('organisations')->where('id', $retrieved->id)->update(['deleted_at' => now()]);
+        }
+    });
+
+    $component->call('save')
+        ->assertHasErrors('organisation')
+        ->assertSee(__('This organisation is archived.'));
 });

@@ -6,15 +6,23 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Support\FluxProBranches;
+use App\Support\Locales;
+use App\Support\Skv;
 use Carbon\CarbonImmutable;
+use Composer\InstalledVersions;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\AliasLoader;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Fortify\Features;
 use Spatie\Permission\Models\Role as RoleModel;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,7 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        AliasLoader::getInstance()->alias('Skv', Skv::class);
+
+        $this->configureModules();
     }
 
     /**
@@ -35,6 +45,27 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->configureDevCommands();
         $this->configureAuthorization();
+        $this->configureErrorPages();
+        $this->configureFluxProBranches();
+    }
+
+    /**
+     * §6.8 / RL-3: with the passkeys module off, Fortify registers no passkey routes. This runs in register(),
+     * before Fortify's boot() reads config('fortify.features') to register its routes.
+     */
+    protected function configureModules(): void
+    {
+        if (Skv::passkeysEnabled()) {
+            return;
+        }
+
+        /** @var list<string> $features */
+        $features = config('fortify.features', []);
+
+        config(['fortify.features' => array_values(array_filter(
+            $features,
+            fn (string $feature): bool => $feature !== Features::passkeys(),
+        ))]);
     }
 
     /**
@@ -89,5 +120,31 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(SuperAdminGate::before(...));
 
         Gate::policy(RoleModel::class, RolePolicy::class);
+    }
+
+    /**
+     * Error pages speak the visitor's language (§6.5). An unknown route never runs the web middleware, so the
+     * locale is resolved here: the signed-in user (only when the guard already resolved them, RL-20), the guest's
+     * choice, the browser.
+     */
+    protected function configureErrorPages(): void
+    {
+        View::composer(['errors::*', 'errors.*'], function (): void {
+            Locales::apply(Locales::forErrorPage(request()));
+        });
+    }
+
+    /**
+     * §6.7: without Flux Pro, the Pro branches of the views are removed before Blade compiles them, because Blade
+     * resolves component tags at compile time. This follows the installed package, not Skv::useFluxPro(): compiled
+     * views outlive a single test or request. Registered in boot(), so it runs before Blaze's own hook (booted()).
+     */
+    protected function configureFluxProBranches(): void
+    {
+        if (InstalledVersions::isInstalled('livewire/flux-pro')) {
+            return;
+        }
+
+        Blade::prepareStringsForCompilationUsing(FluxProBranches::strip(...));
     }
 }

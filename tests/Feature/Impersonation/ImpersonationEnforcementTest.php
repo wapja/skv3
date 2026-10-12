@@ -17,7 +17,10 @@ use App\Tenancy\Hosts;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
 use App\Tenancy\Http\Middleware\InitializeTenancy;
 use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Contracts\Encryption\Encrypter;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Router;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Session\SessionManager;
@@ -100,6 +103,45 @@ it('ends it and restores the impersonator when the target is deleted meanwhile, 
     $this->assertAuthenticatedAs($admin);
     expect(Impersonation::isActive())->toBeFalse()
         ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1) // only the sign-in through the login route
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('target_unavailable');
+});
+
+it('renders an error page raised before the re-check without resolving the user, so a gone target never falls back to the remember cookie (RL-20, RK-I1)', function () use ($organisationAdmin): void {
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    startImpersonatingOverHttp($admin, $member);
+
+    // The CSRF middleware sits ahead of EnforceImpersonation and skips itself in unit tests; this subclass
+    // turns that off, so its 419 page renders before the impersonation is re-checked.
+    $this->app->bind(PreventRequestForgery::class, fn (Application $app): PreventRequestForgery => new class($app, $app->make(Encrypter::class)) extends PreventRequestForgery
+    {
+        protected function runningUnitTests(): bool
+        {
+            return false;
+        }
+    });
+    Route::middleware('web')->post('_csrf-probe', fn (): string => 'ok');
+
+    DB::table('users')->where('id', $member->id)->update(['deleted_at' => now()]);
+    $guard = Auth::guard('web');
+    $this->withCookie(
+        $guard->getRecallerName(),
+        $admin->id.'|'.$admin->remember_token.'|'.$guard->hashPasswordForCookie($admin->password),
+    );
+
+    $this->post('/_csrf-probe')->assertStatus(419);
+
+    expect(Impersonation::isActive())->toBeTrue()
+        ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1) // only the sign-in through the login route
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped))->toBeEmpty();
+
+    Auth::guard('web')->forgetUser();
+    $this->get(route('dashboard'))->assertRedirect(route('users.index'));
+
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1)
         ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('target_unavailable');
 });
 

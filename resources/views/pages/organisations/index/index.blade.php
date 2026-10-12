@@ -26,10 +26,17 @@
         />
 
         @if ($this->onCentralHost)
-            <flux:radio.group wire:model.live="view" variant="segmented" data-test="organisations-view">
-                <flux:radio value="active" :label="__('Active')" />
-                <flux:radio value="archived" :label="__('Archived')" />
-            </flux:radio.group>
+            @if (Skv::hasFluxPro())
+                <flux:tabs wire:model.live="view" variant="segmented" size="sm" data-test="organisations-view">
+                    <flux:tab name="active">{{ __('Active') }}</flux:tab>
+                    <flux:tab name="archived">{{ __('Archived') }}</flux:tab>
+                </flux:tabs>
+            @else
+                <flux:radio.group wire:model.live="view" variant="segmented" data-test="organisations-view">
+                    <flux:radio value="active" :label="__('Active')" />
+                    <flux:radio value="archived" :label="__('Archived')" />
+                </flux:radio.group>
+            @endif
         @endif
     </div>
 

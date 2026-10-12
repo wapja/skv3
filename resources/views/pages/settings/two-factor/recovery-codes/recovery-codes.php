@@ -54,6 +54,19 @@ new class extends Component
             return null;
         }
 
+        $user = $this->currentUser();
+
+        // FU3-4: another tab may have regenerated the codes, or turned two-factor off, since this page loaded.
+        // Fortify's recoveryCodes() decrypts the column and throws on null, so check first.
+        if (! $user->hasEnabledTwoFactorAuthentication() || $user->two_factor_recovery_codes === null) {
+            $this->recoveryCodes = [];
+            $this->addError('recoveryCodes', __('There are no recovery codes to download.'));
+
+            return null;
+        }
+
+        // The stored codes, not this page's snapshot; the page then shows the same codes it downloads.
+        $this->recoveryCodes = array_values(array_filter($user->recoveryCodes(), is_string(...)));
         $codes = implode(PHP_EOL, $this->recoveryCodes).PHP_EOL;
 
         return response()->streamDownload(function () use ($codes): void {
@@ -72,7 +85,7 @@ new class extends Component
             try {
                 $this->recoveryCodes = json_decode(decrypt($user->two_factor_recovery_codes), true);
             } catch (Exception) {
-                $this->addError('recoveryCodes', 'Failed to load recovery codes');
+                $this->addError('recoveryCodes', __('Failed to load recovery codes'));
 
                 $this->recoveryCodes = [];
             }

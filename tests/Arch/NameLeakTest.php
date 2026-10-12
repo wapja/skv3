@@ -12,6 +12,7 @@ it('hard-codes no kit or site name in app-identity values', function (): void {
         "/config\\(\\[?['\"]skv\\./",    // config('skv.…') keys, read or set
         '/config\/skv\.php/',
         '/\bSkv::/',
+        '/App\\\\Support\\\\Skv\b/', // the Skv support class name (RL-1)
         '/skv-[a-z-]+/',            // storage marker / state files
         '/\.ai\/guidelines\/skv3\.md/',
     ];

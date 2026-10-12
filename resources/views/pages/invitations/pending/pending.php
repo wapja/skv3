@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Actions\Invitations\CancelInvitation;
 use App\Actions\Invitations\RemindInvitation;
+use App\Authorization\Permission;
 use App\Concerns\ResolvesCurrentUser;
 use App\Models\Invitation;
 use App\Models\Organisation;
@@ -54,6 +55,12 @@ new #[Title('Pending invitations')] class extends Component
      * @var LengthAwarePaginator<int, Invitation>|null
      */
     private ?LengthAwarePaginator $invitationsPage = null;
+
+    /** The route's can: middleware does not cover Livewire updates or a page reused elsewhere (FU4-4). */
+    public function mount(): void
+    {
+        Gate::authorize(Permission::UsersView);
+    }
 
     public function updatedOrganisation(): void
     {

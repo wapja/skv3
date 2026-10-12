@@ -186,6 +186,7 @@ it('purges only an archived organisation and only after the slug is typed (ORG-9
 });
 
 it('purges invitations already archived by the cascade, users incl. deleted ones, passkeys, sessions, team roles and pivot rows, then the organisation (ORG-11, C-16, RK-I10)', function () use ($signIn, $fresh, $templateRoleId): void {
+    usePasskeysModule(true);
     $superAdmin = asSuperAdmin();
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $outsider = Organisation::factory()->create(['slug' => 'beta']);

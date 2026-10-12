@@ -145,10 +145,8 @@ return [
     */
 
     'passkeys' => [
-        // §4.2: always the apex, a registrable suffix of the apex, admin.{apex} and every {slug}.{apex},
-        // so one passkey works on every host a user may sign in on. Fortify copies this into
-        // passkeys.relying_party_id once at boot (config/tenancy.php is not loaded yet here).
-        'relying_party_id' => env('PASSKEYS_RELYING_PARTY_ID') ?: (env('TENANCY_APEX_DOMAIN') ?: parse_url((string) config('app.url'), PHP_URL_HOST)),
+        // §4.2 / FU3-2: an explicit override; otherwise App\Tenancy\Auth\PasskeyRelyingParty uses the apex at boot.
+        'relying_party_id' => env('PASSKEYS_RELYING_PARTY_ID') ?: null,
         'allowed_origins' => [config('app.url')],
         'user_handle_secret' => env('PASSKEYS_USER_HANDLE_SECRET', config('app.key')),
         'timeout' => 60000,

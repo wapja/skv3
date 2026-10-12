@@ -30,6 +30,7 @@
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.9.3",
         "pestphp/pest": "^5.3",
+        "pestphp/pest-plugin-browser": "^5.1.2",
         "pestphp/pest-plugin-laravel": "^5.0",
         "pestphp/pest-plugin-phpstan": "^5.2",
         "rector/rector": "^2.7"
@@ -87,7 +88,10 @@
         ],
         "test:browser": [
             "Composer\\Config::disableProcessTimeout",
-            "pest --group=browser"
+            "@php -r \"is_file('node_modules/.bin/playwright') || (fwrite(STDERR, 'Playwright is missing: run npm ci && npx playwright install chromium'.PHP_EOL) && exit(1));\"",
+            "@php -r \"is_file('public/build/manifest.json') || (fwrite(STDERR, 'The Vite build is missing: run npm run build'.PHP_EOL) && exit(1));\"",
+            "@php artisan config:clear --ansi",
+            "pest --testsuite=Browser"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

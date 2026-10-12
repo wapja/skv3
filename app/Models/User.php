@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\Appearance;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Observers\UserActivityObserver;
@@ -39,6 +40,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property bool $is_super_admin
  * @property UserStatus $status
  * @property Locale $locale
+ * @property Appearance $appearance
  * @property Carbon|null $deleted_at
  * @property-read Organisation|null $organisation
  */
@@ -49,6 +51,15 @@ class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use BelongsToOrganisation, HasFactory, HasRoles, Notifiable, PasskeyAuthenticatable, SoftDeletes, TwoFactorAuthenticatable;
+
+    /**
+     * Mirrors the column default, so a user created in this request renders layouts/base in strict mode (DEC-12).
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'appearance' => Appearance::System->value,
+    ];
 
     /**
      * Get the user's initials
@@ -103,6 +114,7 @@ class User extends Authenticatable implements PasskeyUser
             'is_super_admin' => 'boolean',
             'status' => UserStatus::class,
             'locale' => Locale::class,
+            'appearance' => Appearance::class,
         ];
     }
 }

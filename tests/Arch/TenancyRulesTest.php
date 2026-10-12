@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §6.2, §7.2 */
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 it('bypasses or removes the tenant scope only in the allowed places', function (): void {
@@ -78,4 +79,13 @@ it('keeps raw like operators out of the app (FU2-10)', function (): void {
 
     expect(preg_match($pattern, "->whereLike('name', \$term, caseSensitive: false)"))->toBe(0)
         ->and(filesMatching(kitSourceFiles('app', 'resources/views', 'routes'), $pattern))->toBe([]);
+});
+
+it('never makes organisation_id fillable on a tenant model (FU2-2)', function (): void {
+    /** @var list<class-string<Model>> $models */
+    $models = config('tenancy.tenant_models');
+
+    foreach ($models as $model) {
+        expect(new $model()->isFillable('organisation_id'))->toBeFalse("{$model} makes organisation_id fillable");
+    }
 });

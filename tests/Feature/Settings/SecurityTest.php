@@ -22,6 +22,7 @@ beforeEach(function (): void {
 });
 
 test('security settings page can be rendered', function (): void {
+    usePasskeysModule(true);
     $user = User::factory()->create();
     onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
 

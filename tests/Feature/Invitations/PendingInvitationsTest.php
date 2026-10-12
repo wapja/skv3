@@ -241,3 +241,33 @@ it('ignores ?organisation= on a tenant host (RK-I4)', function () use ($adminOf,
         ->assertSee('acme-invitee@example.com')
         ->assertDontSee('beta-invitee@example.com');
 });
+
+it('refuses the pending list in mount() to users without users.view, whatever the route says (FU4-4)', function (): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    Livewire::test('pages::invitations.pending')->assertForbidden();
+});
+
+it('shows the archived-organisation error once on the pending list (FU4-1)', function (string $host) use ($adminOf, $invite): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = $invite($adminOf($organisation), $organisation, 'invitee@example.com');
+
+    if ($host === 'tenant') {
+        asOrgAdmin($organisation);
+    } else {
+        asSuperAdmin();
+        onAdminHost();
+    }
+
+    $component = Livewire::test('pages::invitations.pending');
+
+    // Without the cascade: the invitation stays readable, so RemindInvitation's lock is what refuses.
+    DB::table('organisations')->where('id', $organisation->id)->update(['deleted_at' => now()]);
+
+    $component->call('remind', $invitation->id)
+        ->assertHasErrors('organisation')
+        ->assertSee(__('This organisation is archived.'));
+
+    // Centrally the organisation filter must not claim the error as its own (its property is also named organisation).
+    expect(substr_count($component->html(), __('This organisation is archived.')))->toBe(1);
+})->with(['tenant', 'admin']);

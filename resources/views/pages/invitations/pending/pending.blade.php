@@ -15,16 +15,19 @@
     <flux:separator variant="subtle" class="my-6" />
 
     <flux:error name="invitation" class="mb-4" />
+    <flux:error name="organisation" class="mb-4" />
 
     @if ($this->showsOrganisations)
-        <div class="mb-6 max-w-xs">
-            <flux:select wire:model.live="organisation" :label="__('Organisation')" data-test="organisation-filter">
+        {{-- An explicit field: the filter's property shares the name "organisation" with the archived-organisation error above, which it must not claim. --}}
+        <flux:field class="mb-6 max-w-xs">
+            <flux:label>{{ __('Organisation') }}</flux:label>
+            <flux:select wire:model.live="organisation" :invalid="false" data-test="organisation-filter">
                 <flux:select.option value="">{{ __('All organisations') }}</flux:select.option>
                 @foreach ($this->organisationOptions as $id => $name)
                     <flux:select.option :value="$id">{{ $name }}</flux:select.option>
                 @endforeach
             </flux:select>
-        </div>
+        </flux:field>
     @endif
 
     <flux:table :paginate="$this->invitations">

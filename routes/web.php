@@ -3,16 +3,12 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Auth\HandoffController;
-use App\Http\Controllers\Auth\SendPasswordResetLinkController;
+use App\Http\Controllers\LocaleController;
 use App\Models\User;
-use App\Tenancy\Auth\Impersonation;
+use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
-use App\Tenancy\Http\Middleware\StopImpersonationBeforeLogout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
-use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
-use Laravel\Fortify\Http\Controllers\NewPasswordController;
 
 // §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
 // everyone else (and super admins on a tenant host) lands on the dashboard.
@@ -27,29 +23,8 @@ Route::get('/', function (): RedirectResponse {
 })->name('home');
 
 Route::middleware(['auth'])->group(function (): void {
-    Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
 });
-
-// §4.2: password confirmation is throttled. Same method, URI and name as Fortify's route, so this one replaces it.
-Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])
-    ->middleware(['auth:web', 'throttle:password-confirm'])
-    ->name('password.confirm.store');
-
-// §4.2 / R1: throttled, neutral and constant-time. Same method, URI and name as Fortify's route, so this one replaces it.
-Route::post('forgot-password', SendPasswordResetLinkController::class)
-    ->middleware(['guest:web', 'throttle:password-email'])
-    ->name('password.email');
-
-// §4.2 / R1: throttled, so reset tokens and addresses cannot be probed. Same method, URI and name as Fortify's route.
-Route::post('reset-password', [NewPasswordController::class, 'store'])
-    ->middleware(['guest:web', 'throttle:password-reset'])
-    ->name('password.update');
-
-// §4.7: signing out while impersonating ends the impersonation first. Same method, URI and name as Fortify's
-// route, so this one replaces it.
-Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
-    ->middleware(['auth:web', StopImpersonationBeforeLogout::class])
-    ->name('logout');
 
 // §6.4: any host; the token is bound to its target host. The GET consumes it for a guest or the same
 // user and asks first when another user is signed in; only the CSRF-protected POST replaces a session.
@@ -60,10 +35,19 @@ Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
     ->middleware('throttle:handoff')
     ->name('auth.handoff.store');
 
+// §6.5: the language toggle on every host, for guests (session) and users (account).
+Route::post('locale', LocaleController::class)->middleware('throttle:30,1')->name('locale.update');
+
+require __DIR__.'/fortify.php';
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
 
 // §6.8: the optional impersonation module registers its routes only while it is on.
-if (Impersonation::enabled()) {
+if (Skv::impersonationEnabled()) {
     require __DIR__.'/impersonation.php';
+}
+
+// §6.8: the optional passkeys module's routes.
+if (Skv::passkeysEnabled()) {
+    require __DIR__.'/passkeys.php';
 }

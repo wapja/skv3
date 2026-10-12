@@ -30,3 +30,13 @@
 - Invitations are created only through `App\Actions\Invitations\InviteUser`; their links come from `Invitation::acceptUrl()`, built when the queued mail renders. Mails implement `ShouldQueue` and call `afterCommit()`; test them on the sync queue with the `array` mailer, not `Mail::fake()`.
 - Impersonation runs only through `App\Actions\Users\{StartImpersonation,StopImpersonation}`; check it with `App\Tenancy\Auth\Impersonation::isActive()`. Tests that depend on the module call `useImpersonationModule(true)` or `useImpersonationModule(false)` first, because CI also runs the suite with `MODULE_IMPERSONATION=false`.
 - Every new `__()` key goes into both `lang/nl.json` and `lang/en.json` (`LangCoverageTest`); Dutch copy uses the informal "je".
+
+## UI
+
+- Pages render through `layouts/base` only (the app and auth layouts wrap it); never write `<html>` elsewhere. Error pages are the exception: they extend the self-contained `errors.layout`.
+- Navigation entries go into `App\Support\Navigation\Navigation::items()`, never into a Blade file.
+- Pro-only Flux components appear only inside `@if (Skv::hasFluxPro())`, with a complete free `@else` that binds the same `wire:model` properties. A feature without a free variant (§6.7: the ⌘K palette, the sign-in trend) has a `{{-- pro-only … --}}` comment right before its `@if` instead. `tests/Arch/FluxProLayerTest.php` checks where Pro tags sit, that the `@else` exists and renders something, and the `wire:model` names.
+- User preferences go through `App\Actions\Settings\{UpdateLocale,UpdateAppearance}`.
+- Read the default language with `Locale::default()`, never `config('app.locale')`.
+- Tests that need passkeys call `usePasskeysModule(true)`, because CI also runs the suite with `MODULE_PASSKEYS=false`.
+- Browser tests live in `tests/Browser` and pick a host with `->withHost()`; after the first page, navigate with `sameOrigin($page->url(), '/path')`. Run them with `composer test:browser`.

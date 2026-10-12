@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\InvitationNotFoundException;
+use App\Http\Middleware\SetLocale;
 use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
 use App\Tenancy\Http\Middleware\EnsureCentralHost;
@@ -26,7 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(
-            append: [EnforceImpersonation::class, VerifyTenantMembership::class, AuthenticateSession::class],
+            append: [EnforceImpersonation::class, VerifyTenantMembership::class, AuthenticateSession::class, SetLocale::class],
             prepend: [InitializeTenancy::class],
         );
         // Before route-model binding (and so before can:): a tenant model bound on the wrong host
@@ -39,7 +41,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(AuthenticatesRequests::class, EnforceImpersonation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontReport([TenantNotFoundException::class]);
+        // FU3-1: a failed WebAuthn ceremony is a client error (rendered as a 422 below), not an incident to report.
+        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class, WebauthnException::class]);
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),

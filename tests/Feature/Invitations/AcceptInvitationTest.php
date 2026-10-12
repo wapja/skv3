@@ -16,6 +16,7 @@ use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
@@ -270,6 +271,41 @@ it('renders in the invitee\'s language', function (): void {
         ->assertSee('lang="nl"', false)
         ->assertSee('Welkom bij Acme')
         ->assertSee('Kies je naam en een wachtwoord om je account te activeren.');
+
+    expect(now()->subDay()->diffForHumans())->toContain('geleden');
+});
+
+it('lets a guest\'s own language choice win over the invitee\'s language (DEC-29)', function (): void {
+    $organisation = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme']);
+    $link = acceptLinkFor(inviteMember($organisation));
+    onTenant($organisation);
+
+    $this->get($link)->assertOk()->assertSee('lang="en"', false);
+
+    $this->from($link)->post(route('locale.update'), ['locale' => Locale::Dutch->value])->assertRedirect($link);
+
+    $this->get($link)
+        ->assertOk()
+        ->assertSee('lang="nl"', false)
+        ->assertSee('Kies je naam en een wachtwoord om je account te activeren.');
+
+    $response = callPageAction(pageSnapshot($link, 'pages::invitations.accept'), '$refresh');
+
+    $response->assertOk();
+    expect((string) $response->getContent())->toContain('Kies je naam en een wachtwoord om je account te activeren.')
+        ->and(now()->subDay()->diffForHumans())->toContain('geleden');
+});
+
+it('renders in a signed-in visitor\'s own language (DEC-29)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $link = acceptLinkFor(inviteMember($organisation));
+    $member = asMember($organisation);
+    $member->forceFill(['locale' => Locale::Dutch])->save();
+
+    $this->get($link)
+        ->assertOk()
+        ->assertSee('lang="nl"', false)
+        ->assertSee('Je bent ingelogd als '.e($member->name).'.', false);
 });
 
 it('rejects a tampered signature with 403', function (): void {
@@ -295,4 +331,14 @@ it('records invitation.accepted and a sign-in', function () use ($tokenOf): void
         ->and($accepted->causer_id)->toBe($invitation->user_id)
         ->and($accepted->organisation_id)->toBe($organisation->id)
         ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1);
+});
+
+it('explains a cancelled or unknown invitation link instead of a bare 404 (DEC-28 (15))', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    onTenant($organisation);
+    $url = URL::temporarySignedRoute('invitations.accept', now()->addDay(), ['token' => str_repeat('x', 64)], absolute: false);
+
+    $this->get(tenant_url($organisation, $url))
+        ->assertNotFound()
+        ->assertSee(__('This invitation is no longer valid'));
 });

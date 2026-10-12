@@ -37,6 +37,13 @@ new #[Title('Edit organisation')] class extends Component
 
     public ?string $description = null;
 
+    /**
+     * The organisation, read once per request; private properties are never dehydrated. An error re-render
+     * reuses the read save() made instead of re-querying a row archived in between, which would answer 404
+     * and hide the action's error (FU4-1).
+     */
+    private ?Organisation $resolvedOrganisation = null;
+
     public function mount(int $organisation): void
     {
         $this->organisationId = $organisation;
@@ -70,6 +77,7 @@ new #[Title('Edit organisation')] class extends Component
         $this->validate($rules);
 
         $updated = $updateOrganisation->handle($actor, $organisation, $this->name, $this->slug, $this->description);
+        $this->resolvedOrganisation = $updated;
 
         if ($updated->slug !== $previousSlug && Tenant::check()) {
             // ORG-16: this host no longer exists. The update has committed; continue on the new host as the
@@ -87,15 +95,23 @@ new #[Title('Edit organisation')] class extends Component
         Flux::toast(variant: 'success', text: __('Organisation saved.'));
     }
 
-    /** On a tenant host only that host's organisation; on a central host (super admins) any active one. */
+    /**
+     * On a tenant host only that host's organisation; on a central host (super admins) any active one.
+     * Memoised in $resolvedOrganisation: PHP code calls this method, never the magic computed property
+     * (Larastan level 8 has no Livewire computed support).
+     */
     #[Computed]
     public function organisation(): Organisation
     {
+        if ($this->resolvedOrganisation instanceof Organisation) {
+            return $this->resolvedOrganisation;
+        }
+
         $hostOrganisationId = HostScope::organisationId();
 
         abort_if($hostOrganisationId !== null && $hostOrganisationId !== $this->organisationId, 404);
 
-        return Organisation::query()->findOrFail($this->organisationId);
+        return $this->resolvedOrganisation = Organisation::query()->findOrFail($this->organisationId);
     }
 
     #[Computed]

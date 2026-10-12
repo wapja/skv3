@@ -10,6 +10,7 @@ use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
 use App\Authorization\SyncPermissions;
 use App\Enums\ActivityEvent;
+use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
@@ -51,6 +52,15 @@ final readonly class UpdateUserRoles
             DB::transaction(function () use ($actor, $target, $roles, $keepsAdmin, $teamId, $templateId): void {
                 $target->unsetRelation('roles');
                 $before = $this->roleNamesOf($target, $teamId);
+
+                // RK-B3 (FU4-7): a pending user's roles stay as invited; the accept link was issued for them.
+                // InviteUser's first assignment, on a fresh invitee without roles, stays allowed.
+                if ($target->status === UserStatus::PendingActivation && $before !== []) {
+                    throw ValidationException::withMessages([
+                        'roles' => __('A pending user keeps the roles they were invited with. Cancel and re-invite to change them.'),
+                    ]);
+                }
+
                 $this->guardEscalation($actor, $target, $roles);
 
                 if (! $keepsAdmin && $this->holdsTemplate($target, $teamId, $templateId)) {

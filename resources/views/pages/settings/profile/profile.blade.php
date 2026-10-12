@@ -12,6 +12,12 @@
                 <flux:text class="mt-2 text-sm">{{ __('A new address is used after you confirm it through the link we email to it.') }}</flux:text>
             </div>
 
+            <flux:select wire:model="locale" :label="__('Language')" data-test="profile-language">
+                @foreach (\App\Enums\Locale::cases() as $option)
+                    <flux:select.option :value="$option->value">{{ $option->nativeName() }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
             <div class="flex items-center gap-4">
                 <div class="flex items-center justify-end">
                     <flux:button variant="primary" type="submit" class="w-full" data-test="update-profile-button">

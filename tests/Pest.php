@@ -13,20 +13,29 @@ use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
+use App\Providers\FortifyServiceProvider;
 use App\Tenancy\CurrentTenant;
+use App\Tenancy\Events\TenantForgotten;
+use App\Tenancy\Events\TenantResolved;
 use App\Tenancy\Hosts;
+use App\Tenancy\Listeners\SetPasskeyOrigin;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
+use Illuminate\Support\Uri;
 use Illuminate\Testing\TestResponse;
+use Laravel\Fortify\Features;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
@@ -53,6 +62,17 @@ pest()->extend(TestCase::class)
     ->in('Feature');
 
 pest()->extend(TestCase::class)->in('Arch');
+
+// §7.2: browser tests serve the app in-process; RefreshDatabase on in-memory SQLite works because the
+// server shares the test's container and connection. The group keeps them out of composer check.
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
+    ->group('browser')
+    ->beforeEach(function (): void {
+        // RL-2: a running `npm run dev` (public/hot) must not leak dev-server URLs into a browser run.
+        Vite::useHotFile(storage_path('framework/testing/no-vite-hot'));
+    })
+    ->in('Browser');
 
 /*
 | Tenancy testing API (§7.2). Each helper sets the URL origin, so route() and $this->get()
@@ -282,6 +302,67 @@ function useImpersonationModule(bool $enabled): void
 }
 
 /**
+ * Turns the passkeys module on or off for the rest of the test (§6.8, RL-3): the flag, Fortify's passkeys
+ * feature and the passkey routes, as they would be at boot for that value. The sqlite-free CI job boots the
+ * suite with MODULE_PASSKEYS=false, so every test that needs passkeys calls this first. Fortify registers
+ * its routes from one file, so "on" replays that file on a scratch router (through the Route facade) and
+ * copies only the passkey routes; "off" swaps in a copy without them.
+ */
+function usePasskeysModule(bool $enabled): void
+{
+    config(['skv.modules.passkeys' => $enabled]);
+
+    /** @var list<string> $features */
+    $features = config('fortify.features', []);
+    $withoutPasskeys = array_values(array_filter($features, fn (string $feature): bool => $feature !== Features::passkeys()));
+    config(['fortify.features' => $enabled ? [...$withoutPasskeys, Features::passkeys(['confirmPassword' => true])] : $withoutPasskeys]);
+
+    $router = app(Router::class);
+    $isPasskeyRoute = fn (?string $name): bool => $name !== null && (str_starts_with($name, 'passkey.') || $name === 'well-known.passkeys');
+
+    if ($enabled && ! $router->getRoutes()->hasNamedRoute('passkey.login-options')) {
+        $scratch = new Router(app('events'), app());
+        Route::swap($scratch);
+
+        try {
+            $scratch->group([
+                'namespace' => 'Laravel\Fortify\Http\Controllers',
+                'domain' => config('fortify.domain'),
+                'prefix' => config('fortify.prefix'),
+            ], base_path('vendor/laravel/fortify/routes/routes.php'));
+            $scratch->middleware('web')->group(base_path('routes/passkeys.php'));
+        } finally {
+            Route::swap($router);
+        }
+
+        foreach ($scratch->getRoutes()->getRoutes() as $route) {
+            if ($isPasskeyRoute($route->getName())) {
+                $router->getRoutes()->add($route);
+            }
+        }
+
+        RateLimiter::for('passkeys', FortifyServiceProvider::passkeysLimiter());
+        Event::listen(TenantResolved::class, SetPasskeyOrigin::class);
+        Event::listen(TenantForgotten::class, SetPasskeyOrigin::class);
+    }
+
+    if (! $enabled) {
+        $kept = new RouteCollection;
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            if (! $isPasskeyRoute($route->getName())) {
+                $kept->add($route);
+            }
+        }
+
+        $router->setRoutes($kept);
+    }
+
+    $router->getRoutes()->refreshNameLookups();
+    $router->getRoutes()->refreshActionLookups();
+}
+
+/**
  * Signs $impersonator in through the login route on the current (tenant) host and starts impersonating
  * $target in a real web request, so the swap runs the whole web middleware stack (§4.7). The guard's
  * cached user is dropped before and after each request, as a new request in production would (RK-I9).
@@ -305,4 +386,29 @@ function startImpersonatingOverHttp(User $impersonator, User $target, string $re
     Auth::guard('web')->forgetUser();
     post('/_start-impersonating')->assertOk();
     Auth::guard('web')->forgetUser();
+}
+
+/**
+ * An active user for browser tests, password "password": a member of $organisation, or a super admin.
+ * Signs nobody in: the browser signs in through the login page on the host it visits.
+ */
+function browserUser(?Organisation $organisation = null, string $email = 'member@example.com', bool $superAdmin = false): User
+{
+    if ($superAdmin) {
+        $user = User::factory()->superAdmin()->create(['email' => $email]);
+        app(SetSuperAdmin::class)->handle($user, true);
+
+        return $user;
+    }
+
+    return User::factory()->for($organisation ?? Organisation::factory()->create())->create(['email' => $email]);
+}
+
+/**
+ * The absolute URL of $path on the origin of $currentUrl (pass $page->url()). The browser plugin resolves a
+ * relative navigate() path against 127.0.0.1, not the withHost() host, which drops the host-only session (RL-2).
+ */
+function sameOrigin(string $currentUrl, string $path): string
+{
+    return (string) Uri::of($currentUrl)->withPath($path)->withQuery([], merge: false)->withoutFragment();
 }

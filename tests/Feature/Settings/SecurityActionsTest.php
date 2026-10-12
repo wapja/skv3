@@ -101,6 +101,7 @@ it('refuses to regenerate recovery codes through a Livewire update once the pass
 });
 
 it('sends a stale password confirmation to the confirmation screen before any security action runs', function (string $component, string $method): void {
+    usePasskeysModule(true);
     $user = memberOnSecurityPage();
     $before = $user->only(['two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at']);
     expirePasswordConfirmation();

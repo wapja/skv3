@@ -6,17 +6,24 @@ declare(strict_types=1);
 
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Auth\PasskeyRelyingParty;
 use App\Tenancy\Hosts;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Support\SoftwareAuthenticator;
+use Webauthn\Exception\AuthenticatorResponseVerificationException;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\postJson;
 use function Pest\Laravel\withSession;
+
+beforeEach(function (): void {
+    usePasskeysModule(true);
+});
 
 /** Register a passkey for the user through the real endpoints on the current host, then sign out. */
 function registerPasskeyFor(User $user, SoftwareAuthenticator $authenticator, string $origin): void
@@ -91,13 +98,33 @@ function passkeyRelyingPartyIdWith(array $variables): mixed
     }
 }
 
-it('uses the apex as relying party id unless it is overridden', function (): void {
+it('holds only the relying-party id override in the Fortify config (FU3-2)', function (): void {
     expect(config('app.url'))->toBe('http://localhost')
-        ->and(passkeyRelyingPartyIdWith(['TENANCY_APEX_DOMAIN' => 'example.test']))->toBe('example.test')
+        ->and(passkeyRelyingPartyIdWith(['TENANCY_APEX_DOMAIN' => 'example.test']))->toBeNull()
         ->and(passkeyRelyingPartyIdWith([
             'TENANCY_APEX_DOMAIN' => 'example.test',
             'PASSKEYS_RELYING_PARTY_ID' => 'id.example.test',
         ]))->toBe('id.example.test');
+});
+
+it('does not report failed WebAuthn ceremonies (FU3-1)', function (): void {
+    $handler = app(ExceptionHandler::class);
+
+    expect($handler->shouldReport(AuthenticatorResponseVerificationException::create('Invalid signature.')))->toBeFalse();
+});
+
+it('uses the lower-cased apex as the relying-party id unless it is overridden (FU3-2)', function (): void {
+    config(['tenancy.apex_domain' => 'Example.TEST', 'fortify.passkeys.relying_party_id' => null]);
+    expect(PasskeyRelyingParty::id())->toBe('example.test');
+
+    config(['fortify.passkeys.relying_party_id' => 'ID.Example.Test']);
+    expect(PasskeyRelyingParty::id())->toBe('id.example.test');
+});
+
+it('has a relying-party id after the module is switched on at runtime (FU3-2)', function (): void {
+    usePasskeysModule(true);
+
+    expect(config('passkeys.relying_party_id'))->toBe(PasskeyRelyingParty::id());
 });
 
 it('allows the origin of the current request for passkey ceremonies (P1)', function (string $host, string $origin): void {
