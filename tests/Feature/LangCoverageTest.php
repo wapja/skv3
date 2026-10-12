@@ -16,8 +16,8 @@ it('has a Dutch translation for every __() key in the M4 paths (OR-I8)', functio
     ];
     $singleFiles = [
         'resources/views/pages/auth/handoff-confirm.blade.php',
-        'resources/views/components/flash-toast.blade.php',
         'resources/views/components/impersonation-banner.blade.php',
+        'resources/views/layouts/base.blade.php',
     ];
 
     $files = [

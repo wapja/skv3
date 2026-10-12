@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.2, §7.2 */
 
+use App\Enums\Appearance;
 use App\Models\Organisation;
 
 it('signs a member in on their organisation\'s host (spike: {slug}.localhost reaches the in-process server)', function (): void {
@@ -46,4 +47,20 @@ it('refuses a member on another organisation\'s host with the generic error', fu
         ->press('@login-button')
         ->assertPathIs('/login')
         ->assertSee(__('auth.failed'));
+});
+
+it('saves the appearance chosen on the settings page (DEC-12)', function (): void {
+    $member = browserUser(Organisation::factory()->create(['slug' => 'acme']));
+
+    $page = visit('/login')->withHost('acme.localhost')
+        ->fill('email', $member->email)->fill('password', 'password')->press('@login-button')
+        ->assertPathIs('/dashboard');
+
+    // RL-2: after the first page, navigate to an absolute URL on the current origin.
+    $page->navigate(sameOrigin($page->url(), '/settings/appearance'))
+        ->click(__('Dark'))
+        ->wait(1)
+        ->assertNoJavaScriptErrors();
+
+    expect($member->fresh()?->appearance)->toBe(Appearance::Dark);
 });
