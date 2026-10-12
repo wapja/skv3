@@ -58,7 +58,8 @@ it('saves the appearance chosen on the settings page (DEC-12)', function (): voi
 
     // RL-2: after the first page, navigate to an absolute URL on the current origin.
     $page->navigate(sameOrigin($page->url(), '/settings/appearance'))
-        ->click(__('Dark'))
+        // The user menu also lists "Dark"; target the settings page's segmented switch.
+        ->click('[data-flux-radio-segmented][value="dark"]')
         ->wait(1)
         ->assertNoJavaScriptErrors();
 
