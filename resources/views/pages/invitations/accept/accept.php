@@ -7,6 +7,7 @@ use App\Actions\Invitations\RemindInvitation;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Enums\Locale;
+use App\Exceptions\InvitationNotFoundException;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Support\Locales;
@@ -48,7 +49,7 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
         $invitation = Invitation::findByToken($token);
 
         if (! $invitation instanceof Invitation) {
-            abort(404);
+            throw new InvitationNotFoundException;
         }
 
         $this->invitationId = $invitation->id;

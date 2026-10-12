@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\InvitationNotFoundException;
 use App\Http\Middleware\SetLocale;
 use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
@@ -40,7 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(AuthenticatesRequests::class, EnforceImpersonation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontReport([TenantNotFoundException::class]);
+        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class]);
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),

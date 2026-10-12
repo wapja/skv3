@@ -16,6 +16,7 @@ use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
@@ -330,4 +331,14 @@ it('records invitation.accepted and a sign-in', function () use ($tokenOf): void
         ->and($accepted->causer_id)->toBe($invitation->user_id)
         ->and($accepted->organisation_id)->toBe($organisation->id)
         ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1);
+});
+
+it('explains a cancelled or unknown invitation link instead of a bare 404 (DEC-28 (15))', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    onTenant($organisation);
+    $url = URL::temporarySignedRoute('invitations.accept', now()->addDay(), ['token' => str_repeat('x', 64)], absolute: false);
+
+    $this->get(tenant_url($organisation, $url))
+        ->assertNotFound()
+        ->assertSee(__('This invitation is no longer valid'));
 });

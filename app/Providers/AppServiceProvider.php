@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Support\Locales;
 use App\Support\Skv;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,7 @@ use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Fortify\Features;
@@ -40,6 +42,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->configureDevCommands();
         $this->configureAuthorization();
+        $this->configureErrorPages();
     }
 
     /**
@@ -113,5 +116,16 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(SuperAdminGate::before(...));
 
         Gate::policy(RoleModel::class, RolePolicy::class);
+    }
+
+    /**
+     * Error pages speak the visitor's language (§6.5). An unknown route never runs the web middleware, so the
+     * locale is resolved here: the signed-in user (when the session started), the guest's choice, the browser.
+     */
+    protected function configureErrorPages(): void
+    {
+        View::composer(['errors::*', 'errors.*'], function (): void {
+            Locales::apply(Locales::forRequest(request()));
+        });
     }
 }
