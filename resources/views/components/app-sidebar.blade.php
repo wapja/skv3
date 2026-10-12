@@ -3,7 +3,8 @@
 <flux:sidebar sticky collapsible class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
     <flux:sidebar.header>
         <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
-        <flux:sidebar.collapse />
+        {{-- A dynamic tooltip keeps Blaze from folding the button, which would fix __() to the compiling locale. --}}
+        <flux:sidebar.collapse :tooltip="__('Toggle sidebar')" />
     </flux:sidebar.header>
 
     <x-command-palette />
@@ -33,7 +34,18 @@
 
 <!-- Mobile User Menu -->
 <flux:header class="lg:hidden">
-    <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
+    {{-- flux:sidebar.toggle with a runtime label: Blaze folds that component with __() fixed at compile time. --}}
+    <flux:button
+        class="shrink-0 lg:hidden"
+        variant="subtle"
+        square
+        icon="bars-2"
+        inset="left"
+        x-data
+        x-on:click="$dispatch('flux-sidebar-toggle')"
+        :aria-label="__('Toggle sidebar')"
+        data-flux-sidebar-toggle
+    />
 
     <flux:spacer />
 
