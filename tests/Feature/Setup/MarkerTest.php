@@ -5,11 +5,14 @@ declare(strict_types=1);
 /** covers §5.3.3 */
 
 use App\Setup\Marker;
+use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
     Process::fake([]);
+    app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
 it('records the answers without secrets and the summary in the marker (§5.3.3 step 9, RL-14)', function (): void {

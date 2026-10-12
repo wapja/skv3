@@ -5,11 +5,14 @@ declare(strict_types=1);
 /** covers §5.3.3 */
 
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
     Process::fake([]);
+    app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
 it('writes variables atomically and keeps the rest of the file (§5.3.3 step 1)', function (): void {

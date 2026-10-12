@@ -6,12 +6,15 @@ declare(strict_types=1);
 
 use App\Setup\Answers;
 use App\Setup\Detection;
+use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
     Process::fake([]);
+    app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
 it('covers every --answers key in the e2e fixture (§7.2)', function (): void {

@@ -5,11 +5,14 @@ declare(strict_types=1);
 /** covers §5.3.1 */
 
 use App\Setup\StepResult;
+use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
     Process::fake([]);
+    app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
 it('carries the command and reason of a manual step (§5.3.1)', function (): void {
