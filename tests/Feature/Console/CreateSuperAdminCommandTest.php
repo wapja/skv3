@@ -32,6 +32,10 @@ it('creates an active super admin without an organisation (§4.12, W8)', functio
         ->and(Hash::check('correct-horse-battery', $user->password))->toBeTrue()
         // A new user is inserted with the flag (BelongsToOrganisation's creating hook); SetSuperAdmin attaches the badge.
         ->and(withPermissionsTeam(null, fn (): bool => $user->hasRole(Role::SuperAdmin->value)))->toBeTrue();
+
+    // The flag never changes for a new user, yet creating the platform's most privileged account is audited (§4.8).
+    $granted = recordedActivity(ActivityEvent::SuperAdminGranted)->sole();
+    expect([$granted->subject_id, $granted->causer_id])->toBe([$user->id, null]);
 });
 
 it('promotes an existing user through SetSuperAdmin (RL-9)', function (): void {

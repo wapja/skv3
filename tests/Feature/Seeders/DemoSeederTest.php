@@ -43,7 +43,8 @@ it('seeds a super admin and demo1 and demo2, each with an admin, a user and a pe
     }
 
     expect(recordedActivity(ActivityEvent::OrganisationCreated))->toHaveCount(2)
-        ->and(recordedActivity(ActivityEvent::InvitationAccepted))->toHaveCount(4);
+        ->and(recordedActivity(ActivityEvent::InvitationAccepted))->toHaveCount(4)
+        ->and(recordedActivity(ActivityEvent::SuperAdminGranted)->sole()->subject_id)->toBe($superAdmin->id);
 });
 
 it('is idempotent (§4.12)', function (): void {
@@ -51,7 +52,8 @@ it('is idempotent (§4.12)', function (): void {
     $this->seed(DemoSeeder::class);
 
     expect(Organisation::query()->whereIn('slug', DemoSeeder::SLUGS)->count())->toBe(2)
-        ->and(app(CurrentTenant::class)->bypass(fn (): int => User::query()->where('is_super_admin', true)->count()))->toBe(1);
+        ->and(app(CurrentTenant::class)->bypass(fn (): int => User::query()->where('is_super_admin', true)->count()))->toBe(1)
+        ->and(recordedActivity(ActivityEvent::SuperAdminGranted))->toHaveCount(1);
 });
 
 it('refuses to run in production (§4.12)', function (): void {

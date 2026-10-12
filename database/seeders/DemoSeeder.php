@@ -92,7 +92,8 @@ final class DemoSeeder extends Seeder
         }
 
         $user = User::factory()->superAdmin()->create(['name' => 'Demo super admin', 'email' => $email, 'password' => self::PASSWORD]);
-        $setSuperAdmin->handle($user, true);
+        // Inserted with the flag (W8): handleCreated() attaches the badge and records the grant (§4.8).
+        $setSuperAdmin->handleCreated($user);
 
         return $user;
     }

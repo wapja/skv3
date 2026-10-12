@@ -13,6 +13,7 @@ use App\Tenancy\Facades\Tenant;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -51,8 +52,12 @@ final class CreateSuperAdminCommand extends Command
         }
 
         try {
-            $user = $existing ?? $this->createUser($email);
-            $setSuperAdmin->handle($user, true);
+            if ($existing instanceof User) {
+                $setSuperAdmin->handle($existing, true);
+            } else {
+                // One transaction: a new user never exists without the badge and the audit entry.
+                DB::transaction(fn () => $setSuperAdmin->handleCreated($this->createUser($email)));
+            }
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $messages) {
                 $this->components->error(implode(' ', $messages));
@@ -68,6 +73,7 @@ final class CreateSuperAdminCommand extends Command
 
     /**
      * A new user carries the flag at insert: BelongsToOrganisation refuses a user without an organisation otherwise.
+     * SetSuperAdmin::handleCreated() then attaches the badge and records the grant.
      *
      * @throws ValidationException
      */
