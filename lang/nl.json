@@ -384,6 +384,7 @@
     "Two-factor authentication is now enabled. Scan the QR code or enter the setup key in your authenticator app.": "Tweestapsverificatie is nu ingeschakeld. Scan de QR-code of vul de instelsleutel in je authenticator-app in.",
     "Two-factor code rejected": "Tweestapscode geweigerd",
     "Type :slug to confirm.": "Typ :slug om te bevestigen.",
+    "Unknown setup answers: :keys": "Onbekende setup-antwoorden: :keys",
     "Until": "Tot en met",
     "Update password": "Wachtwoord wijzigen",
     "Update the appearance settings for your account": "Pas de weergave van je account aan",

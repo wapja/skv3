@@ -1,0 +1,11 @@
+{
+    "app_name": "E2E App",
+    "database": "sqlite",
+    "start_with": "demo",
+    "super_admin_email": null,
+    "super_admin_password": null,
+    "modules": ["impersonation"],
+    "https": false,
+    "playwright": false,
+    "claude": false
+}

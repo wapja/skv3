@@ -384,6 +384,7 @@
     "Two-factor authentication is now enabled. Scan the QR code or enter the setup key in your authenticator app.": "Two-factor authentication is now enabled. Scan the QR code or enter the setup key in your authenticator app.",
     "Two-factor code rejected": "Two-factor code rejected",
     "Type :slug to confirm.": "Type :slug to confirm.",
+    "Unknown setup answers: :keys": "Unknown setup answers: :keys",
     "Until": "Until",
     "Update password": "Update password",
     "Update the appearance settings for your account": "Update the appearance settings for your account",
