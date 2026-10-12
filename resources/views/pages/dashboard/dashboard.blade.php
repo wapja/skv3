@@ -57,6 +57,7 @@
         </div>
     @endif
 
+    {{-- pro-only (§6.7): free Flux shows the stat cards only, without the sign-in trend. --}}
     @if (Skv::hasFluxPro())
         @if ($this->loginTrend !== null)
             <flux:card data-test="login-trend" class="space-y-3">

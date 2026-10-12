@@ -44,6 +44,67 @@ it('treats icons and nested free components as free', function (): void {
     expect(FluxProLint::violations('<flux:icon.check-circle /> <flux:sidebar.item icon="home"> <flux:menu.radio.group>'))->toBe([]);
 });
 
+it('flags a Pro branch without a free @else unless it is marked pro-only (§6.7)', function (): void {
+    $bare = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            <flux:chart />
+        @endif
+        BLADE;
+    $marked = <<<'BLADE'
+        {{-- pro-only (§6.7): free Flux has no sign-in trend --}}
+        @if (Skv::hasFluxPro())
+            <flux:chart />
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($bare))->toBe(['line 1: @if (Skv::hasFluxPro()) has no free @else; mark a feature without a free variant (§6.7) with {{-- pro-only --}}'])
+        ->and(FluxProLint::violations($marked))->toBe([]);
+});
+
+it('flags an empty free @else (§6.7)', function (): void {
+    $blade = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            <flux:chart />
+        @else
+            {{-- nothing yet --}}
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($blade))->toBe(['line 1: @if (Skv::hasFluxPro()) has an empty free @else']);
+});
+
+it('flags Pro and free branches that bind different Livewire properties (§6.7)', function (): void {
+    $blade = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            <flux:select variant="listbox" multiple wire:model="roleIds">
+            </flux:select>
+        @else
+            <flux:checkbox.group wire:model="roles">
+                @if ($showAll)
+                    <flux:checkbox wire:model.live="all" />
+                @endif
+            </flux:checkbox.group>
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($blade))->toBe(['line 1: @if (Skv::hasFluxPro()) binds wire:model [roleIds] in the Pro branch but [all, roles] in the free @else']);
+});
+
+it('accepts branches that bind the same properties in any order and with any modifier', function (): void {
+    $blade = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            <flux:date-picker wire:model.live="from" />
+            <flux:date-picker wire:model.live="until" />
+        @else
+            <flux:input type="date"
+                wire:model="until" />
+            <flux:input type="date" wire:model.live.debounce="from" />
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($blade))->toBe([]);
+});
+
 it('keeps every view of the kit inside the free Flux surface or a Pro branch (§6.7)', function (): void {
     $violations = [];
 

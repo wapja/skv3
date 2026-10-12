@@ -35,7 +35,7 @@
 
 - Pages render through `layouts/base` only (the app and auth layouts wrap it); never write `<html>` elsewhere. Error pages are the exception: they extend the self-contained `errors.layout`.
 - Navigation entries go into `App\Support\Navigation\Navigation::items()`, never into a Blade file.
-- Pro-only Flux components appear only inside `@if (Skv::hasFluxPro())` with a complete free `@else` and identical Livewire properties (`tests/Arch/FluxProLayerTest.php`).
+- Pro-only Flux components appear only inside `@if (Skv::hasFluxPro())`, with a complete free `@else` that binds the same `wire:model` properties. A feature without a free variant (§6.7: the ⌘K palette, the sign-in trend) has a `{{-- pro-only … --}}` comment right before its `@if` instead. `tests/Arch/FluxProLayerTest.php` checks where Pro tags sit, that the `@else` exists and renders something, and the `wire:model` names.
 - User preferences go through `App\Actions\Settings\{UpdateLocale,UpdateAppearance}`.
 - Read the default language with `Locale::default()`, never `config('app.locale')`.
 - Tests that need passkeys call `usePasskeysModule(true)`, because CI also runs the suite with `MODULE_PASSKEYS=false`.

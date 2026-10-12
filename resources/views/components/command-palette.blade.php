@@ -1,4 +1,4 @@
-{{-- §6.7: the ⌘K palette (Pro only). The sidebar always includes this file; its whole content sits in the Pro branch. --}}
+{{-- pro-only (§6.7): the ⌘K palette has no free variant. The sidebar always includes this file; its whole content sits in the Pro branch. --}}
 @if (Skv::hasFluxPro())
     <flux:modal.trigger name="command-palette" shortcut="cmd.k">
         <flux:sidebar.search :placeholder="__('Search...')" kbd="⌘K" data-test="command-palette" />
