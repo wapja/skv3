@@ -23,11 +23,19 @@
             @endforeach
         </flux:select>
 
-        <flux:checkbox.group wire:model="roles" :label="__('Roles')" data-test="invite-roles">
-            @foreach ($this->roleOptions as $id => $label)
-                <flux:checkbox :value="$id" :label="$label" />
-            @endforeach
-        </flux:checkbox.group>
+        @if (Skv::hasFluxPro())
+            <flux:select variant="listbox" multiple searchable indicator="checkbox" wire:model="roles" :label="__('Roles')" data-test="invite-roles">
+                @foreach ($this->roleOptions as $id => $label)
+                    <flux:select.option :value="(string) $id">{{ $label }}</flux:select.option>
+                @endforeach
+            </flux:select>
+        @else
+            <flux:checkbox.group wire:model="roles" :label="__('Roles')" data-test="invite-roles">
+                @foreach ($this->roleOptions as $id => $label)
+                    <flux:checkbox :value="$id" :label="$label" />
+                @endforeach
+            </flux:checkbox.group>
+        @endif
 
         <div class="flex items-center gap-4">
             <flux:button variant="primary" type="submit" data-test="send-invitation-button">{{ __('Send invitation') }}</flux:button>

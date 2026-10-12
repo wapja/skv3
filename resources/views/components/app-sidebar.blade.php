@@ -6,6 +6,8 @@
         <flux:sidebar.collapse />
     </flux:sidebar.header>
 
+    <x-command-palette />
+
     <flux:sidebar.nav>
         @foreach ($navigation as $section)
             <flux:sidebar.group :heading="$section['group']->label()" class="grid">

@@ -57,6 +57,26 @@
         </div>
     @endif
 
+    @if (Skv::hasFluxPro())
+        @if ($this->loginTrend !== null)
+            <flux:card data-test="login-trend" class="space-y-3">
+                <flux:heading size="lg">{{ __('Sign-ins over the last 14 days') }}</flux:heading>
+                <flux:chart :value="$this->loginTrend" class="aspect-3/1">
+                    <flux:chart.svg>
+                        <flux:chart.line field="logins" class="text-accent" />
+                        <flux:chart.axis axis="x" field="date"><flux:chart.axis.line /><flux:chart.axis.tick /></flux:chart.axis>
+                        <flux:chart.axis axis="y"><flux:chart.axis.grid /><flux:chart.axis.tick /></flux:chart.axis>
+                        <flux:chart.cursor />
+                    </flux:chart.svg>
+                    <flux:chart.tooltip>
+                        <flux:chart.tooltip.heading field="date" />
+                        <flux:chart.tooltip.value field="logins" :label="__('Sign-ins')" />
+                    </flux:chart.tooltip>
+                </flux:chart>
+            </flux:card>
+        @endif
+    @endif
+
     @if ($this->recentActivity !== null)
         <flux:card data-test="recent-activity" class="space-y-3">
             <div class="flex items-center justify-between">

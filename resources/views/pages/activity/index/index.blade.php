@@ -6,8 +6,13 @@
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <flux:input type="date" wire:model.live="from" :label="__('From')" data-test="filter-from" />
-        <flux:input type="date" wire:model.live="until" :label="__('Until')" data-test="filter-until" />
+        @if (Skv::hasFluxPro())
+            <flux:date-picker wire:model.live="from" :label="__('From')" data-test="filter-from" />
+            <flux:date-picker wire:model.live="until" :label="__('Until')" data-test="filter-until" />
+        @else
+            <flux:input type="date" wire:model.live="from" :label="__('From')" data-test="filter-from" />
+            <flux:input type="date" wire:model.live="until" :label="__('Until')" data-test="filter-until" />
+        @endif
 
         <flux:select wire:model.live="event" :label="__('Action')" data-test="filter-event">
             <flux:select.option value="">{{ __('All actions') }}</flux:select.option>

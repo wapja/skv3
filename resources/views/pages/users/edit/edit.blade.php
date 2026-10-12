@@ -73,11 +73,19 @@
 
             @if ($this->abilities['updateRoles'])
                 <form wire:submit="saveRoles" class="space-y-6">
-                    <flux:checkbox.group wire:model="roles">
-                        @foreach ($this->roleOptions as $roleId => $label)
-                            <flux:checkbox :value="(string) $roleId" :label="$label" />
-                        @endforeach
-                    </flux:checkbox.group>
+                    @if (Skv::hasFluxPro())
+                        <flux:select variant="listbox" multiple searchable indicator="checkbox" wire:model="roles">
+                            @foreach ($this->roleOptions as $roleId => $label)
+                                <flux:select.option :value="(string) $roleId">{{ $label }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    @else
+                        <flux:checkbox.group wire:model="roles">
+                            @foreach ($this->roleOptions as $roleId => $label)
+                                <flux:checkbox :value="(string) $roleId" :label="$label" />
+                            @endforeach
+                        </flux:checkbox.group>
+                    @endif
 
                     <flux:error name="roles" />
 

@@ -6,13 +6,16 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
 use Carbon\CarbonImmutable;
+use Composer\InstalledVersions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\AliasLoader;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -43,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDevCommands();
         $this->configureAuthorization();
         $this->configureErrorPages();
+        $this->configureFluxProBranches();
     }
 
     /**
@@ -128,5 +132,19 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['errors::*', 'errors.*'], function (): void {
             Locales::apply(Locales::forErrorPage(request()));
         });
+    }
+
+    /**
+     * §6.7: without Flux Pro, the Pro branches of the views are removed before Blade compiles them, because Blade
+     * resolves component tags at compile time. This follows the installed package, not Skv::useFluxPro(): compiled
+     * views outlive a single test or request. Registered in boot(), so it runs before Blaze's own hook (booted()).
+     */
+    protected function configureFluxProBranches(): void
+    {
+        if (InstalledVersions::isInstalled('livewire/flux-pro')) {
+            return;
+        }
+
+        Blade::prepareStringsForCompilationUsing(FluxProBranches::strip(...));
     }
 }

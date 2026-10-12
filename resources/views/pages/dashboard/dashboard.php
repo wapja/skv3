@@ -9,7 +9,9 @@ use App\Models\Activity;
 use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Support\Dashboard\LoginTrend;
 use App\Support\Dashboard\OnboardingChecklist;
+use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\HostScope;
 use App\Tenancy\UserNames;
@@ -71,6 +73,21 @@ new #[Title('Dashboard')] class extends Component
         }
 
         return $stats;
+    }
+
+    /**
+     * Sign-ins over 14 days for the Pro chart; null without Flux Pro or without the activity permission (§6.5).
+     *
+     * @return list<array{date: string, logins: int}>|null
+     */
+    #[Computed]
+    public function loginTrend(): ?array
+    {
+        if (! Skv::hasFluxPro() || ! $this->currentUser()->can(Permission::ActivityLogView)) {
+            return null;
+        }
+
+        return LoginTrend::lastDays(14);
     }
 
     /**
