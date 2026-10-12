@@ -6,6 +6,8 @@ declare(strict_types=1);
 
 use App\Models\Organisation;
 use App\Support\Branding;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
 it('shows the organisation\'s name in the brand on its host and the platform name centrally (§4.1)', function (): void {
     config(['branding.name' => 'Platform Name']);
@@ -48,7 +50,21 @@ it('counts branding as customised once an accent or a logo is set', function ():
     config(['branding.accent' => 'blue']);
     expect(Branding::isCustomised())->toBeTrue();
 
-    config(['branding.accent' => 'neutral', 'branding.logo' => 'images/logo.svg']);
-    expect(Branding::isCustomised())->toBeTrue()
-        ->and(Branding::logoUrl())->toEndWith('/images/logo.svg');
+    // The logo must be an existing file under public/ (DEC-29); a uniquely named one is removed afterwards.
+    $logo = 'test-logo-'.Str::uuid().'.svg';
+    File::put(public_path($logo), '<svg/>');
+
+    try {
+        config(['branding.accent' => 'neutral', 'branding.logo' => $logo]);
+        expect(Branding::isCustomised())->toBeTrue()
+            ->and(Branding::logoUrl())->toEndWith('/'.$logo);
+    } finally {
+        File::delete(public_path($logo));
+    }
+});
+
+it('ignores a logo that is not a file under public/ (DEC-29)', function (): void {
+    config(['branding.logo' => 'https://tracker.example/x.svg']);
+
+    expect(Branding::logoUrl())->toBeNull();
 });
