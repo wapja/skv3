@@ -6,6 +6,7 @@
     "A new address asks for your password first, and the old address gets a notice.": "A new address asks for your password first, and the old address gets a notice.",
     "A new address is used after you confirm it through the link we email to it.": "A new address is used after you confirm it through the link we email to it.",
     "A pending user becomes active by accepting the invitation.": "A pending user becomes active by accepting the invitation.",
+    "A pending user keeps the roles they were invited with. Cancel and re-invite to change them.": "A pending user keeps the roles they were invited with. Cancel and re-invite to change them.",
     "Accept invitation": "Accept invitation",
     "Account": "Account",
     "Act as another user to help them": "Act as another user to help them",

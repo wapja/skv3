@@ -9,6 +9,7 @@ use App\Authorization\PermissionGroup;
 use App\Authorization\Role;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Facades\Tenant;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 
@@ -252,3 +253,19 @@ it('hides users.impersonate in the editor when the module is off', function (boo
         $component->assertDontSeeHtml('value="'.Permission::UsersImpersonate->value.'"');
     }
 })->with(['on' => true, 'off' => false]);
+
+it('shows the archived-organisation error in the role delete modal (FU4-1)', function () use ($teamRoleIn): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    asSuperAdmin();
+    onTenant($organisation);
+    $role = $teamRoleIn($organisation, 'Helpdesk');
+    $component = Livewire::test('pages::roles.index')->call('confirmDelete', $role->id);
+
+    Tenant::bypass(fn () => $organisation->delete());
+
+    // The role editor modal, earlier on the page, renders the same error; the order pins it inside the delete modal.
+    $component->call('delete')
+        ->assertHasErrors('organisation')
+        ->assertSee(__('This organisation is archived.'))
+        ->assertSeeHtmlInOrder(['data-modal="delete-role"', e(__('This organisation is archived.'))]);
+});

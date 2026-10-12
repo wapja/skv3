@@ -26,6 +26,8 @@
 
         <flux:textarea wire:model="description" :label="__('Description')" rows="3" />
 
+        <flux:error name="organisation" />
+
         <div class="flex justify-end gap-2">
             <flux:button :href="route('organisations.index')" variant="ghost" wire:navigate>{{ __('Back') }}</flux:button>
             <flux:button variant="primary" type="submit" data-test="save-organisation-button">{{ __('Save') }}</flux:button>

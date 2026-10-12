@@ -221,3 +221,18 @@ it('ignores roles of another guard (FU2-4)', function (): void {
         ->toThrow(ValidationException::class, __('One or more roles are not available for this organisation.'));
     expect(roleNamesOf($member, $organisation))->toBe([]);
 });
+
+it('keeps a pending user\'s roles as invited (FU4-7, RK-B3)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = inviteMember($organisation);
+    $actor = asSuperAdmin();
+    onTenant($organisation);
+    $invitee = $invitation->user;
+    $before = roleNamesOf($invitee, $organisation);
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($actor, $invitee, [systemRoleId(Role::OrganisationAdmin), (int) teamRole($organisation, 'Helpdesk')->id]))
+        ->toThrow(ValidationException::class, __('A pending user keeps the roles they were invited with. Cancel and re-invite to change them.'));
+
+    expect($before)->toBe([Role::OrganisationAdmin->value])
+        ->and(roleNamesOf($invitee, $organisation))->toBe($before);
+});
