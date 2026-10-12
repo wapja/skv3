@@ -25,7 +25,9 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
+use Illuminate\Support\Uri;
 use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
@@ -53,6 +55,17 @@ pest()->extend(TestCase::class)
     ->in('Feature');
 
 pest()->extend(TestCase::class)->in('Arch');
+
+// §7.2: browser tests serve the app in-process; RefreshDatabase on in-memory SQLite works because the
+// server shares the test's container and connection. The group keeps them out of composer check.
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
+    ->group('browser')
+    ->beforeEach(function (): void {
+        // RL-2: a running `npm run dev` (public/hot) must not leak dev-server URLs into a browser run.
+        Vite::useHotFile(storage_path('framework/testing/no-vite-hot'));
+    })
+    ->in('Browser');
 
 /*
 | Tenancy testing API (§7.2). Each helper sets the URL origin, so route() and $this->get()
@@ -305,4 +318,29 @@ function startImpersonatingOverHttp(User $impersonator, User $target, string $re
     Auth::guard('web')->forgetUser();
     post('/_start-impersonating')->assertOk();
     Auth::guard('web')->forgetUser();
+}
+
+/**
+ * An active user for browser tests, password "password": a member of $organisation, or a super admin.
+ * Signs nobody in: the browser signs in through the login page on the host it visits.
+ */
+function browserUser(?Organisation $organisation = null, string $email = 'member@example.com', bool $superAdmin = false): User
+{
+    if ($superAdmin) {
+        $user = User::factory()->superAdmin()->create(['email' => $email]);
+        app(SetSuperAdmin::class)->handle($user, true);
+
+        return $user;
+    }
+
+    return User::factory()->for($organisation ?? Organisation::factory()->create())->create(['email' => $email]);
+}
+
+/**
+ * The absolute URL of $path on the origin of $currentUrl (pass $page->url()). The browser plugin resolves a
+ * relative navigate() path against 127.0.0.1, not the withHost() host, which drops the host-only session (RL-2).
+ */
+function sameOrigin(string $currentUrl, string $path): string
+{
+    return (string) Uri::of($currentUrl)->withPath($path)->withQuery([], merge: false)->withoutFragment();
 }
