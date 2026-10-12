@@ -420,11 +420,12 @@ function sameOrigin(string $currentUrl, string $path): string
 
 /**
  * A throwaway project directory for setup steps (RL-2): .env from .env.example, storage and database folders.
- * Removed when the test ends; never the repository itself.
+ * Removed when the test ends; never the repository itself. A $prefix starts the folder name, e.g. setup_probe_
+ * for the Database step's PostgreSQL databases, which take their name from the folder.
  */
-function setupSandbox(?Detection $detection = null): SetupContext
+function setupSandbox(?Detection $detection = null, string $prefix = ''): SetupContext
 {
-    $directory = storage_path('framework/testing/setup/'.Str::uuid());
+    $directory = storage_path('framework/testing/setup/'.$prefix.Str::uuid());
 
     foreach (['storage/app/private', 'database', 'public'] as $folder) {
         File::ensureDirectoryExists($directory.'/'.$folder);
