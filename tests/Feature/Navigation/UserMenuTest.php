@@ -21,8 +21,9 @@ it('shows the user menu with settings, language, appearance and log out on app p
         ->assertSee(Locale::English->label());
 });
 
-it('changes the language and reloads the page it was opened on', function (): void {
+it('changes the language and reloads the page it was opened on, never the Referer (RL-7)', function (): void {
     $user = asOrgAdmin(Organisation::factory()->create(['slug' => 'acme']));
+    $this->withHeader('Referer', 'https://evil.example/phish');
     $snapshot = pageSnapshot(route('users.index'), 'user-menu');
 
     callPageAction($snapshot, 'setLocale', ['nl'])->assertOk()

@@ -29,9 +29,9 @@ it('shows the organisation card and the user\'s roles on a tenant host (§4.10)'
     $organisation = Organisation::factory()->create(['slug' => 'acme', 'name' => 'Acme Corp']);
     asOrgAdmin($organisation);
 
+    // In order: the sidebar brand shows the name too, so only the name inside the card proves the card (§4.10).
     $this->get(route('dashboard'))->assertOk()
-        ->assertSee('data-test="organisation-card"', false)
-        ->assertSee('Acme Corp')
+        ->assertSeeHtmlInOrder(['data-test="organisation-card"', 'Acme Corp', 'data-test="roles-card"'])
         ->assertSee(Role::OrganisationAdmin->label());
 });
 

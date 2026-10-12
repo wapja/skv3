@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.11, §6.5 */
 
+use App\Actions\Settings\UpdateLocale;
 use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
@@ -36,6 +37,22 @@ it('lets guests switch the language on the auth pages', function (): void {
     $this->from(route('login'))->post(route('locale.update'), ['locale' => 'nl'])->assertRedirect(route('login'));
 
     $this->get(route('login'), ['Accept-Language' => 'en'])->assertOk()->assertSee('<html lang="nl"', false);
+});
+
+it('renders the language toggle with a submit button per language on the auth pages (§6.5)', function (): void {
+    $html = (string) $this->get(route('login'))->assertOk()->assertSee('data-test="language-toggle"', false)->getContent();
+
+    preg_match('/<form[^>]*data-test="language-toggle".*?<\/form>/s', $html, $toggle);
+    preg_match_all('/<button[^>]*\bname="locale"[^>]*\bvalue="([a-z]+)"/', $toggle[0] ?? '', $buttons);
+
+    expect($buttons[1])->toBe(array_map(fn (Locale $locale): string => $locale->value, Locale::cases()));
+});
+
+it('translates the page title (RL-9)', function (): void {
+    $user = asOrgAdmin($this->organisation);
+    app(UpdateLocale::class)->handle($user, Locale::Dutch);
+
+    $this->get(route('users.index'))->assertOk()->assertSee('<title>Gebruikers - ', false);
 });
 
 it('saves the choice on the user when someone is signed in', function (): void {

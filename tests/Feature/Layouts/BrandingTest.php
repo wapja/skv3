@@ -12,7 +12,9 @@ it('shows the organisation\'s name in the brand on its host and the platform nam
     $organisation = Organisation::factory()->create(['slug' => 'acme', 'name' => 'Acme Corp']);
 
     asMember($organisation);
-    $this->get(route('dashboard'))->assertOk()->assertSee('Acme Corp')->assertSee('<title>Dashboard - Platform Name</title>', false);
+    expect(Branding::name())->toBe('Acme Corp');
+    // The profile page has no Organisation card (§4.10), so the name there can only come from the brand.
+    $this->get(route('profile.edit'))->assertOk()->assertSee('Acme Corp')->assertSee('<title>Profile settings - Platform Name</title>', false);
 
     asSuperAdmin();
     onAdminHost();

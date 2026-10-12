@@ -109,6 +109,18 @@ test('email address of a deleted user can be reused', function (): void {
     expect($user->refresh()->email)->toBe('former@example.com');
 });
 
+it('renders the language field on the profile page (§4.10)', function (): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    $html = (string) $this->get(route('profile.edit'))->assertOk()->assertSee('data-test="profile-language"', false)->getContent();
+
+    preg_match('/<select[^>]*data-test="profile-language".*?<\/select>/s', $html, $field);
+    preg_match_all('/<option[^>]*\bvalue="([a-z]+)"/', $field[0] ?? '', $options);
+
+    expect($field[0] ?? '')->toContain('wire:model="locale"')
+        ->and($options[1])->toBe(array_map(fn (Locale $locale): string => $locale->value, Locale::cases()));
+});
+
 it('changes the language from the profile page (§4.10)', function (): void {
     $user = asMember(Organisation::factory()->create(['slug' => 'acme']));
 
