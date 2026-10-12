@@ -77,3 +77,12 @@ it('lets the environment turn the module off in tests and pins the test hosts (I
         ->toContain('<env name="PASSKEYS_RELYING_PARTY_ID" value=""/>')
         ->toContain('<env name="TRUSTED_PROXIES" value=""/>');
 });
+
+it('runs the browser suite in its own CI job (§8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+
+    expect($workflow)->toContain('npx playwright install --with-deps chromium')
+        ->toContain('composer test:browser')
+        ->toContain('tests/Browser/Traces')
+        ->and(preg_match('/uses: actions\/upload-artifact@[0-9a-f]{40}/', $workflow))->toBe(1);
+});

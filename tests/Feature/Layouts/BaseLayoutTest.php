@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §6.5 */
 
+use App\Actions\Settings\UpdateAppearance;
 use App\Enums\Appearance;
 use App\Models\Organisation;
 use App\Models\User;
@@ -37,6 +38,22 @@ it('writes the stored appearance into localStorage before Flux applies it, so th
     expect($script)->toBeInt()->and($flux)->toBeInt();
     expect((int) $script)->toBeLessThan((int) $flux)
         ->and($html)->toContain("const stored = 'light';");
+});
+
+it('renders the same stored appearance on the admin host and on an organisation\'s host (DEC-12)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asSuperAdmin();
+    app(UpdateAppearance::class)->handle($admin, Appearance::Dark);
+
+    onAdminHost();
+    $central = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+    onTenant($organisation);
+    $tenant = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+
+    foreach ([$central, $tenant] as $html) {
+        expect(preg_match('/<html[^>]*class="[^"]*\bdark\b/', $html))->toBe(1)
+            ->and($html)->toContain("const stored = 'dark';");
+    }
 });
 
 it('lets guests follow the system preference', function (): void {
