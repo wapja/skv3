@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Support\Skv;
+
 return [
 
     /*
@@ -24,11 +26,13 @@ return [
 
     /*
     | Optional modules (§6.8). Setup writes the MODULE_* keys; re-enabling = change the key and run
-    | `php artisan skv:doctor --fix` (M6). Migrations always run whatever the flags say.
+    | `php artisan skv:doctor --fix`. Migrations always run whatever the flags say.
     */
     'modules' => [
         'impersonation' => (bool) env('MODULE_IMPERSONATION', true),
         'passkeys' => (bool) env('MODULE_PASSKEYS', true),
+        // §6.8: database-only backups need PostgreSQL; on SQLite the module is always off.
+        'backups' => Skv::backupsAvailable((string) env('DB_CONNECTION', 'sqlite'), (bool) env('MODULE_BACKUPS', true)),
     ],
 
 ];
