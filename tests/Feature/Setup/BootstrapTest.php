@@ -98,6 +98,28 @@ it('leaves a non-default APP_URL and a non-sqlite database alone (§5.2)', funct
     Process::assertNothingRan();
 });
 
+it('never rewrites a custom or https APP_URL, even when Herd is present (§5.2 point 3)', function (string $appUrl): void {
+    $herd = $this->context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    File::copy(base_path('.env.example'), $this->context->path('.env'));
+    $env = new EnvFile($this->context->path('.env'));
+    $env->set(['APP_URL' => $appUrl, 'DB_CONNECTION' => 'pgsql']);
+
+    Process::fake(["*herd' 'tld'*" => Process::result("test\n")]);
+
+    new Bootstrap($this->context->basePath, $this->toolchain)->run();
+
+    expect($this->toolchain->herd())->not->toBeNull()
+        ->and($env->get('APP_URL'))->toBe($appUrl);
+    Process::assertNotRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), ' tld'));
+})->with([
+    'a Herd-secured address' => 'https://my-app.test',
+    'a custom http address' => 'http://my-app.example',
+    'localhost on another port' => 'http://localhost:3000',
+]);
+
 it('returns early while the installer defers its hooks (§5.2)', function (): void {
     app()->instance(Bootstrap::class, new Bootstrap($this->context->basePath, $this->toolchain));
     putenv('LARAVEL_INSTALLER_DEFER_HOOKS=1');
