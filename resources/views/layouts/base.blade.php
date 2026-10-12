@@ -1,4 +1,4 @@
-@props(['title' => null])
+@props(['title' => null, 'flashToast' => true])
 
 @php
     $user = auth()->user();
@@ -42,8 +42,8 @@
             </flux:toast.group>
         @endpersist
 
-        {{-- The flash→toast bridge (§6.5): a session('status') message becomes a Flux toast. --}}
-        @if (is_string(session('status')) && session('status') !== '')
+        {{-- The flash→toast bridge (§6.5): a session('status') message becomes a Flux toast. The auth layout turns it off: its pages show the status inline. --}}
+        @if ($flashToast && is_string(session('status')) && session('status') !== '')
             <div hidden data-flash-toast x-data x-init="$nextTick(() => $flux.toast({ text: {{ \Illuminate\Support\Js::from(session('status')) }} }))"></div>
         @endif
 

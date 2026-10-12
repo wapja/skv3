@@ -1,4 +1,4 @@
-<x-layouts::base :title="$title ?? null" class="dark:bg-linear-to-b dark:from-neutral-950 dark:to-neutral-900">
+<x-layouts::base :title="$title ?? null" :flash-toast="false" class="dark:bg-linear-to-b dark:from-neutral-950 dark:to-neutral-900">
     <x-impersonation-banner :inset="false" />
 
     <div class="flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
