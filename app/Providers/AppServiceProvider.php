@@ -120,12 +120,13 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Error pages speak the visitor's language (§6.5). An unknown route never runs the web middleware, so the
-     * locale is resolved here: the signed-in user (when the session started), the guest's choice, the browser.
+     * locale is resolved here: the signed-in user (only when the guard already resolved them, RL-20), the guest's
+     * choice, the browser.
      */
     protected function configureErrorPages(): void
     {
         View::composer(['errors::*', 'errors.*'], function (): void {
-            Locales::apply(Locales::forRequest(request()));
+            Locales::apply(Locales::forErrorPage(request()));
         });
     }
 }

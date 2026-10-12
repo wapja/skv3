@@ -1,7 +1,8 @@
 @extends('errors.layout')
 
 @php
-    $user = auth()->user();
+    // Never resolve the user here: this page can render before EnforceImpersonation has run (RL-20).
+    $user = \App\Support\Locales::resolvedUser();
     $home = null;
 
     if ($user instanceof \App\Models\User) {
