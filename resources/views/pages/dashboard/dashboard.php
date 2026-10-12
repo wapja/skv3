@@ -33,17 +33,23 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * The user's roles in this host's team, translated for system roles (§4.10).
+     * The user's roles in this host's team, translated for system roles (§4.10). The super admin badge is
+     * assigned without a team, so on an organisation's host it comes from users.is_super_admin instead.
      *
      * @return list<string>
      */
     #[Computed]
     public function roleLabels(): array
     {
-        $names = $this->currentUser()->roles()->pluck('name')->all();
+        $user = $this->currentUser();
+        $names = $user->roles()->pluck('name')->map(fn (mixed $name): string => (string) $name)->all();
+
+        if ($user->isSuperAdmin() && ! in_array(Role::SuperAdmin->value, $names, true)) {
+            array_unshift($names, Role::SuperAdmin->value);
+        }
 
         return array_values(array_map(
-            fn (mixed $name): string => Role::tryFrom((string) $name)?->label() ?? (string) $name,
+            fn (string $name): string => Role::tryFrom($name)?->label() ?? $name,
             $names,
         ));
     }

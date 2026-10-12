@@ -17,8 +17,8 @@ it('shows the user menu with settings, language, appearance and log out on app p
         ->assertSee('data-test="user-menu-language"', false)
         ->assertSee('data-test="user-menu-appearance"', false)
         ->assertSee('data-test="logout-button"', false)
-        ->assertSee(Locale::Dutch->label())
-        ->assertSee(Locale::English->label());
+        ->assertSee(Locale::Dutch->nativeName())
+        ->assertSee(Locale::English->nativeName());
 });
 
 it('changes the language and reloads the page it was opened on, never the Referer (RL-7)', function (): void {

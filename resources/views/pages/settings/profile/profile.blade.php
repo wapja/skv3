@@ -14,7 +14,7 @@
 
             <flux:select wire:model="locale" :label="__('Language')" data-test="profile-language">
                 @foreach (\App\Enums\Locale::cases() as $option)
-                    <flux:select.option :value="$option->value">{{ $option->label() }}</flux:select.option>
+                    <flux:select.option :value="$option->value">{{ $option->nativeName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 

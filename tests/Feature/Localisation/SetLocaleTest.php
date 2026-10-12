@@ -48,6 +48,14 @@ it('renders the language toggle with a submit button per language on the auth pa
     expect($buttons[1])->toBe(array_map(fn (Locale $locale): string => $locale->value, Locale::cases()));
 });
 
+it('names every language in its own language in the switchers (§6.5)', function (): void {
+    $html = (string) $this->get(route('login'), ['Accept-Language' => 'nl'])->assertOk()->getContent();
+
+    preg_match('/<form[^>]*data-test="language-toggle".*?<\/form>/s', $html, $toggle);
+
+    expect($toggle[0] ?? '')->toContain('Nederlands')->toContain('English')->not->toContain('Engels');
+});
+
 it('translates the page title (RL-9)', function (): void {
     $user = asOrgAdmin($this->organisation);
     app(UpdateLocale::class)->handle($user, Locale::Dutch);

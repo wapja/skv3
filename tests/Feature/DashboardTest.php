@@ -44,6 +44,16 @@ it('shows Platform and the super admin badge on central hosts', function (): voi
         ->assertSee(Role::SuperAdmin->label());
 });
 
+it('shows the super admin badge on an organisation\'s host too (§4.10)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    asSuperAdmin();
+    onTenant($organisation);
+
+    $this->get(route('dashboard'))->assertOk()
+        ->assertSeeHtmlInOrder(['data-test="roles-card"', Role::SuperAdmin->label()])
+        ->assertDontSee(__('No roles assigned'));
+});
+
 it('says when a member holds no roles', function (): void {
     asMember(Organisation::factory()->create(['slug' => 'acme']));
 

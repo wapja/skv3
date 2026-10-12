@@ -32,6 +32,9 @@
         <env name="TENANCY_STRICT" value="true" force="true"/>
         <env name="PASSKEYS_RELYING_PARTY_ID" value=""/>
         <env name="TRUSTED_PROXIES" value=""/>
+        <!-- The owner's .env may brand the local site; tests always start from the defaults. -->
+        <env name="BRANDING_ACCENT" value="neutral" force="true"/>
+        <env name="BRANDING_LOGO" value="" force="true"/>
         <!-- §6.8: no force, so CI's sqlite-free job can run the whole suite with the optional modules off. -->
         <env name="MODULE_IMPERSONATION" value="true"/>
         <env name="MODULE_PASSKEYS" value="true"/>

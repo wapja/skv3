@@ -43,8 +43,8 @@ it('hides the passkeys section on the security page while the module is off', fu
 
     // Visible text only: the Livewire snapshot always holds the property name `canManagePasskeys`.
     $enabled
-        ? $response->assertSeeText(__('Manage your passkeys for passwordless sign-in'))
-        : $response->assertDontSeeText(__('Manage your passkeys for passwordless sign-in'));
+        ? $response->assertSeeText(__('Manage your passkeys for passwordless sign-in'))->assertSeeText(__('Remove passkey'))
+        : $response->assertDontSeeText(__('Manage your passkeys for passwordless sign-in'))->assertDontSeeText(__('Remove passkey'));
 })->with(['on' => true, 'off' => false]);
 
 it('registers the passkeys limiter while the module is on', function (): void {

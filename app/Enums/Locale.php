@@ -19,6 +19,15 @@ enum Locale: string
         return self::tryFrom((string) config('skv.locale.default')) ?? self::Dutch;
     }
 
+    /** The language's name in that language, for the language switchers: a reader finds their own language (§6.5). */
+    public function nativeName(): string
+    {
+        return match ($this) {
+            self::Dutch => 'Nederlands',
+            self::English => 'English',
+        };
+    }
+
     public function label(): string
     {
         return match ($this) {

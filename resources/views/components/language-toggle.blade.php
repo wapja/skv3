@@ -8,7 +8,7 @@
             size="xs"
             :variant="app()->getLocale() === $locale->value ? 'filled' : 'ghost'"
         >
-            {{ $locale->label() }}
+            {{ $locale->nativeName() }}
         </flux:button>
     @endforeach
 </form>
