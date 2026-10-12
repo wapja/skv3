@@ -12,6 +12,7 @@ skv3 is a multi-tenant Laravel starter kit (successor of skv2). The design spec 
 
 - `composer check` — Pint (test), Rector (dry run), Larastan level 8, Pest in parallel on SQLite. Must pass before any commit claims success.
 - `composer test:pgsql` — the same Pest suite on PostgreSQL (Herd Pro, user `root`, empty password). Must also pass.
+- `composer test:browser` — the Pest browser suite (`tests/Browser`, Chromium); needs `npm run build` and `npx playwright install chromium`. The other runs never load `tests/Browser` (`defaultTestSuite="Unit,Feature,Arch"`).
 - `composer fix` — Rector, then Pint.
 - `php artisan test --compact --filter=<name>` — run one test; `php artisan test --compact tests/Arch` — arch rules only.
 - `composer dev` — Vite, queue, Pail and the scheduler (Herd serves the site; never run `artisan serve`).

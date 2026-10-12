@@ -23,6 +23,16 @@ All notable changes to this project are documented here. The format follows [Kee
 - Optional impersonation (`MODULE_IMPERSONATION`): sign in as a member with a reason, a banner with a stop button, checked again on every request and fully audited.
 - An audit log of sign-ins, security changes and every administrative change, with a filterable viewer and a retention clean-up after `ACTIVITYLOG_RETENTION_DAYS` (365 by default).
 - A cross-host sign-in link opened while someone else is signed in asks before it switches accounts.
+- A new base layout for every page; light, dark or system appearance is saved per user, without a flash, and is the same on every subdomain.
+- Branding with Flux accent colours and an optional logo (`BRANDING_ACCENT`, `BRANDING_LOGO`); an organisation's host shows its name in the brand.
+- A collapsible sidebar with three groups (Overzicht, Beheer, Systeem), driven by one navigation definition that hides what you may not open.
+- One user menu with settings, language, appearance and log out.
+- Dutch and English on every screen and page title: your language is saved in your profile, guests follow their browser and get a language toggle on the sign-in pages.
+- Friendly, self-contained error pages (403, 404, 419, 429, 500, 503) in the visitor's language, and a clear page for an invitation link that is no longer valid.
+- A dashboard with your organisation and roles, counts for users, pending invitations and organisations, recent activity and a getting-started checklist for administrators.
+- Optional passkeys module (`MODULE_PASSKEYS`): when it is off, passkey routes, buttons and the settings section are gone.
+- An optional Flux Pro layer: with `livewire/flux-pro` installed you get a listbox for roles, tabs, date pickers, a ⌘K command palette and a sign-in chart; without it everything works on free Flux.
+- Browser tests in Chromium with the Pest browser plugin (`composer test:browser`), including a CI job.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -44,6 +54,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Invitation tokens are stored once, hashed, with an encrypted copy for the invite link that is removed on acceptance (skv2 W13).
 - Invitations need at least one role, and their link works only on the organisation's own address (skv2 W14).
 - The admin subdomain is never treated as an organisation, also when `TENANCY_ADMIN_SUBDOMAIN` is changed.
+- Downloading recovery codes uses the codes that are stored, and copying them waits for the clipboard and says when it failed.
+- The passkey relying-party id always comes from the apex (`Hosts::apex()`) and is lower-cased.
+- The kit's own versions of Fortify routes still replace Fortify's when `fortify.prefix` or `fortify.domain` is set.
+- A failed passkey check no longer writes a stack trace to the log.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
