@@ -44,11 +44,12 @@
                     <flux:button
                         icon="clipboard"
                         variant="filled"
-                        x-data="{ copied: false }"
-                        x-on:click="navigator.clipboard.writeText(@js(implode(PHP_EOL, $recoveryCodes))); copied = true; setTimeout(() => copied = false, 2000)"
+                        x-data="{ copied: false, failed: false }"
+                        x-on:click="navigator.clipboard.writeText(@js(implode(PHP_EOL, $recoveryCodes))).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => { failed = true; setTimeout(() => failed = false, 4000) })"
                     >
-                        <span x-show="! copied">{{ __('Copy') }}</span>
+                        <span x-show="! copied && ! failed">{{ __('Copy') }}</span>
                         <span x-show="copied" x-cloak>{{ __('Copied') }}</span>
+                        <span x-show="failed" x-cloak>{{ __('Copying failed; select the codes and copy them yourself.') }}</span>
                     </flux:button>
 
                     <flux:button icon="arrow-down-tray" variant="filled" wire:click="downloadRecoveryCodes">

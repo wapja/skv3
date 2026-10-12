@@ -41,7 +41,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(AuthenticatesRequests::class, EnforceImpersonation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class]);
+        // FU3-1: a failed WebAuthn ceremony is a client error (rendered as a 422 below), not an incident to report.
+        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class, WebauthnException::class]);
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),

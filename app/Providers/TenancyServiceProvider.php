@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Skv;
 use App\Tenancy\Auth\HostLoginRule;
 use App\Tenancy\Auth\ImpersonationAwareSessionHandler;
+use App\Tenancy\Auth\PasskeyRelyingParty;
 use App\Tenancy\Auth\UnscopedPasskey;
 use App\Tenancy\Auth\UnscopedTwoFactorLoginRequest;
 use App\Tenancy\Auth\UnscopedUserProvider;
@@ -67,6 +68,11 @@ final class TenancyServiceProvider extends ServiceProvider
 
         Event::listen(TenantResolved::class, SetPermissionsTeam::class);
         Event::listen(TenantForgotten::class, SetPermissionsTeam::class);
+
+        // Fortify copied fortify.passkeys.* into passkeys.* in register(); laravel/passkeys reads it per request
+        // with Config::string(), which throws on null (FU3-2). Unconditional: harmless while the module is off,
+        // and a suite booted with MODULE_PASSKEYS=false turns the module on later with usePasskeysModule(true).
+        config(['passkeys.relying_party_id' => PasskeyRelyingParty::id()]);
 
         // §6.8 / RL-3: the passkey origin follows the host only while the passkeys module is on.
         if (Skv::passkeysEnabled()) {
