@@ -145,6 +145,28 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Composer cache dir
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php${{ matrix.php }}-browser-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php${{ matrix.php }}-browser-
+
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
       # Chromium resolves *.localhost to loopback itself, so the tenant hosts need no /etc/hosts step (Task 1 spike, RL-2).
       - name: Install
         run: |
@@ -152,8 +174,16 @@ jobs:
           cp .env.example .env
           php artisan key:generate --ansi
           npm ci
-          npx playwright install --with-deps chromium
           npm run build
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # A cache hit restores the browser binaries only; the system libraries Chromium needs are installed each run.
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Browser tests
         run: composer test:browser
@@ -167,3 +197,5 @@ jobs:
             tests/Browser/Screenshots
             tests/Browser/Traces
           if-no-files-found: ignore
+          # Traces hold request and response bodies and cookies of the test run; keep them only briefly.
+          retention-days: 7

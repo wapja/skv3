@@ -86,3 +86,18 @@ it('runs the browser suite in its own CI job (§8)', function (): void {
         ->toContain('tests/Browser/Traces')
         ->and(preg_match('/uses: actions\/upload-artifact@[0-9a-f]{40}/', $workflow))->toBe(1);
 });
+
+it('caches Composer and the Playwright browsers in the browser job and keeps failure traces briefly (§8)', function (): void {
+    $browser = Str::after((string) file_get_contents(base_path('.github/workflows/tests.yml')), "\n  browser:\n");
+
+    expect($browser)->toContain('composer config cache-files-dir')
+        ->toContain('${{ steps.composer-cache.outputs.dir }}')
+        ->toContain('path: ~/.cache/ms-playwright')
+        ->toContain("require('./package-lock.json').packages['node_modules/playwright'].version")
+        ->toContain('key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}')
+        ->toContain("if: steps.playwright-cache.outputs.cache-hit != 'true'")
+        ->toContain("if: steps.playwright-cache.outputs.cache-hit == 'true'")
+        ->toContain('npx playwright install-deps chromium')
+        ->toContain('retention-days: 7')
+        ->and(preg_match_all('/uses: actions\/cache@[0-9a-f]{40}/', $browser))->toBe(2);
+});
