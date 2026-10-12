@@ -144,6 +144,7 @@
     "Generated an application key": "Generated an application key",
     "Get started": "Get started",
     "Git": "Git",
+    "Git could not run (exit code :code).": "Git could not run (exit code :code).",
     "Give a reason of at most 500 characters.": "Give a reason of at most 500 characters.",
     "Give a reason. It is recorded in the activity log.": "Give a reason. It is recorded in the activity log.",
     "Give this passkey a name to help you identify it later.": "Give this passkey a name to help you identify it later.",

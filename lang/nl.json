@@ -144,6 +144,7 @@
     "Generated an application key": "Applicatiesleutel aangemaakt",
     "Get started": "Aan de slag",
     "Git": "Git",
+    "Git could not run (exit code :code).": "Git kon niet worden uitgevoerd (exitcode :code).",
     "Give a reason of at most 500 characters.": "Geef een reden op van hoogstens 500 tekens.",
     "Give a reason. It is recorded in the activity log.": "Geef een reden op. Die wordt vastgelegd in het activiteitenlog.",
     "Give this passkey a name to help you identify it later.": "Geef deze passkey een naam, zodat je hem later herkent.",

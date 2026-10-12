@@ -55,3 +55,27 @@ it('is not complete without a repository (§5.3.1)', function (): void {
 
     Process::assertNothingRan();
 });
+
+it('returns the git commands as a manual step when git cannot run (§5.3.1)', function (): void {
+    $context = setupSandbox();
+    Process::fake(["*git' 'init'*" => Process::result(errorOutput: "xcode-select: note: No developer tools were found, requesting install.\nmore", exitCode: 1)]);
+
+    $result = new GitStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe('git init && git config core.hooksPath .githooks')
+        ->and($result->message)->toBe('xcode-select: note: No developer tools were found, requesting install.');
+    Process::assertDidntRun(fn ($process): bool => str_contains(implode(' ', (array) $process->command), 'core.hooksPath .githooks'));
+});
+
+it('returns only the hooks command as a manual step when an existing repository cannot be configured (§5.3.1)', function (): void {
+    $context = setupSandbox();
+    File::ensureDirectoryExists($context->path('.git'));
+    Process::fake(["*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(exitCode: 127)]);
+
+    $result = new GitStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe('git config core.hooksPath .githooks')
+        ->and($result->message)->toBe(__('Git could not run (exit code :code).', ['code' => 127]));
+});
