@@ -10,6 +10,7 @@ use App\Enums\Locale;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 new class extends Component
@@ -44,8 +45,10 @@ new class extends Component
     }
 
     /**
-     * Store the appearance the switch just applied (DEC-12).
+     * Store the appearance a switch just applied (DEC-12). The only save point: the sidebar menu, mounted on
+     * every app page, watches $flux.appearance; the header menu and the settings page only set it.
      */
+    #[Renderless]
     public function saveAppearance(string $appearance, UpdateAppearance $updateAppearance): void
     {
         $choice = Appearance::tryFrom($appearance)

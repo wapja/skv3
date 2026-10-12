@@ -47,10 +47,20 @@ it('refuses an unknown language', function (): void {
     expect($user->fresh()?->locale)->toBe(Locale::default());
 });
 
-it('saves the appearance chosen in the menu', function (): void {
+it('saves the appearance chosen in the menu without re-rendering it', function (): void {
     $user = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $snapshot = pageSnapshot(route('dashboard'), 'user-menu');
 
-    Livewire::test('user-menu', ['variant' => 'header'])->call('saveAppearance', 'light');
+    callPageAction($snapshot, 'saveAppearance', ['light'])->assertOk()
+        ->assertJsonMissingPath('components.0.effects.html');
 
     expect($user->fresh()?->appearance)->toBe(Appearance::Light);
 });
+
+it('saves each appearance change from one place on the page', function (string $route): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    $content = (string) $this->get(route($route))->assertOk()->getContent();
+
+    expect(substr_count($content, '$wire.saveAppearance'))->toBe(1);
+})->with(['dashboard', 'appearance.edit']);

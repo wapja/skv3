@@ -1,4 +1,5 @@
-<div {{ $attributes }}>
+{{-- The sidebar menu is mounted on every app page: it alone saves $flux.appearance, once per change. --}}
+<div {{ $attributes }} @if ($variant === 'sidebar') x-data x-init="$watch('$flux.appearance', value => $wire.saveAppearance(value))" @endif>
     <flux:dropdown :position="$variant === 'sidebar' ? 'bottom' : 'top'" :align="$variant === 'sidebar' ? 'start' : 'end'">
         @if ($variant === 'sidebar')
             <flux:sidebar.profile :name="$user->name" :initials="$user->initials()" icon:trailing="chevrons-up-down" data-test="sidebar-menu-button" />
@@ -33,12 +34,7 @@
             <flux:menu.separator />
 
             <flux:menu.heading>{{ __('Appearance') }}</flux:menu.heading>
-            <flux:menu.radio.group
-                x-data
-                x-model="$flux.appearance"
-                x-init="$watch('$flux.appearance', value => $wire.saveAppearance(value))"
-                data-test="user-menu-appearance"
-            >
+            <flux:menu.radio.group x-data x-model="$flux.appearance" data-test="user-menu-appearance">
                 @foreach (\App\Enums\Appearance::cases() as $appearance)
                     <flux:menu.radio :value="$appearance->value">{{ $appearance->label() }}</flux:menu.radio>
                 @endforeach

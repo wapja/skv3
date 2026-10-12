@@ -11,12 +11,11 @@ use App\Models\Organisation;
 use App\Models\User;
 use Livewire\Livewire;
 
-it('stores the chosen appearance on the user (DEC-12)', function (): void {
+it('stores the appearance chosen on the settings page through the user menu (DEC-12)', function (): void {
     $user = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $snapshot = pageSnapshot(route('appearance.edit'), 'user-menu');
 
-    Livewire::test('pages::settings.appearance')
-        ->call('saveAppearance', 'dark')
-        ->assertHasNoErrors();
+    callPageAction($snapshot, 'saveAppearance', ['dark'])->assertOk();
 
     expect($user->fresh()?->appearance)->toBe(Appearance::Dark);
 });
@@ -24,7 +23,7 @@ it('stores the chosen appearance on the user (DEC-12)', function (): void {
 it('refuses an unknown appearance', function (): void {
     $user = asMember(Organisation::factory()->create(['slug' => 'acme']));
 
-    Livewire::test('pages::settings.appearance')
+    Livewire::test('user-menu', ['variant' => 'sidebar'])
         ->call('saveAppearance', 'neon')
         ->assertHasErrors('appearance');
 
