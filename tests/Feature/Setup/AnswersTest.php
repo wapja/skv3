@@ -72,3 +72,17 @@ it('rejects unknown keys and values (§5.3.2)', function (array $input): void {
     'unknown module' => [['modules' => ['billing']]],
     'unknown start' => [['start_with' => 'empty']],
 ]);
+
+it('accepts an app name with an apostrophe', function (): void {
+    expect(Answers::fromArray(['app_name' => 'Bob\'s Shop'], Detection::none(), 'tmp')->appName)->toBe('Bob\'s Shop');
+});
+
+it('rejects an app name the environment file cannot hold literally', function (string $name): void {
+    Answers::fromArray(['app_name' => $name], Detection::none(), 'tmp');
+})->throws(ValidationException::class)->with([
+    'a double quote' => ['Bob\'s "Shop"'],
+    'a variable reference' => ['${APP_KEY}'],
+    'a backslash' => ['C:\\Shop'],
+    'a newline' => ["Shop\nINJECTED=true"],
+    'a tab' => ["Shop\tName"],
+]);

@@ -36,6 +36,9 @@ final readonly class Answers
     }
 
     /**
+     * app_name may not hold control characters, a double quote, a dollar sign or a backslash, so EnvFile writes it
+     * to .env literally (double-quoted, no escapes, no ${VAR} interpolation).
+     *
      * @param  array<string, mixed>  $input
      *
      * @throws ValidationException
@@ -62,7 +65,7 @@ final readonly class Answers
 
         /** @var array{app_name: string, database: string, start_with: string, super_admin_email: ?string, super_admin_password: ?string, modules: list<string>, https: bool, playwright: bool, claude: bool} $valid */
         $valid = Validator::make($values, [
-            'app_name' => ['required', 'string', 'max:100'],
+            'app_name' => ['required', 'string', 'max:100', 'not_regex:/[\x00-\x1F\x7F"$\\\\]/'],
             'database' => ['required', Rule::in(['pgsql', 'sqlite'])],
             'start_with' => ['required', Rule::in(['demo', 'super_admin'])],
             'super_admin_email' => ['nullable', 'required_if:start_with,super_admin', 'email', 'max:255'],
