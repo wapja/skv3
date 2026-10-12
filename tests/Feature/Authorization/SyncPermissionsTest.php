@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.6, §6.3 */
 
 use App\Authorization\Permission;
+use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
 use App\Authorization\SyncPermissions;
 use App\Models\Organisation;
@@ -74,4 +75,23 @@ it('strips super-only permissions from custom team roles', function (): void {
 
 it('runs as an artisan command', function (): void {
     expect(Artisan::call('permissions:sync'))->toBe(0);
+});
+
+it('reports the permissions it strips from the super admin badge (FU2-13)', function (): void {
+    $badge = RoleModel::query()->whereNull('team_id')->where('name', Role::SuperAdmin->value)->firstOrFail();
+    PermissionsTeam::run(null, fn () => $badge->givePermissionTo(Permission::UsersView->value, Permission::RolesView->value));
+
+    $result = app(SyncPermissions::class)->handle();
+
+    expect($result->badgePermissionsStripped)->toBe(2)
+        ->and($result->changed())->toBeTrue()
+        ->and(app(SyncPermissions::class)->handle()->badgePermissionsStripped)->toBe(0);
+});
+
+it('lists every change it made when run as an artisan command (FU2-13)', function (): void {
+    $badge = RoleModel::query()->whereNull('team_id')->where('name', Role::SuperAdmin->value)->firstOrFail();
+    PermissionsTeam::run(null, fn () => $badge->givePermissionTo(Permission::UsersView->value));
+
+    expect(Artisan::call('permissions:sync'))->toBe(0)
+        ->and(Artisan::output())->toContain('Permissions synced.', 'super admin badge permissions stripped');
 });
