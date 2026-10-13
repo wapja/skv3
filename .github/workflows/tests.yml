@@ -41,9 +41,9 @@ jobs:
     env:
       MODULE_IMPERSONATION: ${{ matrix.impersonation }}
       MODULE_PASSKEYS: ${{ matrix.passkeys }}
-      # §6.7: an `if:` cannot read secrets, so they are mapped here and the Flux Pro step tests env.*. Fork PRs get none.
-      FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}
-      FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
+      # §6.7: an `if:` cannot read secrets, so the job maps only whether they exist (fork PRs get none). The credentials
+      # themselves are mapped in the Flux Pro step alone, so no install script or test process sees the licence key.
+      FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}
 
     services:
       postgres:
@@ -104,8 +104,14 @@ jobs:
 
       # §6.7, §8: only the main (PostgreSQL) row enables Pro, before any view compiles; without the secrets the step is
       # skipped and the job runs on free Flux. --global writes COMPOSER_HOME/auth.json, never a file in the checkout.
+      # The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull requests
+      # (forks included) can restore; skv:flux-pro's composer inherits COMPOSER_CACHE_DIR.
       - name: Enable Flux Pro
-        if: env.FLUX_USERNAME != '' && matrix.db == 'pgsql'
+        if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'
+        env:
+          FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}
+          FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
+          COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-flux-pro
         run: |
           composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"
           php artisan skv:flux-pro --no-interaction

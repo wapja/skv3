@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §8 */
 
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -18,14 +19,38 @@ it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
         ->and(file_exists(base_path('.github/workflows/ci.yml')))->toBeFalse();
 });
 
-it('never references Flux Pro in the committed composer files (committed)', function (): void {
-    // A CI job that ran skv:flux-pro has flux-pro in its working tree, so read what is committed (§6.7).
-    $committed = fn (string $file): string => file_exists(base_path('.git'))
-        ? Process::path(base_path())->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
-        : (string) file_get_contents(base_path($file));
+/**
+ * The committed version of $file in $repository (§6.7): a CI job that ran skv:flux-pro has flux-pro in its working
+ * tree. Without a repository, or before its first commit (GitStep leaves `git init` without one), the working-tree
+ * file is what will be committed.
+ */
+function committedFile(string $repository, string $file): string
+{
+    $hasCommit = file_exists($repository.'/.git')
+        && Process::path($repository)->run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'])->successful();
 
-    expect($committed('composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
-        ->and($committed('composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
+    return $hasCommit
+        ? Process::path($repository)->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
+        : (string) file_get_contents($repository.'/'.$file);
+}
+
+it('never references Flux Pro in the committed composer files (committed)', function (): void {
+    expect(committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
+        ->and(committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
+});
+
+it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function (): void {
+    $repository = storage_path('framework/testing/ci-unborn-'.Str::uuid());
+    File::ensureDirectoryExists($repository);
+    File::put($repository.'/composer.json', '{"name": "acme/app"}');
+
+    try {
+        Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
+
+        expect(committedFile($repository, 'composer.json'))->toBe('{"name": "acme/app"}');
+    } finally {
+        File::deleteDirectory($repository);
+    }
 });
 
 it('reports abandoned packages in composer audit instead of failing', function (): void {
@@ -111,10 +136,22 @@ it('caches Composer and the Playwright browsers in the browser job and keeps fai
 it('enables Flux Pro in CI only when the secrets exist, before any view compiles (§6.7, §8)', function (): void {
     $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
 
-    expect($workflow)
+    $check = Str::before(Str::after($workflow, "\n  check:\n"), "\n  browser:\n");
+    $jobEnv = Str::before(Str::after($check, "\n    env:\n"), "\n    services:\n");
+    $step = Str::before(Str::after($check, '- name: Enable Flux Pro'), '- name: ');
+
+    expect($jobEnv)
+        // The job maps only whether the secrets exist; the key itself never reaches install scripts or the test run.
+        ->toContain('FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != \'\' && secrets.FLUX_LICENSE_KEY != \'\' }}')
+        ->not->toContain('secrets.FLUX_USERNAME }}')
+        ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
+        ->and(substr_count($workflow, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
+        ->and($step)
+        ->toContain("if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'")
         ->toContain('FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}')
         ->toContain('FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}')
-        ->toContain("if: env.FLUX_USERNAME != '' && matrix.db == 'pgsql'")
+        // The Pro dist zip must never land in the cached Composer files directory, which pull requests can restore.
+        ->toContain('COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-flux-pro')
         ->toContain('composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"')
         ->toContain('php artisan skv:flux-pro --no-interaction')
         ->and(Str::before($workflow, 'composer check'))->toContain('skv:flux-pro');
