@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>m5-ui @ 0b24f1f</span><span>M0–M5 klaar</span><span>bijgewerkt 12-10-2026</span></div>
+    <div class="eyebrow"><span>m6a-setup-engine</span><span>M0–M5 klaar, M6a op branch</span><span>bijgewerkt 13-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M5 (branch <code>m5-ui</code>).</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M6a (branch <code>m6a-setup-engine</code>).</p>
   </header>
 
   <div class="page">
@@ -471,7 +471,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
             <li><a href="#herd">Via Herd</a></li>
             <li><a href="#cli">Via de terminal</a></li>
             <li><a href="#composer-dev">composer dev</a></li>
-            <li><a href="#devlogin">Ontwikkelaccount</a></li>
+            <li><a href="#installeren">Installeren en controleren</a></li>
             <li><a href="#valkuilen">Valkuilen</a></li>
           </ol>
         </li>
@@ -613,63 +613,43 @@ git clone &lt;repository-url&gt; mijnapp
 cd mijnapp</code></pre>
     </div></li>
     <li><div>
-      <p><strong>Draai de setup.</strong> Dit installeert de PHP-pakketten, maakt <code>.env</code> aan uit <code>.env.example</code> (alleen als <code>.env</code> nog niet bestaat), genereert een <code>APP_KEY</code> (alleen als die leeg is), maakt <code>database/database.sqlite</code>, migreert, haalt de Boost-richtlijnen op, zet de git-hooks aan en draait <code>npm ci</code> en <code>npm run build</code>. Zonder Node en npm loopt de setup hier vast.</p>
+      <p><strong>Draai de setup.</strong> Dit installeert de PHP-pakketten, maakt <code>.env</code> aan uit <code>.env.example</code> (alleen als <code>.env</code> nog niet bestaat) en draait <code>php artisan skv:bootstrap</code>: die maakt een <code>APP_KEY</code> (alleen als die leeg is), zet <code>APP_URL</code> op het Herd-adres (<code>http://mijnapp.test</code>) en migreert <code>database/database.sqlite</code>. Daarna start <code>php artisan skv:install</code>, die een paar vragen stelt en de rest inricht: de database (PostgreSQL als Herd Pro die heeft, anders SQLite), demodata of je eigen superbeheerder, de frontend, de git-hooks, Claude Code en de Herd-site. Alles daarover staat in <a href="#installeren">Installeren en controleren</a>.</p>
 <pre><code>composer setup</code></pre>
-      <div class="note">
-        <p class="note-title">Liever PostgreSQL dan SQLite? Doe dit vóór <code>composer setup</code></p>
-        <p><code>composer setup</code> migreert naar de database in <code>.env</code>, en dat is standaard SQLite. Wil je PostgreSQL, maak dan eerst zelf de <code>.env</code> aan; de setup laat een bestaande <code>.env</code> staan.</p>
-<pre><code>cp .env.example .env</code></pre>
-        <p>Haal in <code>.env</code> het <code>#</code>-teken weg bij de regels <code>DB_HOST</code> tot en met <code>DB_PASSWORD</code> en zet:</p>
-<pre><code>DB_CONNECTION=pgsql
-DB_PORT=5432
-DB_DATABASE=mijnapp</code></pre>
-        <p><strong>Verander 3306 in 5432.</strong> In <code>.env.example</code> staat <code>DB_PORT=3306</code>, de MySQL-poort. Laat je de regels in commentaar, dan gelden de PostgreSQL-standaarden van de kit: <code>127.0.0.1</code>, <code>5432</code>, database <code>laravel</code>, gebruiker <code>root</code> en een leeg wachtwoord. Herd Pro gebruikt gebruiker <code>root</code> zonder wachtwoord.</p>
-        <p>De database zelf moet al bestaan. Maak hem bijvoorbeeld met <code>createdb -U root mijnapp</code> of via TablePlus <span class="badge b-unv">niet in de repo geverifieerd</span>. Draai daarna <code>composer setup</code>.</p>
-      </div>
     </div></li>
     <li><div>
-      <p><strong>Zet <code>APP_URL</code> op het Herd-adres.</strong> <code>.env.example</code> begint met <code>http://localhost</code>. Laat je dat staan, dan is het apex <code>localhost</code> en geeft <code>mijnapp.test</code> de pagina <span class="ui">Organisatie niet gevonden</span>.</p>
-<pre><code>APP_NAME="Mijn App"
-APP_URL=http://mijnapp.test</code></pre>
-      <p>Heb je de config gecachet, draai dan <code>php artisan config:clear</code>. <code>APP_NAME</code> staat standaard op <code>Laravel</code>; die naam zie je op centrale hosts in de zijbalk, in de paginatitel en als afzender van mails. Op een organisatiehost toont de zijbalk de naam van de organisatie.</p>
-    </div></li>
-    <li><div>
-      <p><strong>Maak het ontwikkelaccount aan.</strong> <code>composer setup</code> seedt niet; dat doe je één keer zelf.</p>
-<pre><code>php artisan db:seed</code></pre>
-    </div></li>
-    <li><div>
-      <p><strong>Start de ontwikkelprocessen</strong> en open <code>http://admin.mijnapp.test/login</code>.</p>
+      <p><strong>Start de ontwikkelprocessen</strong> en open een adres uit de setup-samenvatting, bijvoorbeeld <code>http://admin.mijnapp.test/login</code>.</p>
 <pre><code>composer dev</code></pre>
     </div></li>
   </ol>
-  <p class="src">composer.json:54-65; .env.example:1,5,48-53; config/database.php:89-96; config/tenancy.php:9,17; database/seeders/DatabaseSeeder.php:19-30; AppServiceProvider.php:67-81</p>
+  <p class="src">composer.json (scripts setup, post-root-package-install, post-create-project-cmd); app/Setup/Support/Bootstrap.php; app/Console/Commands/InstallCommand.php; app/Setup/SetupRunner.php</p>
 
   <div class="note plan">
-    <p class="note-title">Straks: installeren met één klik <span class="badge b-plan">M6</span></p>
+    <p class="note-title">Straks: installeren met één klik <span class="badge b-plan">M6b</span></p>
     <p>De bedoeling is: Herd → <em>New site</em> → <em>Custom Starter Kit</em> <code>frankcornet/skv3</code> → <em>Open site</em> → een setupwizard in de browser met hoogstens vijf vragen → een werkende app met demodata, binnen vijf minuten en zonder terminal. Ook <code>https://herd.laravel.com/new/frankcornet/skv3</code> moet dan werken.</p>
-    <p>Dat bestaat nog niet. De wizard, <code>skv:install</code> en <code>skv:doctor</code> komen in M6, en het pakket wordt pas in M8 gepubliceerd (na akkoord van de eigenaar). Tot die tijd gebruik je de stappen hierboven.</p>
+    <p>De wizard komt in M6b en gebruikt dezelfde setupstappen als <code>skv:install</code>. Het pakket wordt pas in M8 gepubliceerd (na akkoord van de eigenaar). Tot die tijd gebruik je de stappen hierboven.</p>
   </div>
   <p class="src">spec:12,207-214,291-304,518,520</p>
 
   <h3 id="cli">Via de terminal</h3>
-  <p>Werk je zonder de Herd-app, dan blijven de stappen hetzelfde: <code>git clone</code>, <code>composer setup</code>, <code>APP_URL</code> goed zetten, <code>php artisan db:seed</code>, <code>composer dev</code>. Zonder Herd moet je zelf zorgen dat het apex, <code>admin.</code> en elke organisatie naar je machine wijzen, bijvoorbeeld met regels in <code>/etc/hosts</code> of dnsmasq voor <code>*.localhost</code> <span class="badge b-unv">niet getest in de repo</span>.</p>
-  <p>De varianten <code>laravel new mijnapp --using=frankcornet/skv3</code> en <code>composer create-project frankcornet/skv3 mijnapp</code> werken pas als het pakket gepubliceerd is <span class="badge b-plan">M8</span>.</p>
+  <p>Werk je zonder de Herd-app, dan blijven de stappen hetzelfde: <code>git clone</code>, <code>composer setup</code>, <code>composer dev</code>. Zonder Herd moet je zelf zorgen dat het apex, <code>admin.</code> en elke organisatie naar je machine wijzen. <code>php artisan skv:doctor</code> drukt de regels voor <code>/etc/hosts</code> af zodra <code>probe.&lt;apex&gt;</code> niet gevonden wordt; dnsmasq met een wildcard kan ook. Zet <code>TENANCY_APEX_DOMAIN</code> en <code>APP_URL</code> dan op dat apex. Namen onder <code>localhost</code> (bijvoorbeeld <code>mijnapp.localhost</code>) vindt je browser zelf.</p>
+  <p>De varianten <code>laravel new mijnapp --using=frankcornet/skv3</code> en <code>composer create-project frankcornet/skv3 mijnapp</code>, elk gevolgd door <code>php artisan skv:install</code>, werken pas als het pakket gepubliceerd is <span class="badge b-plan">M8</span>.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Commando</th><th>Wat het doet</th></tr></thead>
       <tbody>
-        <tr><td><code>composer setup</code></td><td>Installeren, <code>.env</code>, sleutel (als die ontbreekt), SQLite, migreren, Boost-richtlijnen, git-hooks, assets</td></tr>
+        <tr><td><code>composer setup</code></td><td>Installeren, <code>.env</code>, <code>skv:bootstrap</code> en daarna <code>skv:install</code></td></tr>
         <tr><td><code>composer dev</code></td><td>Vite, queue, logs en scheduler (Herd serveert de site)</td></tr>
+        <tr><td><code>composer doctor</code></td><td>De installatie controleren met <code>php artisan skv:doctor</code></td></tr>
         <tr><td><code>composer check</code></td><td>Pint, Rector, Larastan en Pest op SQLite</td></tr>
         <tr><td><code>composer test:pgsql</code></td><td>Dezelfde Pest-suite op PostgreSQL (Herd Pro)</td></tr>
         <tr><td><code>composer test:browser</code></td><td>De browsertests in Chromium (<code>tests/Browser</code>). Eerst één keer <code>npx playwright install chromium</code> en <code>npm run build</code></td></tr>
         <tr><td><code>composer fix</code></td><td>Rector, daarna Pint</td></tr>
-        <tr><td><code>php artisan permissions:sync</code></td><td>Rechtencatalogus en systeemrollen bijwerken</td></tr>
+        <tr><td><code>php artisan permissions:sync</code></td><td>Rechtencatalogus en systeemrollen bijwerken; toont elke wijziging</td></tr>
         <tr><td><code>php artisan activitylog:clean</code></td><td>Logregels ouder dan <code>ACTIVITYLOG_RETENTION_DAYS</code> verwijderen</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">README.md:14-20; composer.json:54-91; spec:209-212,310; app/Console/Commands/SyncPermissionsCommand.php:12-20</p>
+  <p class="src">README.md (Quickstart, Commands); composer.json (scripts); spec:209-212,310; app/Console/Commands/SyncPermissionsCommand.php; app/Setup/Doctor/Checks/SubdomainsCheck.php</p>
 
   <h3 id="composer-dev">Wat <code>composer dev</code> start</h3>
   <p><code>composer dev</code> roept <code>php artisan dev</code> aan. De kit voegt altijd de scheduler toe, en laat het <code>serve</code>-proces weg zodra Herd op de machine staat (de map <code>~/Library/Application Support/Herd</code> bestaat).</p>
@@ -687,22 +667,58 @@ APP_URL=http://mijnapp.test</code></pre>
   <p>Start <code>composer dev</code> één keer per project. Draaien er twee, dan pakken twee workers dezelfde job op. Met SQLite verliest er één met <code>database is locked</code>: de mail gaat wel één keer weg, maar er komt een overbodig record in <code>failed_jobs</code>. Zonder <code>composer dev</code> blijven uitnodigings- en e-mailwijzigingsmails in de tabel <code>jobs</code> staan tot je zelf een worker start, bijvoorbeeld <code>php artisan queue:work</code>. De mail voor wachtwoordherstel gaat niet via de wachtrij.</p>
   <p class="src">composer.json:66-69; app/Providers/AppServiceProvider.php:67-81; .env.example:64; config/queue.php:42-45; app/Mail/InvitationMail.php:24; app/Mail/InvitationReminderMail.php:22; app/Notifications/*.php; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:24</p>
 
-  <h3 id="devlogin">Het ontwikkelaccount</h3>
-  <p><code>php artisan db:seed</code> zet de rechtencatalogus en systeemrollen klaar en maakt één superbeheerder aan:</p>
+  <h3 id="installeren">Installeren en controleren</h3>
+  <h4><code>skv:install</code></h4>
+  <p><code>php artisan skv:install</code> richt de app in; <code>composer setup</code> start hem vanzelf. Hij vraagt naar de naam van de app, de database (PostgreSQL als die bereikbaar is, anders SQLite), waarmee je begint (<span class="ui">Demodata</span> of <span class="ui">Mijn eigen superbeheerder</span>, met e-mailadres en wachtwoord), de modules (passkeys, back-ups, inloggen als gebruiker), HTTPS, Playwright en Claude Code. De standaardantwoorden staan al ingevuld. Daarna draait hij de stappen in deze volgorde:</p>
   <div class="table-wrap">
-    <table class="compact">
+    <table>
+      <thead><tr><th>Stap</th><th>Wat er gebeurt</th></tr></thead>
       <tbody>
-        <tr><th scope="row">Naam</th><td>Test User</td></tr>
-        <tr><th scope="row">E-mailadres</th><td><code>test@example.com</code></td></tr>
-        <tr><th scope="row">Wachtwoord</th><td><code>password</code></td></tr>
-        <tr><th scope="row">Rol</th><td>Superbeheerder, zonder organisatie</td></tr>
-        <tr><th scope="row">Inloggen op</th><td><code>http://admin.&lt;apex&gt;/login</code> (hier: <code>http://admin.mijnapp.test/login</code>)</td></tr>
+        <tr><td><span class="ui">Omgevingsbestand</span></td><td><code>.env</code>: <code>APP_NAME</code>, <code>APP_URL</code> en het apex, een <code>HEALTH_CHECK_KEY</code>, de modules en, met Herd Pro-mail, <code>MAIL_MAILER=smtp</code></td></tr>
+        <tr><td><span class="ui">Database</span></td><td>Maakt de database en de testdatabase, migreert, zet de rechten klaar en seedt; pas als dat allemaal gelukt is, komt <code>DB_*</code> in <code>.env</code>. Schrijft ook <code>.env.testing</code></td></tr>
+        <tr><td><code>herd.yml</code></td><td>Naam, PHP 8.4, https en, bij PostgreSQL, de PostgreSQL 18-service</td></tr>
+        <tr><td><span class="ui">Huisstijl</span></td><td><code>APP_NAME</code>, <code>BRANDING_ACCENT</code> (een onbekende kleur wordt <code>neutral</code>) en <code>BRANDING_LOGO</code> (een logo dat geen bestand onder <code>public/</code> is, wordt leeggemaakt)</td></tr>
+        <tr><td><span class="ui">Frontend</span></td><td><code>npm ci</code> en <code>npm run build</code> als de build ontbreekt of verouderd is; eventueel Playwright</td></tr>
+        <tr><td><span class="ui">Git</span></td><td><code>git init</code> als er nog geen repository is, en de git-hooks</td></tr>
+        <tr><td><span class="ui">Claude Code</span></td><td>Boost, <code>.mcp.json</code> met de Herd MCP-server als <code>herd</code> en de superpowers-plugin (alleen als je Claude Code kiest)</td></tr>
+        <tr><td><span class="ui">Controle</span></td><td>Draait <code>skv:doctor</code></td></tr>
+        <tr><td><span class="ui">Afronden</span></td><td>Schrijft de marker <code>storage/app/skv-installed</code></td></tr>
+        <tr><td><span class="ui">Herd-site</span></td><td>Koppelt de map aan Herd als die nog niet geserveerd wordt, zet de site op PHP 8.4 als dat nodig is en beveiligt hem met HTTPS als je dat koos</td></tr>
+        <tr><td><span class="ui">Samenvatting</span></td><td>De adressen, de logins en de commando&rsquo;s die je nog zelf moet draaien</td></tr>
       </tbody>
     </table>
   </div>
-  <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>, met bovenaan de lijst <span class="ui">Aan de slag</span> (zie <a href="#dashboard">Dashboard</a>). Open in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>. Dit account is tijdelijk: in M6 komen een demoseeder (organisaties <code>demo1</code> en <code>demo2</code>, elk met een beheerder en een gebruiker), snel inloggen met die demo-accounts (alleen lokaal) en het commando <code>skv:create-super-admin</code>.</p>
-  <p>Draai <code>db:seed</code> maar één keer. Een tweede keer loopt vast op het unieke e-mailadres <span class="badge b-unv">afgeleid, niet uitgeprobeerd</span>.</p>
-  <p class="src">database/seeders/DatabaseSeeder.php:19-30; database/factories/UserFactory.php:39,76-82; config/fortify.php:78; routes/web.php:17-27; tests/Feature/Auth/HostScopedLoginTest.php:47-55; spec:203</p>
+  <ul>
+    <li><strong>Zonder vragen.</strong> <code>php artisan skv:install --no-interaction</code> neemt de standaardantwoorden. Met <code>--answers='{"database":"sqlite","start_with":"super_admin","super_admin_email":"jij@example.com","super_admin_password":"…"}'</code> geef je ze als JSON; de sleutels staan in de README.</li>
+    <li><strong>Opnieuw draaien kan altijd.</strong> Stappen die al klaar zijn worden overgeslagen; <code>--force</code> draait ze opnieuw. Een tweede keer houdt de antwoorden van de eerste installatie aan, en stopt een stap met een fout, dan ga je de volgende keer verder waar het stopte.</li>
+    <li><strong>Wat de setup niet zelf kan</strong> (geen Herd, <code>npm</code> lukt niet, Herd bevestigt iets niet), slaat hij niet stil over: de samenvatting zet het commando onder <span class="ui">Draai deze commando&rsquo;s zelf:</span>.</li>
+    <li><strong>Geen HTTPS, geen passkeys.</strong> Kan de setup de site niet beveiligen, dan zet hij <code>MODULE_PASSKEYS=false</code>. De samenvatting zegt hoe je ze terugzet: <code>herd secure &lt;naam&gt;</code>, <code>MODULE_PASSKEYS=true</code> in <code>.env</code>, en dan <code>php artisan skv:doctor --fix</code>.</li>
+  </ul>
+
+  <h4><code>skv:doctor</code></h4>
+  <p><code>php artisan skv:doctor</code> (of <code>composer doctor</code>) controleert de installatie: PHP en extensies, <code>APP_KEY</code>, Herd en de site, subdomeinen, de database en migraties, rechten en rollen, sessies, de build, mail, de queue, de git-hooks en de Claude-bestanden. Elke regel is <code>pass</code>, <code>warn</code>, <code>fail</code> of <code>skipped</code>, met het commando dat het oplost. Groen betekent: geen <code>fail</code>.</p>
+  <ul>
+    <li><code>--fix</code> doet alleen veilige reparaties: <code>permissions:sync</code>, superbeheerders en rollen die uit de pas lopen, <code>storage:link</code>, de git-hooks en de build.</li>
+    <li><code>--json</code> geeft het rapport als JSON en eindigt met exitcode 1 als het niet groen is (voor CI).</li>
+  </ul>
+
+  <h4>Demo-accounts</h4>
+  <p>Kies je demodata (de standaard), dan maakt de demoseeder een superbeheerder en de organisaties <code>demo1</code> en <code>demo2</code>, elk met een beheerder, een gebruiker en één openstaande uitnodiging. De e-mailadressen komen uit het apex (hier <code>mijnapp.test</code>):</p>
+  <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>Account</th><th>E-mailadres</th><th>Inloggen op</th></tr></thead>
+      <tbody>
+        <tr><td>Superbeheerder</td><td><code>superadmin@&lt;apex&gt;</code></td><td><code>admin.&lt;apex&gt;</code></td></tr>
+        <tr><td>Beheerder van demo1</td><td><code>admin@demo1.&lt;apex&gt;</code></td><td><code>demo1.&lt;apex&gt;</code></td></tr>
+        <tr><td>Gebruiker van demo1</td><td><code>user@demo1.&lt;apex&gt;</code></td><td><code>demo1.&lt;apex&gt;</code></td></tr>
+        <tr><td>Beheerder en gebruiker van demo2</td><td><code>admin@demo2.&lt;apex&gt;</code>, <code>user@demo2.&lt;apex&gt;</code></td><td><code>demo2.&lt;apex&gt;</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Alle demo-accounts delen één wachtwoord; het wachtwoord staat in de setup-samenvatting. Gebruik ze alleen lokaal en zet ze nooit op een openbare pagina of in een gedeelde handleiding. De demoseeder weigert in productie, en <code>php artisan db:seed</code> slaat hem daar over.</p>
+  <p>Begin je met je eigen superbeheerder, dan log je met dat e-mailadres in op <code>http://admin.&lt;apex&gt;/login</code>. Later voeg je er een toe met <code>php artisan skv:create-super-admin</code>, en een organisatie met <code>php artisan skv:create-organisation</code>; dat stuurt de eerste beheerder een uitnodiging, maar drukt de link nooit af.</p>
+  <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>, met bovenaan de lijst <span class="ui">Aan de slag</span> (zie <a href="#dashboard">Dashboard</a>). Open als superbeheerder in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>.</p>
+  <p class="src">app/Console/Commands/{InstallCommand,DoctorCommand,CreateSuperAdminCommand,CreateOrganisationCommand}.php; app/Setup/SetupRunner.php; app/Setup/Steps/*.php; app/Setup/Answers.php; app/Setup/Summary.php; app/Setup/Doctor/Doctor.php; database/seeders/{DatabaseSeeder,DemoSeeder}.php; spec §4.12, §5.3, §5.4; docs/decisions.md (DEC-30)</p>
 
   <h4>Je eerste organisatie</h4>
   <ol class="steps">
@@ -715,13 +731,13 @@ APP_URL=http://mijnapp.test</code></pre>
   <h3 id="valkuilen">Valkuilen</h3>
   <ul>
     <li><strong><code>APP_URL</code> moet kloppen met het adres in je browser</strong>, inclusief http of https. Het apex komt eruit, en mails die de worker bouwt nemen het schema van <code>APP_URL</code> over.</li>
-    <li><strong>Mails worden niet echt verstuurd.</strong> <code>MAIL_MAILER=log</code> schrijft ze naar het log. Wil je ze in Herd Pro-mail zien, zet dan in <code>.env</code> <code>MAIL_MAILER=smtp</code>; <code>MAIL_HOST=127.0.0.1</code> en <code>MAIL_PORT=2525</code> staan al in <code>.env.example</code> <span class="badge b-unv">Herd-poort 2525 niet in de repo getest</span>. Uitnodigings- en e-mailwijzigingsmails gaan via de wachtrij, dus de queue-worker (<code>composer dev</code>) moet draaien.</li>
-    <li><strong>Bewaar je <code>APP_KEY</code>.</strong> De geheimen van tweestapsverificatie en passkeys hangen ervan af. <code>composer setup</code> laat een bestaande sleutel staan. Na het wisselen van de sleutel moet je openstaande uitnodigingen intrekken en opnieuw versturen.</li>
+    <li><strong>Mails worden niet echt verstuurd.</strong> <code>MAIL_MAILER=log</code> schrijft ze naar het log. Heeft Herd Pro zijn mailservice aan, dan zet de setup <code>MAIL_MAILER=smtp</code> met de poort van Herd, zodat je ze in Herd Pro-mail ziet; anders zegt de samenvatting dat mails in het log blijven. Uitnodigings- en e-mailwijzigingsmails gaan via de wachtrij, dus de queue-worker (<code>composer dev</code>) moet draaien.</li>
+    <li><strong>Bewaar je <code>APP_KEY</code>.</strong> De geheimen van tweestapsverificatie en passkeys hangen ervan af. <code>composer setup</code> en <code>skv:install</code> laten een bestaande sleutel staan. Na het wisselen van de sleutel moet je openstaande uitnodigingen intrekken en opnieuw versturen.</li>
     <li><strong>Passkeys willen https.</strong> Browsers staan WebAuthn alleen toe in een beveiligde context <span class="badge b-unv">algemene browserregel, niet getest in de repo</span>. Beveilig de site in Herd en zet <code>APP_URL</code> dan op <code>https://</code>. Controleer daarna dat ook <code>acme.mijnapp.test</code> een geldig certificaat heeft <span class="badge b-unv">niet geverifieerd</span>.</li>
     <li><strong>Leden loggen alleen in op hun eigen organisatie.</strong> Een lid op het apex of de admin-host krijgt dezelfde foutmelding als bij een verkeerd wachtwoord.</li>
     <li><strong>Er staan nog geen geplande taken.</strong> <code>schedule:list</code> is leeg. Opruimen van het log doe je met de hand: <code>php artisan activitylog:clean</code>.</li>
     <li><strong>Sterke wachtwoorden alleen in productie.</strong> Daar geldt minimaal 12 tekens, hoofd- en kleine letters, cijfers, symbolen en niet gelekt. Lokaal is alleen een minimum van 8 tekens verplicht.</li>
-    <li><strong><code>migrate:fresh</code> en <code>db:wipe</code> wissen je ontwikkeldata.</strong> De tests hebben hun eigen database, dus voor de tests is dat nooit nodig. Moet je een oude ontwikkeldatabase toch opnieuw opbouwen, maak dan eerst een kopie van <code>database/database.sqlite</code> en draai <code>php artisan migrate:fresh --seed</code>.</li>
+    <li><strong><code>migrate:fresh</code> en <code>db:wipe</code> wissen je ontwikkeldata.</strong> De tests hebben hun eigen database, dus voor de tests is dat nooit nodig. Moet je een oude ontwikkeldatabase toch opnieuw opbouwen, maak dan eerst een kopie van <code>database/database.sqlite</code> en draai <code>php artisan migrate:fresh --seed</code>; dat zet de demodata terug.</li>
     <li><strong>Werk je met een AI-agent?</strong> <code>CLAUDE.md</code> verbiedt agents <code>migrate:fresh</code> en <code>db:wipe</code> op de ontwikkeldatabase, en laat ze vragen voor <code>tinker</code>, <code>migrate</code> en <code>db:seed</code>. Ze draaien ook nooit <code>herd sites</code> of de Herd MCP-tool <code>get_all_sites</code>: die tonen de <code>.env</code> van al je sites, met geheimen.</li>
     <li><strong>De tests trekken zich niets aan van je <code>.env</code>-hosts.</strong> <code>phpunit.xml</code> zet het apex vast op <code>localhost</code>.</li>
   </ul>
@@ -741,7 +757,8 @@ APP_URL=http://mijnapp.test</code></pre>
         <tr><td><code>APP_NAME</code></td><td><code>Laravel</code></td><td>Naam van het platform: in de zijbalk op centrale hosts, in de paginatitel en als afzender (<code>MAIL_FROM_NAME</code>)</td></tr>
         <tr><td><code>BRANDING_ACCENT</code></td><td>leeg (<code>neutral</code>)</td><td>Accentkleur van knoppen en links: een van de Flux-presets <code>red</code>, <code>orange</code>, <code>amber</code>, <code>yellow</code>, <code>lime</code>, <code>green</code>, <code>emerald</code>, <code>teal</code>, <code>cyan</code>, <code>sky</code>, <code>blue</code>, <code>indigo</code>, <code>violet</code>, <code>purple</code>, <code>fuchsia</code>, <code>pink</code> of <code>rose</code>. Een onbekende waarde wordt <code>neutral</code></td></tr>
         <tr><td><code>BRANDING_LOGO</code></td><td>leeg</td><td>Pad onder <code>public/</code> naar je logo, bijvoorbeeld <code>images/logo.svg</code>. Leeg betekent het standaardmerkteken</td></tr>
-        <tr><td><code>APP_KEY</code></td><td>leeg</td><td>Wordt door <code>composer setup</code> alleen gemaakt als hij leeg is. Tweestapsgeheimen en passkeys hangen ervan af</td></tr>
+        <tr><td><code>APP_KEY</code></td><td>leeg</td><td>Wordt door <code>skv:bootstrap</code> alleen gemaakt als hij leeg is. Tweestapsgeheimen en passkeys hangen ervan af</td></tr>
+        <tr><td><code>HEALTH_CHECK_KEY</code></td><td>leeg</td><td>Sleutel voor de health check (M7). De setup vult een willekeurige sleutel van 40 tekens in als hij leeg is</td></tr>
         <tr><td><code>APP_URL</code></td><td><code>http://localhost</code></td><td>Basisadres. De host wordt het apex als <code>TENANCY_APEX_DOMAIN</code> leeg is; het schema geldt voor links uit de queue</td></tr>
         <tr><td><code>APP_LOCALE</code> / <code>APP_FALLBACK_LOCALE</code></td><td><code>nl</code> / <code>en</code></td><td>Standaardtaal Nederlands, terugval Engels. De standaardtaal geldt als account, eigen keuze en browser niets bepalen</td></tr>
         <tr><td><code>TENANCY_APEX_DOMAIN</code></td><td>leeg</td><td>Apex overschrijven; leeg betekent de host van <code>APP_URL</code></td></tr>
@@ -749,7 +766,8 @@ APP_URL=http://mijnapp.test</code></pre>
         <tr><td><code>TENANCY_STRICT</code></td><td><code>true</code></td><td>Een tenant-model lezen zonder gekoppelde organisatie geeft een fout (behalve in de console en in <code>Tenant::bypass()</code>)</td></tr>
         <tr><td><code>INVITATION_EXPIRES_IN_DAYS</code></td><td class="tabnum"><code>7</code></td><td>Geldigheid van een uitnodiging; een herinnering verlengt hem</td></tr>
         <tr><td><code>MODULE_IMPERSONATION</code></td><td><code>true</code></td><td>Module &lsquo;Inloggen als gebruiker&rsquo;. Met <code>false</code> bestaan de routes niet</td></tr>
-        <tr><td><code>MODULE_PASSKEYS</code></td><td><code>true</code></td><td>Module Passkeys. Met <code>false</code> bestaan de passkeyroutes en <code>.well-known/passkey-endpoints</code> niet, en verdwijnen de passkeyknop en het onderdeel Passkeys</td></tr>
+        <tr><td><code>MODULE_PASSKEYS</code></td><td><code>true</code></td><td>Module Passkeys. Met <code>false</code> bestaan de passkeyroutes en <code>.well-known/passkey-endpoints</code> niet, en verdwijnen de passkeyknop en het onderdeel Passkeys. De setup zet hem op <code>false</code> als de site geen HTTPS krijgt</td></tr>
+        <tr><td><code>MODULE_BACKUPS</code></td><td><code>true</code></td><td>Module Back-ups (komt in M7). Staat altijd uit op SQLite</td></tr>
         <tr><td><code>PASSKEYS_RELYING_PARTY_ID</code></td><td>leeg</td><td>Passkeys gebruiken het apex als relying party id; alleen invullen als dat anders moet</td></tr>
         <tr><td><code>TRUSTED_PROXIES</code></td><td>leeg</td><td>Achter een load balancer of CDN: hun adressen (komma&rsquo;s) of <code>*</code>, zodat rate limits het IP van de bezoeker zien</td></tr>
         <tr><td><code>BCRYPT_ROUNDS</code></td><td class="tabnum"><code>12</code></td><td>Kosten van de wachtwoordhash</td></tr>
@@ -779,7 +797,7 @@ APP_URL=http://mijnapp.test</code></pre>
         <tr><td><code>skv.modules.impersonation</code></td><td>true</td><td>Uit <code>MODULE_IMPERSONATION</code></td></tr>
         <tr><td><code>skv.modules.passkeys</code></td><td>true</td><td>Uit <code>MODULE_PASSKEYS</code></td></tr>
         <tr><td><code>skv.locale.default</code></td><td><code>nl</code></td><td>Uit <code>APP_LOCALE</code>. <code>Locale::default()</code> leest deze sleutel, omdat <code>app.locale</code> per verzoek verandert</td></tr>
-        <tr><td><code>branding.name</code> / <code>branding.logo</code> / <code>branding.accent</code></td><td><code>APP_NAME</code> / leeg / <code>neutral</code></td><td>Uit <code>APP_NAME</code>, <code>BRANDING_LOGO</code> en <code>BRANDING_ACCENT</code>. In M6 vult de setup ze in</td></tr>
+        <tr><td><code>branding.name</code> / <code>branding.logo</code> / <code>branding.accent</code></td><td><code>APP_NAME</code> / leeg / <code>neutral</code></td><td>Uit <code>APP_NAME</code>, <code>BRANDING_LOGO</code> en <code>BRANDING_ACCENT</code>. De setupstap <span class="ui">Huisstijl</span> vult ze in</td></tr>
         <tr><td><code>tenancy.apex_domain</code></td><td>host van <code>APP_URL</code></td><td>Of <code>TENANCY_APEX_DOMAIN</code>, anders <code>localhost</code></td></tr>
         <tr><td><code>tenancy.admin_subdomain</code></td><td><code>admin</code></td><td>Uit <code>TENANCY_ADMIN_SUBDOMAIN</code></td></tr>
         <tr><td><code>tenancy.strict</code></td><td>true</td><td>Uit <code>TENANCY_STRICT</code></td></tr>
@@ -809,7 +827,7 @@ APP_URL=http://mijnapp.test</code></pre>
   </div>
   <ul>
     <li><code>livewire/flux-pro</code> staat nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code> van de kit; een test bewaakt dat. Je hebt er een eigen Flux Pro-licentie voor nodig.</li>
-    <li>Het commando <code>php artisan skv:flux-pro</code>, dat Pro met je eigen licentie installeert, komt in M6 <span class="badge b-plan">M6</span>. Installeer je Pro eerder met de hand, draai daarna <code>php artisan view:clear</code> en <code>npm run build</code>: views die zonder Pro gecompileerd zijn, geven anders een melding om <code>view:clear</code> te draaien.</li>
+    <li>Installeer Pro met je eigen licentie: <code>composer config --global http-basic.composer.fluxui.dev &lt;e-mailadres&gt; &lt;licentiesleutel&gt; &amp;&amp; php artisan skv:flux-pro</code>. Het commando schrijft of toont je gegevens nooit en draait daarna zelf <code>view:clear</code>; draai daarna <code>npm run build</code>. Installeer je Pro met de hand, draai dan zelf <code>php artisan view:clear</code>: views die zonder Pro gecompileerd zijn, geven anders een melding om <code>view:clear</code> te draaien.</li>
     <li>De Pro-varianten zijn één keer getest in een wegwerpkopie van de repo met Flux Pro 2.20.1.</li>
   </ul>
   <p class="src">spec §6.7; app/Support/Skv.php; app/Support/FluxProBranches.php; resources/views/components/command-palette.blade.php; resources/views/pages/dashboard/dashboard.blade.php; tests/Arch/FluxProLayerTest.php; tests/Feature/Tooling/CiWorkflowTest.php; docs/decisions.md (DEC-29 (12), (17), (30))</p>
@@ -1472,7 +1490,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M4 zitten in <code>main</code>; M5 is af op de branch <code>m5-ui</code> en gaat na de review naar <code>main</code>. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog. De statusregel in de README (&lsquo;milestone M1&rsquo;) loopt achter.</p>
+  <p>Milestones M0 tot en met M5 zitten in <code>main</code> (M5 sinds merge <code>0b788a1</code>). M6 is in tweeën gesplitst: M6a, de setupmotor met zijn commando&rsquo;s, staat op de branch <code>m6a-setup-engine</code> en gaat na de review naar <code>main</code>; M6b, de wizard in de browser, volgt daarna. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1484,30 +1502,30 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
         <tr><td class="tabnum">M3</td><td>Inloggen: per host, passkeys op elk subdomein, wachtwoordherstel, e-mailwijziging, overdrachtslink</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M4</td><td>Beheer: organisaties, gebruikers, uitnodigingen, rollen, inloggen als, activiteitenlog</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M5</td><td>UI: één basislayout, weergave per gebruiker, huisstijl, zijbalk met Overzicht / Beheer / Systeem, gebruikersmenu, Nederlands en Engels overal, foutpagina&rsquo;s, dashboard met &lsquo;Aan de slag&rsquo;, passkeymodule, optionele Flux Pro-laag, browsertests</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M6a</td><td>Setupmotor: <code>skv:install</code>, <code>skv:bootstrap</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code>; e2e-job voor de installer</td><td><span class="badge b-ok">op branch</span></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab; m5-ui 0b24f1f); CHANGELOG.md; README.md:5</p>
+  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab, 0b788a1; m6a-setup-engine); CHANGELOG.md; README.md (Status)</p>
 
   <h3 id="roadmap">Wat er komt</h3>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M6 · Setup</strong></td><td>Installeren vanuit Herd met één klik; browserwizard op <code>/welcome-setup</code> (ook voor huisstijl en modules); <code>skv:install</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code>; snel inloggen met de demo-accounts (alleen lokaal)</td></tr>
+        <tr><td><strong>M6b · Setupwizard</strong></td><td>Installeren vanuit Herd met één klik; browserwizard op <code>/welcome-setup</code> (ook voor huisstijl en modules) met dezelfde stappen als <code>skv:install</code>; snel inloggen met de demo-accounts (alleen lokaal)</td></tr>
         <tr><td><strong>M7 · Beheer en extra&rsquo;s</strong></td><td><code>/health-check</code>, back-ups, scheduler en een Systeempagina in de groep Systeem; sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; automatisch opruimen van log en overdrachtslinks; rate limits op uitnodigen en e-mailwijziging</td></tr>
         <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence)</p>
+  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence, DEC-30 Consequence)</p>
 
   <h3 id="beperkingen">Bekende beperkingen nu</h3>
   <ul>
-    <li>Het ontwikkelaccount <code>test@example.com</code> bestaat alleen na <code>php artisan db:seed</code> en is tijdelijk. Snel inloggen met demo-accounts komt in M6.</li>
-    <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); er is nog geen pagina of setupstap voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
-    <li>Flux Pro installeer je nog met de hand; <code>skv:flux-pro</code> komt in M6.</li>
-    <li>Het log ruimt zichzelf nog niet op en heeft geen export.</li>
+    <li>De setup draait nog alleen in de terminal (<code>skv:install</code>); de wizard en snel inloggen met de demo-accounts komen in M6b.</li>
+    <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); de setup controleert de waarden, maar er is nog geen pagina voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
+        <li>Het log ruimt zichzelf nog niet op en heeft geen export.</li>
     <li>Er is nog geen Systeempagina (M7).</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
     <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
@@ -1518,7 +1536,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van de branch <code>m5-ui</code> @ <code>0b24f1f</code> (M5). Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van de branch <code>m6a-setup-engine</code> (M6a, na <code>7d7ae46</code>). Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
       </footer>
     </main>
   </div>

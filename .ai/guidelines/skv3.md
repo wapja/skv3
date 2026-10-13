@@ -5,7 +5,7 @@
 - Component classes never call `$this->view()`; pass data with `with(): array` or `#[Computed]` properties.
 - Every PHP file declares `strict_types=1`. Run `composer fix` after editing PHP.
 - Tests are Pest functions (`it(...)`). Feature tests use `RefreshDatabase` via `tests/Pest.php`. Arch rules live in `tests/Arch`.
-- Before claiming work is done: `composer check` (SQLite) and `composer test:pgsql` (PostgreSQL) must both pass.
+- Before claiming work is done: `composer check` (SQLite), `composer test:pgsql` (PostgreSQL) and `composer test:browser` (Chromium) must all pass.
 - Never use driver-specific SQL (`ilike`, raw `ALTER TABLE ... CONSTRAINT`); use the query builder (`whereLike(..., caseSensitive: false)`).
 - Never call `env()` outside `config/`.
 
@@ -40,3 +40,11 @@
 - Read the default language with `Locale::default()`, never `config('app.locale')`.
 - Tests that need passkeys call `usePasskeysModule(true)`, because CI also runs the suite with `MODULE_PASSKEYS=false`.
 - Browser tests live in `tests/Browser` and pick a host with `->withHost()`; after the first page, navigate with `sameOrigin($page->url(), '/path')`. Run them with `composer test:browser`.
+
+## Setup
+
+- Setup steps (`App\Setup\Steps\*`) resolve every file through `SetupContext::path()`, never `base_path()`, so tests run them against a `setupSandbox()`.
+- External commands (`herd`, `npm`, `npx`, `git`, `claude`, `composer`) run through `Process` with `App\Setup\Support\Toolchain::environment()`, and `herd` by its absolute path (`Toolchain::herd()`); under php-fpm there is no PATH. Tests fake every command (`Process::preventStrayProcesses()` + `Process::fake([])` + a sandbox `Toolchain`).
+- Never branch on a Herd exit code alone: parse its output or read the state back.
+- The demo seeder (`Database\Seeders\DemoSeeder`) never runs in production.
+- A new doctor check is one class per check under `App\Setup\Doctor\Checks`, implementing `App\Setup\Doctor\Check`, and is listed in `Doctor::checks()`.
