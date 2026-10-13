@@ -169,12 +169,10 @@ final readonly class HerdSiteStep implements SetupStep
         $project = $this->normalise($resolved);
         $parent = $this->normalise(dirname($resolved));
         $name = $context->folderName();
-        $link = $this->row($this->herd($context, $herd, ['links'])->output(), $name);
+        $linkPath = $this->linkPath($this->herd($context, $herd, ['links'])->output(), $name);
 
-        if ($link !== null) {
-            $paths = array_map($this->normalise(...), array_slice($link, 1));
-
-            return in_array($project, $paths, true) ? self::SERVED : self::TAKEN;
+        if ($linkPath !== null) {
+            return $linkPath !== '' && $this->normalise($linkPath) === $project ? self::SERVED : self::TAKEN;
         }
 
         $parked = false;
@@ -194,9 +192,45 @@ final readonly class HerdSiteStep implements SetupStep
         return $parked ? self::SERVED : self::FREE;
     }
 
-    /** The resolved path without a trailing slash, lower-cased: macOS volumes compare paths case-insensitively. */
+    /**
+     * The Path cell of the `herd links` row named $name (case-insensitive), '' when the row has no usable path, or null
+     * without such a row. The column is found by its "Path" header, so the header row never counts as a site and an
+     * empty SSL or node cell is never read as a path; without that header every row for the name fails closed ('').
+     */
+    private function linkPath(string $table, string $name): ?string
+    {
+        $rows = [];
+
+        foreach (preg_split('/\R/', $table) ?: [] as $line) {
+            if (str_starts_with(trim($line), '|')) {
+                $rows[] = array_map(trim(...), explode('|', trim(trim($line), '|')));
+            }
+        }
+
+        $header = ($rows[0][0] ?? '') === 'Site' ? array_shift($rows) : [];
+        $column = array_search('Path', $header, true);
+
+        foreach ($rows as $cells) {
+            if (strcasecmp($cells[0], $name) === 0) {
+                $path = is_int($column) ? ($cells[$column] ?? '') : '';
+
+                return str_starts_with($path, '/') ? $path : '';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The resolved path without a trailing slash, lower-cased: macOS volumes compare paths case-insensitively. An empty
+     * path stays empty: realpath('') would return the working directory, which is the project during skv:install.
+     */
     private function normalise(string $path): string
     {
+        if ($path === '') {
+            return '';
+        }
+
         return Str::lower(rtrim(realpath($path) ?: $path, '/'));
     }
 

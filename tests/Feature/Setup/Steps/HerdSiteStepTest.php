@@ -105,8 +105,12 @@ it('verifies herd link by reading herd links back, not by its exit code (§13)',
     'exits 1 but did link' => [1, true, true],
 ]);
 
-it('never takes over a name another Herd site already uses (§5.3.3 step 10)', function (bool $linkedElsewhere, bool $parkedElsewhere, bool $parkedHere): void {
+it('never takes over a name another Herd site already uses (§5.3.3 step 10)', function (bool $linkedElsewhere, bool $parkedElsewhere, bool $parkedHere, string $ssl): void {
     $context = setupSandbox($this->detection);
+    // skv:install runs in the project: an empty cell resolved with realpath() would be this directory.
+    $cwd = (string) getcwd();
+    chdir($context->basePath);
+    $this->beforeApplicationDestroyed(fn (): bool => chdir($cwd));
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
     $name = $context->folderName();
     // Another project with the same folder name, inside a second parked directory.
@@ -118,7 +122,7 @@ it('never takes over a name another Herd site already uses (§5.3.3 step 10)', f
             $parkedElsewhere ? $otherParked.'/' : null,
             $parkedHere ? dirname($context->basePath).'/' : null,
         ])), JSON_THROW_ON_ERROR)),
-        "*herd' 'links'*" => Process::result($linkedElsewhere ? herdLinksRow($name, $otherParked.'/'.$name) : ''),
+        "*herd' 'links'*" => Process::result($linkedElsewhere ? herdLinksRow($name, $otherParked.'/'.$name, $ssl, $ssl === '' ? '' : 'v22.23.2') : ''),
         "*herd' 'link'*" => Process::result('linked'),
         "*herd' 'secured'*" => Process::result("| {$name}.test | 2027-01-01 |\n"),
         "*herd' 'secure'*" => Process::result('Secured'),
@@ -135,10 +139,31 @@ it('never takes over a name another Herd site already uses (§5.3.3 step 10)', f
         ->and(new HerdSiteStep()->isComplete($context))->toBeFalse();
     Process::assertDidntRun(fn ($process): bool => preg_match('/ (link|isolate|secure) /', implode(' ', (array) $process->command).' ') === 1);
 })->with([
-    'linked under its name to another path' => [true, false, false],
-    'linked to another path while this project is parked' => [true, false, true],
-    'another parked directory holds the name' => [false, true, false],
+    'linked under its name to another path' => [true, false, false, 'X'],
+    'linked to another path, unsecured and without a node version' => [true, false, false, ''],
+    'linked to another path while this project is parked' => [true, false, true, 'X'],
+    'another parked directory holds the name' => [false, true, false, 'X'],
 ]);
+
+it('counts a link as this site only by its Path cell (§5.3.3 step 10)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+    $name = $context->folderName();
+    $cwd = (string) getcwd();
+    chdir($context->basePath);
+    $this->beforeApplicationDestroyed(fn (): bool => chdir($cwd));
+
+    Process::fake([
+        "*herd' 'paths'*" => Process::result('[]'),
+        // A row without a path never matches the project, whatever the other cells hold.
+        "*herd' 'links'*" => Process::result(herdLinksRow($name, '', '', '')),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    expect(new HerdSiteStep()->run($context)->message)->toContain('another Herd site');
+    Process::assertDidntRun(fn ($process): bool => preg_match('/ (link|isolate|secure) /', implode(' ', (array) $process->command).' ') === 1);
+});
 
 it('treats a parked directory listed with a trailing slash as parked (§5.3.3 step 10)', function (): void {
     $context = setupSandbox($this->detection);
@@ -239,11 +264,12 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
     'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, false],
 ]);
 
-/** A `herd links` table (Herd 1.30.2) with one row: | Site | SSL | URL | Path | PHP Version | node |. */
-function herdLinksRow(string $name, string $path): string
+/** A `herd links` table (Herd 1.30.2) with one row: | Site | SSL | URL | Path | PHP Version | node |; unsecured sites have an empty SSL cell. */
+function herdLinksRow(string $name, string $path, string $ssl = 'X', string $node = 'v22.23.2'): string
 {
     return "+------+-----+-----+------+-------------+---+\n"
         ."| Site | SSL | URL | Path | PHP Version |   |\n"
         ."+------+-----+-----+------+-------------+---+\n"
-        ."| {$name} |  X  | https://{$name}.test | {$path} | 8.4 | v22.23.2 |\n";
+        ."| {$name} | {$ssl} | http://{$name}.test | {$path} | 8.4 | {$node} |\n"
+        ."+------+-----+-----+------+-------------+---+\n";
 }
