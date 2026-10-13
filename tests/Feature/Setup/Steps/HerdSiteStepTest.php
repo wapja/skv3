@@ -47,9 +47,11 @@ it('links an unparked site, secures it and rewrites APP_URL to https after verif
 
     Process::fake([
         "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
-        "*herd' 'links'*" => Process::result(''),
+        // Unlisted until `herd link` ran, then listed with this project's path.
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result(herdLinksRow($name, $context->basePath))),
         "*herd' 'link'*" => Process::result('linked'),
-        "*herd' 'secured'*" => Process::result("| Site | Expires |\n| {$name}.test | 2027-01-01 00:00:00 GMT |\n"),
+        // Unsecured until `herd secure` ran, then listed.
+        "*herd' 'secured'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result("| Site | Expires |\n| {$name}.test | 2027-01-01 00:00:00 GMT |\n")),
         "*herd' 'secure'*" => Process::result('Secured', exitCode: 0),
         "*herd' 'isolated'*" => Process::result(''),
         "*php' '-r'*" => Process::result('8.4.13'),
@@ -61,13 +63,89 @@ it('links an unparked site, secures it and rewrites APP_URL to https after verif
     expect($result->message)->toStartWith(HerdSiteStep::SECURED)
         ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://my-app.test');
     Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "link {$name}") && $process->path === $context->basePath);
+    Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}") && $process->path === $context->basePath);
 });
+
+it('does not run herd secure for a site that is already secured (§5.3.3 step 10)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
+    $name = $context->folderName();
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'secured'*" => Process::result("| {$name}.test | 2027-01-01 |\n"),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    expect(new HerdSiteStep()->run($context)->message)->toStartWith(HerdSiteStep::SECURED);
+    Process::assertDidntRun(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}"));
+});
+
+it('verifies herd link by reading herd links back, not by its exit code (§13)', function (int $exitCode, bool $listedAfterwards, bool $served): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+    $name = $context->folderName();
+
+    Process::fake([
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($listedAfterwards ? herdLinksRow($name, $context->basePath) : '')),
+        "*herd' 'link'*" => Process::result('', exitCode: $exitCode),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($result->isManual())->toBe(! $served)
+        ->and($result->command)->toBe($served ? null : "herd link {$name}");
+})->with([
+    'exits 0 but links nothing' => [0, false, false],
+    'exits 1 but did link' => [1, true, true],
+]);
+
+it('never takes over a name another Herd site already uses (§5.3.3 step 10)', function (bool $linkedElsewhere, bool $parkedElsewhere, bool $parkedHere): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
+    $name = $context->folderName();
+    // Another project with the same folder name, inside a second parked directory.
+    $otherParked = $this->home.'/Code';
+    File::ensureDirectoryExists($otherParked.'/'.$name);
+
+    Process::fake([
+        "*herd' 'paths'*" => Process::result(json_encode(array_values(array_filter([
+            $parkedElsewhere ? $otherParked.'/' : null,
+            $parkedHere ? dirname($context->basePath).'/' : null,
+        ])), JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::result($linkedElsewhere ? herdLinksRow($name, $otherParked.'/'.$name) : ''),
+        "*herd' 'link'*" => Process::result('linked'),
+        "*herd' 'secured'*" => Process::result("| {$name}.test | 2027-01-01 |\n"),
+        "*herd' 'secure'*" => Process::result('Secured'),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*herd' 'isolate'*" => Process::result('isolated'),
+        "*php' '-r'*" => Process::result('8.3.20'),
+    ]);
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($result->isManual())->toBeTrue()
+        ->and($result->message)->toContain('another Herd site')
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->not->toStartWith('https://')
+        ->and(new HerdSiteStep()->isComplete($context))->toBeFalse();
+    Process::assertDidntRun(fn ($process): bool => preg_match('/ (link|isolate|secure) /', implode(' ', (array) $process->command).' ') === 1);
+})->with([
+    'linked under its name to another path' => [true, false, false],
+    'linked to another path while this project is parked' => [true, false, true],
+    'another parked directory holds the name' => [false, true, false],
+]);
 
 it('treats a parked directory listed with a trailing slash as parked (§5.3.3 step 10)', function (): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
 
     Process::fake([
+        "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath).'/'], JSON_THROW_ON_ERROR)),
         "*herd' 'isolated'*" => Process::result(''),
         "*php' '-r'*" => Process::result('8.4.13'),
@@ -83,6 +161,7 @@ it('does not trust herd secure\'s exit code (§13)', function (): void {
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
 
     Process::fake([
+        "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
         // A similar name must not count as secured: rows are matched whole.
         "*herd' 'secured'*" => Process::result("| x{$context->folderName()}.test | 2027-01-01 |\n"),
@@ -104,6 +183,7 @@ it('isolates PHP 8.4 only when the site would run an older PHP (§5.3.3 step 10)
     $name = $context->folderName();
 
     Process::fake([
+        "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
         "*herd' 'isolated'*" => Process::result($isolatedTo === null ? '' : "| Site | PHP Version |\n| {$name}.test | {$isolatedTo} |\n"),
         "*herd' 'isolate'*" => Process::result('isolated'),
@@ -128,6 +208,7 @@ it('rewrites the marker summary with the https address after securing (§5.3.4)'
     Marker::write($context, Summary::build($context));
 
     Process::fake([
+        "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
         "*herd' 'secured'*" => Process::result("| {$context->folderName()}.test | 2027-01-01 |\n"),
         "*herd' 'isolated'*" => Process::result(''),
@@ -144,6 +225,7 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
 
     Process::fake([
+        "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => $fails
             ? fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result(''))
             : Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
@@ -156,3 +238,12 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
     'not secured' => ['', false, false],
     'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, false],
 ]);
+
+/** A `herd links` table (Herd 1.30.2) with one row: | Site | SSL | URL | Path | PHP Version | node |. */
+function herdLinksRow(string $name, string $path): string
+{
+    return "+------+-----+-----+------+-------------+---+\n"
+        ."| Site | SSL | URL | Path | PHP Version |   |\n"
+        ."+------+-----+-----+------+-------------+---+\n"
+        ."| {$name} |  X  | https://{$name}.test | {$path} | 8.4 | v22.23.2 |\n";
+}

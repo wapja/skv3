@@ -377,6 +377,7 @@
     "The invitation was sent again.": "De uitnodiging is opnieuw verstuurd.",
     "The link stops working and :email can be invited again later.": "De link werkt dan niet meer en :email kan later opnieuw worden uitgenodigd.",
     "The logo must be a file under public/; it was cleared.": "Het logo moet een bestand onder public/ zijn; het is gewist.",
+    "The name :name is already used by another Herd site; rename this folder.": "De naam :name wordt al door een andere Herd-site gebruikt; geef deze map een andere naam.",
     "The name may not contain square brackets, angle brackets or control characters.": "De naam mag geen vierkante haken, punthaken of besturingstekens bevatten.",
     "The organisation and its users are archived and everyone there is signed out. You can restore it from the archived view.": "De organisatie en haar gebruikers worden gearchiveerd en iedereen daar wordt uitgelogd. Je kunt haar herstellen vanuit de weergave Gearchiveerd.",
     "There are no recovery codes to download.": "Er zijn geen herstelcodes om te downloaden.",

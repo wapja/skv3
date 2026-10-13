@@ -377,6 +377,7 @@
     "The invitation was sent again.": "The invitation was sent again.",
     "The link stops working and :email can be invited again later.": "The link stops working and :email can be invited again later.",
     "The logo must be a file under public/; it was cleared.": "The logo must be a file under public/; it was cleared.",
+    "The name :name is already used by another Herd site; rename this folder.": "The name :name is already used by another Herd site; rename this folder.",
     "The name may not contain square brackets, angle brackets or control characters.": "The name may not contain square brackets, angle brackets or control characters.",
     "The organisation and its users are archived and everyone there is signed out. You can restore it from the archived view.": "The organisation and its users are archived and everyone there is signed out. You can restore it from the archived view.",
     "There are no recovery codes to download.": "There are no recovery codes to download.",

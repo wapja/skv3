@@ -21,8 +21,9 @@ use Throwable;
  * §5.3.3 step 10: serves the project through Herd. It links the folder unless a parked directory already serves it,
  * isolates PHP 8.4 when the site would run an older PHP, and secures it when HTTPS was chosen (§6.8). Herd's exit
  * codes are unreliable (§13), so every change is verified by reading Herd's own listings back; what cannot be
- * verified is returned as `manual()`. A secured site's result message starts with SECURED, which skv:install reads
- * for the passkeys consequence (RL-7).
+ * verified is returned as `manual()`. A name another Herd site already uses (a link to another path, or another
+ * parked directory holding the folder name) is never linked, isolated or secured. A secured site's result message
+ * starts with SECURED, which skv:install reads for the passkeys consequence (RL-7).
  */
 final readonly class HerdSiteStep implements SetupStep
 {
@@ -33,6 +34,15 @@ final readonly class HerdSiteStep implements SetupStep
     private const string PHP_VERSION = '8.4';
 
     private const int TIMEOUT = 120;
+
+    /** This project serves {name}.{tld}. */
+    private const string SERVED = 'served';
+
+    /** No Herd site uses the name yet. */
+    private const string FREE = 'free';
+
+    /** Another directory serves (or would serve) {name}.{tld}. */
+    private const string TAKEN = 'taken';
 
     private Toolchain $toolchain;
 
@@ -61,7 +71,7 @@ final readonly class HerdSiteStep implements SetupStep
         }
 
         try {
-            return $this->isServed($context, $herd)
+            return $this->siteState($context, $herd) === self::SERVED
                 && (! $context->answers->https || $this->isSecured($context, $herd));
         } catch (Throwable) {
             return false;
@@ -90,8 +100,17 @@ final readonly class HerdSiteStep implements SetupStep
         $pending = "herd link {$name}";
 
         try {
-            if (! $this->isServed($context, $herd)) {
-                if ($this->herd($context, $herd, ['link', $name])->failed()) {
+            $state = $this->siteState($context, $herd);
+
+            if ($state === self::TAKEN) {
+                return StepResult::manual('herd links', __('The name :name is already used by another Herd site; rename this folder.', ['name' => $name]));
+            }
+
+            if ($state === self::FREE) {
+                // The exit code says nothing (§13): the link counts once `herd links` lists it with this path.
+                $this->herd($context, $herd, ['link', $name]);
+
+                if ($this->siteState($context, $herd) !== self::SERVED) {
                     return StepResult::manual($pending, __('Herd could not link the site.'));
                 }
 
@@ -136,22 +155,49 @@ final readonly class HerdSiteStep implements SetupStep
     }
 
     /**
-     * A parked directory holds the project, or `herd links` lists the folder name.
+     * Who serves {name}.{tld}. A link wins over parked directories, so a `herd links` row for the name decides by its
+     * path. Otherwise the project is served when its parent is parked, unless another parked directory also holds a
+     * folder of that name; without either, the name is free.
      *
      * @phpstan-impure it asks Herd every time
+     *
+     * @return self::SERVED|self::FREE|self::TAKEN
      */
-    private function isServed(SetupContext $context, string $herd): bool
+    private function siteState(SetupContext $context, string $herd): string
     {
-        $parkedPaths = array_map(
-            fn (string $path): string => rtrim($path, '/'),
-            array_filter((array) json_decode($this->herd($context, $herd, ['paths'])->output(), true), is_string(...)),
-        );
+        $resolved = realpath($context->basePath) ?: $context->basePath;
+        $project = $this->normalise($resolved);
+        $parent = $this->normalise(dirname($resolved));
+        $name = $context->folderName();
+        $link = $this->row($this->herd($context, $herd, ['links'])->output(), $name);
 
-        if (in_array(rtrim(dirname(realpath($context->basePath) ?: $context->basePath), '/'), $parkedPaths, true)) {
-            return true;
+        if ($link !== null) {
+            $paths = array_map($this->normalise(...), array_slice($link, 1));
+
+            return in_array($project, $paths, true) ? self::SERVED : self::TAKEN;
         }
 
-        return $this->row($this->herd($context, $herd, ['links'])->output(), $context->folderName()) !== null;
+        $parked = false;
+
+        foreach ((array) json_decode($this->herd($context, $herd, ['paths'])->output(), true) as $path) {
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
+
+            if ($this->normalise($path) === $parent) {
+                $parked = true;
+            } elseif (is_dir(rtrim($path, '/').'/'.$name) && $this->normalise(rtrim($path, '/').'/'.$name) !== $project) {
+                return self::TAKEN;
+            }
+        }
+
+        return $parked ? self::SERVED : self::FREE;
+    }
+
+    /** The resolved path without a trailing slash, lower-cased: macOS volumes compare paths case-insensitively. */
+    private function normalise(string $path): string
+    {
+        return Str::lower(rtrim(realpath($path) ?: $path, '/'));
     }
 
     /** @phpstan-impure it asks Herd every time */
