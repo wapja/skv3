@@ -7,7 +7,6 @@ declare(strict_types=1);
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Marker;
-use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
@@ -18,40 +17,10 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Tests\Fixtures\RecordingSetupStep;
 
 /** @param  ArrayObject<int, string>  $ran */
-$fakeStep = fn (string $key, ArrayObject $ran, ?StepResult $result = null, bool $complete = false): SetupStep => new readonly class($key, $ran, $result ?? StepResult::done(), $complete) implements SetupStep
-{
-    /** @param  ArrayObject<int, string>  $ran */
-    public function __construct(private string $stepKey, private ArrayObject $ran, private StepResult $result, private bool $complete) {}
-
-    public function key(): string
-    {
-        return $this->stepKey;
-    }
-
-    public function label(): string
-    {
-        return $this->stepKey;
-    }
-
-    public function isComplete(SetupContext $context): bool
-    {
-        return $this->complete;
-    }
-
-    public function isLong(): bool
-    {
-        return false;
-    }
-
-    public function run(SetupContext $context): StepResult
-    {
-        $this->ran->append($this->stepKey);
-
-        return $this->result;
-    }
-};
+$fakeStep = fn (string $key, ArrayObject $ran, ?StepResult $result = null, bool $complete = false): SetupStep => new RecordingSetupStep($key, $ran, $result ?? StepResult::done(), $complete);
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();

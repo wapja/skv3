@@ -5,6 +5,7 @@
 - Component classes never call `$this->view()`; pass data with `with(): array` or `#[Computed]` properties.
 - Every PHP file declares `strict_types=1`. Run `composer fix` after editing PHP.
 - Tests are Pest functions (`it(...)`). Feature tests use `RefreshDatabase` via `tests/Pest.php`. Arch rules live in `tests/Arch`.
+- Test files (`*Test.php`) never declare classes, anonymous ones included, and never spell a qualified class name outside their imports: fixtures go in `tests/Fixtures`, because the installer's Pest Drift step (DEC-22) rewrites every class in a `*Test.php` and imports every qualified name (`tests/Arch/TestFileClassesTest.php`).
 - Before claiming work is done: `composer check` (SQLite), `composer test:pgsql` (PostgreSQL) and `composer test:browser` (Chromium) must all pass.
 - Never use driver-specific SQL (`ilike`, raw `ALTER TABLE ... CONSTRAINT`); use the query builder (`whereLike(..., caseSensitive: false)`).
 - Never call `env()` outside `config/`.

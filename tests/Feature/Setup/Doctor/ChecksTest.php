@@ -58,6 +58,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role as RoleModel;
+use Tests\Fixtures\FixedStatusCheck;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -615,34 +616,7 @@ it('warns without public/storage and runs storage:link with --fix (§5.4)', func
 });
 
 it('runs the doctor as setup step 8 (§5.3.3)', function (CheckStatus $status, string $expected): void {
-    $check = fn (string $key): Check => new readonly class($status, $key) implements Check
-    {
-        public function __construct(private CheckStatus $status, private string $checkKey) {}
-
-        public function key(): string
-        {
-            return $this->checkKey;
-        }
-
-        public function label(): string
-        {
-            return 'Probe';
-        }
-
-        public function run(DoctorContext $context): CheckResult
-        {
-            return match ($this->status) {
-                CheckStatus::Fail => CheckResult::fail('broken', 'repair'),
-                CheckStatus::Warn => CheckResult::warn('odd'),
-                default => CheckResult::pass('fine'),
-            };
-        }
-
-        public function fix(DoctorContext $context): ?CheckResult
-        {
-            return null;
-        }
-    };
+    $check = fn (string $key): Check => new FixedStatusCheck($status, $key);
     app()->instance(Doctor::class, new Doctor([$check('first'), $check('second')]));
 
     $result = new DoctorStep()->run($this->sandbox);

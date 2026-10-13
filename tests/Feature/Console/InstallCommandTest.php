@@ -9,19 +9,17 @@ use App\Setup\Detector;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
-use App\Setup\SetupStep;
-use App\Setup\StepResult;
 use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Tests\Fixtures\QueryFailingSetupStep;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -126,33 +124,7 @@ it('stops at the step that throws and writes no marker (RL-6)', function () use 
 });
 
 it('names only the driver message of a failed query, never its bindings (RL-6)', function () use ($install): void {
-    app()->instance(SetupRunner::class, new SetupRunner([new readonly class implements SetupStep
-    {
-        public function key(): string
-        {
-            return 'database';
-        }
-
-        public function label(): string
-        {
-            return 'Database';
-        }
-
-        public function isComplete(SetupContext $context): bool
-        {
-            return false;
-        }
-
-        public function isLong(): bool
-        {
-            return false;
-        }
-
-        public function run(SetupContext $context): StepResult
-        {
-            throw new QueryException('setup', 'insert into users (password) values (?)', ['$2y$12$secret-hash'], new PDOException('UNIQUE constraint failed: users.email'));
-        }
-    }]));
+    app()->instance(SetupRunner::class, new SetupRunner([new QueryFailingSetupStep]));
 
     [$exitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
 
