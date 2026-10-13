@@ -32,4 +32,14 @@ final readonly class StepResult
     {
         return $this->status === 'manual';
     }
+
+    /** The status in the active language, for the command line. */
+    public function label(): string
+    {
+        return match ($this->status) {
+            'done' => __('done'),
+            'skipped' => __('skipped'),
+            default => __('manual'),
+        };
+    }
 }

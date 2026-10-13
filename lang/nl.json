@@ -630,6 +630,7 @@
     "log in": "inloggen",
     "login using a recovery code": "inloggen met een herstelcode",
     "login using an authentication code": "inloggen met een verificatiecode",
+    "manual": "handmatig",
     "of": "van",
     "or you can": "of je kunt",
     "or, enter the code manually": "of vul de code handmatig in",
@@ -640,5 +641,6 @@
     "public/storage is linked": "public/storage is gekoppeld",
     "public/storage is missing": "public/storage ontbreekt",
     "results": "resultaten",
+    "skipped": "overgeslagen",
     "to": "tot"
 }

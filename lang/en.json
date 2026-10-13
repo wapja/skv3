@@ -630,6 +630,7 @@
     "log in": "log in",
     "login using a recovery code": "login using a recovery code",
     "login using an authentication code": "login using an authentication code",
+    "manual": "manual",
     "of": "of",
     "or you can": "or you can",
     "or, enter the code manually": "or, enter the code manually",
@@ -640,5 +641,6 @@
     "public/storage is linked": "public/storage is linked",
     "public/storage is missing": "public/storage is missing",
     "results": "results",
+    "skipped": "skipped",
     "to": "to"
 }

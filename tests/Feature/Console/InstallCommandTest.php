@@ -64,6 +64,17 @@ it('installs non-interactively from the e2e answers and writes the marker (§5.3
         ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_NAME'))->toBe('E2E App');
 });
 
+it('prints every step\'s status in the active language (§5.3.3)', function () use ($install): void {
+    app()->setLocale('nl');
+    $answers = (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json'));
+
+    [$exitCode, $output] = $install(['--answers' => $answers, '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('klaar')->toContain('overgeslagen')
+        ->and($output)->not->toMatch('/\.\s(done|skipped|manual)\s*$/m');
+});
+
 it('fails before any step when the super admin credentials are missing (§5.3.2)', function () use ($install): void {
     [$exitCode, $output] = $install(['--answers' => json_encode(['start_with' => 'super_admin'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
 

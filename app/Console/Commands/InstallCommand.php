@@ -240,7 +240,7 @@ final class InstallCommand extends Command
         return function (SetupStep $step, Closure $execute) use (&$current): StepResult {
             $current = $step;
             $result = $execute();
-            $this->components->twoColumnDetail(OutputFormatter::escape($step->label()), $result->status);
+            $this->components->twoColumnDetail(OutputFormatter::escape($step->label()), $result->label());
 
             return $result;
         };
