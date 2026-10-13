@@ -34,6 +34,12 @@ final class DatabaseStep implements SetupStep
 {
     public const string CONNECTION = 'setup';
 
+    /** The SQLite file as .env names it: relative, so SQLiteConnector resolves it through base_path(). */
+    public const string SQLITE_DATABASE = 'database/database.sqlite';
+
+    /** Names a folder must not turn into: the maintenance database and the templates every new database copies. */
+    private const array RESERVED_DATABASES = ['postgres', 'template0', 'template1'];
+
     /** The app database name: the folder name lower-cased, other characters folded to _, at most 50 characters. */
     public static function databaseName(SetupContext $context): string
     {
@@ -56,7 +62,16 @@ final class DatabaseStep implements SetupStep
     {
         $answers = $context->answers;
 
-        if (new EnvFile($context->path('.env'))->get('DB_CONNECTION') !== $answers->database || ! is_file($context->path('.env.testing'))) {
+        $env = new EnvFile($context->path('.env'));
+
+        if ($env->get('DB_CONNECTION') !== $answers->database || ! is_file($context->path('.env.testing'))) {
+            return false;
+        }
+
+        // The database the app opens must be the one this step migrated.
+        $opens = $env->get('DB_DATABASE');
+
+        if ($answers->database === 'pgsql' ? $opens !== self::databaseName($context) : ! in_array($opens, [null, self::SQLITE_DATABASE, $this->sqlitePath($context)], true)) {
             return false;
         }
 
@@ -120,23 +135,82 @@ final class DatabaseStep implements SetupStep
         return StepResult::done(__('Database ready: :name', ['name' => $answers->database === 'pgsql' ? self::databaseName($context) : 'SQLite']));
     }
 
-    /** Creates the app database and <name>_test on the server of the pgsql connection, unless they exist. */
+    /**
+     * Creates the app database and <name>_test on the server of the pgsql connection. The folder name alone names
+     * them, so an existing one may belong to another project: it is reused only when it is provably this project's
+     * (empty, created by this step for this folder, or already named by .env / .env.testing). Both are checked before
+     * anything is created, so a refusal changes nothing.
+     *
+     * @throws RuntimeException when the name is unusable or an existing database belongs to someone else
+     */
     private function createPostgresDatabases(SetupContext $context): void
     {
-        $server = $this->postgresServer();
-        $admin = new PDO("pgsql:host={$server['host']};port={$server['port']};dbname=postgres", $server['username'], $server['password'], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        ]);
-        $exists = $admin->prepare('SELECT 1 FROM pg_database WHERE datname = ?');
         $name = self::databaseName($context);
 
-        foreach ([$name, "{$name}_test"] as $database) {
-            $exists->execute([$database]);
+        if ($name === '' || in_array($name, self::RESERVED_DATABASES, true)) {
+            throw new RuntimeException(__('The folder name gives no usable PostgreSQL database name (":name"); rename the folder or choose SQLite.', ['name' => $name]));
+        }
 
-            if ($exists->fetchColumn() === false) {
-                $admin->exec('CREATE DATABASE "'.str_replace('"', '""', $database).'"');
+        $admin = $this->connectToPostgres('postgres');
+        $marker = $this->ownershipMarker($context);
+        $comment = $admin->prepare("SELECT coalesce(shobj_description(oid, 'pg_database'), '') FROM pg_database WHERE datname = ?");
+        $missing = [];
+
+        foreach ([$name => '.env', "{$name}_test" => '.env.testing'] as $database => $envFile) {
+            $comment->execute([$database]);
+            $description = $comment->fetchColumn();
+
+            if ($description === false) {
+                $missing[] = $database;
+
+                continue;
+            }
+
+            if ($description !== $marker && ! $this->isNamedBy($context->path($envFile), $database) && ! $this->isEmpty($database)) {
+                throw new RuntimeException(__('The PostgreSQL database :name already exists and holds tables of another project; drop or rename it, or rename this folder.', ['name' => $database]));
             }
         }
+
+        foreach ($missing as $database) {
+            $admin->exec('CREATE DATABASE '.$this->identifier($database));
+            $admin->exec('COMMENT ON DATABASE '.$this->identifier($database).' IS '.$admin->quote($marker));
+        }
+    }
+
+    /** Marks a database this step created for this folder, so a re-run after a failure can tell it from a stranger's. */
+    private function ownershipMarker(SetupContext $context): string
+    {
+        return 'setup:'.hash('sha256', realpath($context->basePath) ?: $context->basePath);
+    }
+
+    private function isNamedBy(string $envFile, string $database): bool
+    {
+        $env = new EnvFile($envFile);
+
+        return $env->get('DB_CONNECTION') === 'pgsql' && $env->get('DB_DATABASE') === $database;
+    }
+
+    /** No tables outside PostgreSQL's own schemas. */
+    private function isEmpty(string $database): bool
+    {
+        $tables = $this->connectToPostgres($database)
+            ->query("SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')");
+
+        return $tables !== false && (int) $tables->fetchColumn() === 0;
+    }
+
+    private function connectToPostgres(string $database): PDO
+    {
+        $server = $this->postgresServer();
+
+        return new PDO("pgsql:host={$server['host']};port={$server['port']};dbname={$database}", $server['username'], $server['password'], [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+    }
+
+    private function identifier(string $database): string
+    {
+        return '"'.str_replace('"', '""', $database).'"';
     }
 
     /** Points the runtime `setup` connection at the step's database, without creating anything. */
@@ -206,8 +280,11 @@ final class DatabaseStep implements SetupStep
                 'DB_PASSWORD' => $server['password'],
             ]);
         } else {
-            // DB_DATABASE stays unset, so the default database/database.sqlite path stays relative.
-            new EnvFile($env)->set(['DB_CONNECTION' => 'sqlite']);
+            // Unset, DB_DATABASE falls back to database/database.sqlite. A value left by pgsql (or an empty one) would
+            // become the SQLite path, so it is pointed back at the file, relative, as Laravel resolves it.
+            new EnvFile($env)->set(new EnvFile($env)->get('DB_DATABASE') === null
+                ? ['DB_CONNECTION' => 'sqlite']
+                : ['DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => self::SQLITE_DATABASE]);
         }
 
         if (! copy($env, $testing)) {
@@ -243,7 +320,7 @@ final class DatabaseStep implements SetupStep
 
     private function sqlitePath(SetupContext $context): string
     {
-        return $context->path('database/database.sqlite');
+        return $context->path(self::SQLITE_DATABASE);
     }
 
     /**

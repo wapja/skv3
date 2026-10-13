@@ -350,6 +350,8 @@
     "System roles": "Systeemrollen",
     "System roles cannot be changed.": "Systeemrollen kunnen niet worden gewijzigd.",
     "Thanks,": "Bedankt,",
+    "The PostgreSQL database :name already exists and holds tables of another project; drop or rename it, or rename this folder.": "De PostgreSQL-database :name bestaat al en bevat tabellen van een ander project; verwijder of hernoem hem, of hernoem deze map.",
+    "The folder name gives no usable PostgreSQL database name (\":name\"); rename the folder or choose SQLite.": "De mapnaam levert geen bruikbare PostgreSQL-databasenaam op (\":name\"); hernoem de map of kies SQLite.",
     "The impersonation has ended. Sign in again.": "Inloggen als deze gebruiker is beëindigd. Log opnieuw in.",
     "The impersonation has ended. You are back in your own account.": "Inloggen als deze gebruiker is beëindigd. Je bent terug in je eigen account.",
     "The invitation was cancelled, or the link is incomplete. Ask the person who invited you to send a new invitation.": "De uitnodiging is ingetrokken, of de link is onvolledig. Vraag degene die je heeft uitgenodigd om je een nieuwe uitnodiging te sturen.",

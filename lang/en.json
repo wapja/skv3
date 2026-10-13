@@ -350,6 +350,8 @@
     "System roles": "System roles",
     "System roles cannot be changed.": "System roles cannot be changed.",
     "Thanks,": "Thanks,",
+    "The PostgreSQL database :name already exists and holds tables of another project; drop or rename it, or rename this folder.": "The PostgreSQL database :name already exists and holds tables of another project; drop or rename it, or rename this folder.",
+    "The folder name gives no usable PostgreSQL database name (\":name\"); rename the folder or choose SQLite.": "The folder name gives no usable PostgreSQL database name (\":name\"); rename the folder or choose SQLite.",
     "The impersonation has ended. Sign in again.": "The impersonation has ended. Sign in again.",
     "The impersonation has ended. You are back in your own account.": "The impersonation has ended. You are back in your own account.",
     "The invitation was cancelled, or the link is incomplete. Ask the person who invited you to send a new invitation.": "The invitation was cancelled, or the link is incomplete. Ask the person who invited you to send a new invitation.",
