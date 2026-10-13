@@ -9,6 +9,8 @@ use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
 use App\Enums\CheckStatus;
 use App\Setup\Detection;
+use App\Setup\Doctor\Check;
+use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
@@ -60,3 +62,34 @@ it('reports drift without repairing it, and repairs it with --fix (DEC-26, DEC-2
         ->and($after['super-admin-badges']->status)->toBe(CheckStatus::Pass)
         ->and($badge->fresh()?->permissions()->count())->toBe(0);
 });
+
+it('names only the exception class of a check or a fix that throws, never its message (§5.4, RL-11)', function (bool $fix): void {
+    $throwing = new readonly class implements Check
+    {
+        public function key(): string
+        {
+            return 'throwing';
+        }
+
+        public function label(): string
+        {
+            return 'Throwing';
+        }
+
+        public function run(DoctorContext $context): CheckResult
+        {
+            throw new RuntimeException('secret-binding');
+        }
+
+        public function fix(DoctorContext $context): ?CheckResult
+        {
+            throw new RuntimeException('secret-binding');
+        }
+    };
+
+    $result = new Doctor([$throwing])->run($this->context, fix: $fix)['throwing'];
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toContain('RuntimeException')
+        ->and($result->message.$result->fix)->not->toContain('secret-binding');
+})->with(['without fix' => false, 'with fix' => true]);

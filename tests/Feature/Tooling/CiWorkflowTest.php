@@ -24,22 +24,21 @@ it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
  * tree. Without a repository, or before its first commit (GitStep leaves `git init` without one), the working-tree
  * file is what will be committed.
  */
-function committedFile(string $repository, string $file): string
-{
+$committedFile = function (string $repository, string $file): string {
     $hasCommit = file_exists($repository.'/.git')
         && Process::path($repository)->run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'])->successful();
 
     return $hasCommit
         ? Process::path($repository)->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
         : (string) file_get_contents($repository.'/'.$file);
-}
+};
 
-it('never references Flux Pro in the committed composer files (committed)', function (): void {
-    expect(committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
-        ->and(committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
+it('never references Flux Pro in the committed composer files (committed)', function () use ($committedFile): void {
+    expect($committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
+        ->and($committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
 });
 
-it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function (): void {
+it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile): void {
     $repository = storage_path('framework/testing/ci-unborn-'.Str::uuid());
     File::ensureDirectoryExists($repository);
     File::put($repository.'/composer.json', '{"name": "acme/app"}');
@@ -47,7 +46,7 @@ it('reads the working-tree composer files in a repository without a commit yet (
     try {
         Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
 
-        expect(committedFile($repository, 'composer.json'))->toBe('{"name": "acme/app"}');
+        expect($committedFile($repository, 'composer.json'))->toBe('{"name": "acme/app"}');
     } finally {
         File::deleteDirectory($repository);
     }

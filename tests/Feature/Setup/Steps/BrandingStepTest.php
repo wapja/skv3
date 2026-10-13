@@ -32,8 +32,14 @@ it('keeps a valid accent and logo and writes the app name (§5.3.3 step 4)', fun
         ->and($env->get('BRANDING_LOGO'))->toBe('logo.svg');
 });
 
-it('clears an absolute or escaping logo and resets an unknown accent (DEC-29)', function (string $logo): void {
+it('clears an absolute or escaping logo and resets an unknown accent (DEC-29)', function (string $logo, ?string $file): void {
     $context = setupSandbox();
+    // Each value names a file that exists, so only the guard the row is about can refuse it.
+    if ($file !== null) {
+        File::ensureDirectoryExists(dirname($context->path($file)));
+        File::put($context->path($file), '<svg/>');
+    }
+
     $env = new EnvFile($context->path('.env'));
     $env->set(['BRANDING_ACCENT' => 'chartreuse', 'BRANDING_LOGO' => $logo]);
 
@@ -44,11 +50,11 @@ it('clears an absolute or escaping logo and resets an unknown accent (DEC-29)', 
         ->and($result->message)->toContain(__('The logo must be a file under public/'))
         ->and($result->message)->toContain(__('Unknown accent :accent; using neutral.', ['accent' => 'chartreuse']));
 })->with([
-    'url' => ['https://tracker.example/x.svg'],
-    'protocol-relative' => ['//tracker.example/x.svg'],
-    'escaping' => ['../.env'],
-    'missing file' => ['missing.svg'],
-    'not an image' => ['index.php'],
+    'url' => ['https://x.svg', 'public/https:/x.svg'],
+    'protocol-relative' => ['//logo.svg', 'public/logo.svg'],
+    'escaping' => ['../logo.svg', 'logo.svg'],
+    'missing file' => ['missing.svg', null],
+    'not an image' => ['index.php', 'public/index.php'],
 ]);
 
 it('sets the neutral accent without a note when none is set (§5.3.3 step 4)', function (): void {

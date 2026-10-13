@@ -18,6 +18,13 @@ use Illuminate\Support\Str;
 use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyTimeout;
 use Symfony\Component\Process\Process as SymfonyProcess;
 
+/** A `herd links` table (Herd 1.30.2) with one row: | Site | SSL | URL | Path | PHP Version | node |; unsecured sites have an empty SSL cell. */
+$herdLinksRow = fn (string $name, string $path, string $ssl = 'X', string $node = 'v22.23.2'): string => "+------+-----+-----+------+-------------+---+\n"
+    ."| Site | SSL | URL | Path | PHP Version |   |\n"
+    ."+------+-----+-----+------+-------------+---+\n"
+    ."| {$name} | {$ssl} | http://{$name}.test | {$path} | 8.4 | {$node} |\n"
+    ."+------+-----+-----+------+-------------+---+\n";
+
 beforeEach(function (): void {
     Process::preventStrayProcesses();
     Process::fake([]);
@@ -40,7 +47,7 @@ it('is skipped without Herd', function (): void {
     expect(new HerdSiteStep()->run(setupSandbox())->status)->toBe('skipped');
 });
 
-it('links an unparked site, secures it and rewrites APP_URL to https after verifying (§5.3.3 step 10)', function (): void {
+it('links an unparked site, secures it and rewrites APP_URL to https after verifying (§5.3.3 step 10)', function () use ($herdLinksRow): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
     $name = $context->folderName();
@@ -48,7 +55,7 @@ it('links an unparked site, secures it and rewrites APP_URL to https after verif
     Process::fake([
         "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
         // Unlisted until `herd link` ran, then listed with this project's path.
-        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result(herdLinksRow($name, $context->basePath))),
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($herdLinksRow($name, $context->basePath))),
         "*herd' 'link'*" => Process::result('linked'),
         // Unsecured until `herd secure` ran, then listed.
         "*herd' 'secured'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result("| Site | Expires |\n| {$name}.test | 2027-01-01 00:00:00 GMT |\n")),
@@ -83,14 +90,14 @@ it('does not run herd secure for a site that is already secured (§5.3.3 step 10
     Process::assertDidntRun(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}"));
 });
 
-it('verifies herd link by reading herd links back, not by its exit code (§13)', function (int $exitCode, bool $listedAfterwards, bool $served): void {
+it('verifies herd link by reading herd links back, not by its exit code (§13)', function (int $exitCode, bool $listedAfterwards, bool $served) use ($herdLinksRow): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
     $name = $context->folderName();
 
     Process::fake([
         "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
-        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($listedAfterwards ? herdLinksRow($name, $context->basePath) : '')),
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($listedAfterwards ? $herdLinksRow($name, $context->basePath) : '')),
         "*herd' 'link'*" => Process::result('', exitCode: $exitCode),
         "*herd' 'isolated'*" => Process::result(''),
         "*php' '-r'*" => Process::result('8.4.13'),
@@ -105,7 +112,7 @@ it('verifies herd link by reading herd links back, not by its exit code (§13)',
     'exits 1 but did link' => [1, true, true],
 ]);
 
-it('never takes over a name another Herd site already uses (§5.3.3 step 10)', function (bool $linkedElsewhere, bool $parkedElsewhere, bool $parkedHere, string $ssl): void {
+it('never takes over a name another Herd site already uses (§5.3.3 step 10)', function (bool $linkedElsewhere, bool $parkedElsewhere, bool $parkedHere, string $ssl) use ($herdLinksRow): void {
     $context = setupSandbox($this->detection);
     // skv:install runs in the project: an empty cell resolved with realpath() would be this directory.
     $cwd = (string) getcwd();
@@ -122,7 +129,7 @@ it('never takes over a name another Herd site already uses (§5.3.3 step 10)', f
             $parkedElsewhere ? $otherParked.'/' : null,
             $parkedHere ? dirname($context->basePath).'/' : null,
         ])), JSON_THROW_ON_ERROR)),
-        "*herd' 'links'*" => Process::result($linkedElsewhere ? herdLinksRow($name, $otherParked.'/'.$name, $ssl, $ssl === '' ? '' : 'v22.23.2') : ''),
+        "*herd' 'links'*" => Process::result($linkedElsewhere ? $herdLinksRow($name, $otherParked.'/'.$name, $ssl, $ssl === '' ? '' : 'v22.23.2') : ''),
         "*herd' 'link'*" => Process::result('linked'),
         "*herd' 'secured'*" => Process::result("| {$name}.test | 2027-01-01 |\n"),
         "*herd' 'secure'*" => Process::result('Secured'),
@@ -145,7 +152,7 @@ it('never takes over a name another Herd site already uses (§5.3.3 step 10)', f
     'another parked directory holds the name' => [false, true, false, 'X'],
 ]);
 
-it('counts a link as this site only by its Path cell (§5.3.3 step 10)', function (): void {
+it('counts a link as this site only by its Path cell (§5.3.3 step 10)', function () use ($herdLinksRow): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
     $name = $context->folderName();
@@ -156,7 +163,7 @@ it('counts a link as this site only by its Path cell (§5.3.3 step 10)', functio
     Process::fake([
         "*herd' 'paths'*" => Process::result('[]'),
         // A row without a path never matches the project, whatever the other cells hold.
-        "*herd' 'links'*" => Process::result(herdLinksRow($name, '', '', '')),
+        "*herd' 'links'*" => Process::result($herdLinksRow($name, '', '', '')),
         "*herd' 'isolated'*" => Process::result(''),
         "*php' '-r'*" => Process::result('8.4.13'),
     ]);
@@ -227,6 +234,28 @@ it('isolates PHP 8.4 only when the site would run an older PHP (§5.3.3 step 10)
     'global 8.3, isolated to 8.4' => ['8.3.20', '8.4', false],
 ]);
 
+it('verifies herd isolate by reading herd isolated back, not by its exit code (§13, FU-isolate)', function (bool $listedAfterwards): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+    $name = $context->folderName();
+    $isolated = "| Site | PHP Version |\n| {$name}.test | 8.4 |\n";
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        // Not isolated before `herd isolate` ran; listed with 8.4 afterwards only when the isolation took.
+        "*herd' 'isolated'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($listedAfterwards ? $isolated : '')),
+        "*herd' 'isolate'*" => Process::result('Isolated', exitCode: 0),
+        "*php' '-r'*" => Process::result('8.3.20'),
+    ]);
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($result->status)->toBe($listedAfterwards ? 'done' : 'manual')
+        ->and($result->command)->toBe($listedAfterwards ? null : "herd isolate 8.4 --site={$name}");
+    Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "isolate 8.4 --site={$name}"));
+})->with(['isolated afterwards' => true, 'still not isolated' => false]);
+
 it('rewrites the marker summary with the https address after securing (§5.3.4)', function (): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
@@ -263,13 +292,3 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
     'not secured' => ['', false, false],
     'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, false],
 ]);
-
-/** A `herd links` table (Herd 1.30.2) with one row: | Site | SSL | URL | Path | PHP Version | node |; unsecured sites have an empty SSL cell. */
-function herdLinksRow(string $name, string $path, string $ssl = 'X', string $node = 'v22.23.2'): string
-{
-    return "+------+-----+-----+------+-------------+---+\n"
-        ."| Site | SSL | URL | Path | PHP Version |   |\n"
-        ."+------+-----+-----+------+-------------+---+\n"
-        ."| {$name} | {$ssl} | http://{$name}.test | {$path} | 8.4 | {$node} |\n"
-        ."+------+-----+-----+------+-------------+---+\n";
-}
