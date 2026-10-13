@@ -12,8 +12,10 @@ use App\Tenancy\Hosts;
 use Closure;
 
 /**
- * §5.4: a wildcard subdomain of the apex resolves (`probe.{apex}`). Without Herd the fix is the /etc/hosts lines for
- * the apex, the admin host and every organisation; with Herd, restarting it restarts the resolver for its TLD.
+ * §5.4: a wildcard subdomain of the apex resolves (`probe.{apex}`). An apex under `localhost` passes even when
+ * gethostbyname() does not resolve it (a CI runner without Herd): RFC 6761 reserves those names for loopback and
+ * browsers resolve them without DNS (§8, DEC-29). Without Herd the fix is the /etc/hosts lines for the apex, the admin
+ * host and every organisation; with Herd, restarting it restarts the resolver for its TLD.
  */
 final readonly class SubdomainsCheck implements Check
 {
@@ -38,10 +40,15 @@ final readonly class SubdomainsCheck implements Check
 
     public function run(DoctorContext $context): CheckResult
     {
-        $probe = 'probe.'.Hosts::apex();
+        $apex = Hosts::apex();
+        $probe = 'probe.'.$apex;
 
         if (($this->resolve)($probe) !== $probe) {
             return CheckResult::pass(__(':host resolves', ['host' => $probe]));
+        }
+
+        if ($apex === 'localhost' || str_ends_with($apex, '.localhost')) {
+            return CheckResult::pass(__(':host is a loopback name (RFC 6761)', ['host' => $probe]));
         }
 
         if ($context->detection->herd) {

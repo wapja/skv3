@@ -212,6 +212,23 @@ it('passes when the probe subdomain resolves (§5.4)', function (): void {
     expect($result->status)->toBe(CheckStatus::Pass)->and($asked)->toBe(['probe.my-app.test']);
 });
 
+it('passes an apex under localhost even when the resolver does not know it, because RFC 6761 makes it loopback (§8)', function (string $apex): void {
+    config(['tenancy.apex_domain' => $apex]);
+
+    $result = new SubdomainsCheck(fn (string $host): string => $host)->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and($result->message)->toBe(__(':host is a loopback name (RFC 6761)', ['host' => 'probe.'.$apex]));
+})->with(['localhost', 'my-app.localhost']);
+
+it('still fails an apex that only ends in the letters localhost (§5.4)', function (): void {
+    config(['tenancy.apex_domain' => 'notlocalhost']);
+
+    $result = new SubdomainsCheck(fn (string $host): string => $host)->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail);
+});
+
 it('needs the apex to match the APP_URL host (§5.4)', function (string $apex, CheckStatus $status): void {
     new EnvFile($this->sandbox->path('.env'))->set(['APP_URL' => 'http://my-app.test', 'TENANCY_APEX_DOMAIN' => $apex]);
 

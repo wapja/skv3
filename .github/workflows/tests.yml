@@ -4,12 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  # §8: the e2e job runs nightly and on demand; the other jobs run along, which is fine once a night.
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# The event is part of the group, so a push to main never cancels a nightly or dispatched run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -216,3 +221,182 @@ jobs:
           if-no-files-found: ignore
           # Traces hold request and response bodies and cookies of the test run; keep them only briefly.
           retention-days: 7
+
+  # §8: installs the commit under test with the installer, never Packagist, then runs skv:install, the doctor and
+  # composer check in the new app. It runs nightly, on demand and on pull requests that touch the setup.
+  e2e:
+    name: e2e (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            php: '8.4'
+            flags: '--pest --git --boost'
+            db: sqlite
+          - name: phpunit-no-boost
+            php: '8.4'
+            flags: '--phpunit --git --no-boost'
+            db: sqlite
+          - name: postgres-pro
+            php: '8.4'
+            flags: '--pest --git --boost'
+            db: pgsql
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      # §6.7: like the check job, the job maps only whether the Flux Pro secrets exist; the Flux Pro step maps the
+      # credentials themselves, so the installer, skv:install and composer check never see the licence key.
+      FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}
+
+    # Herd's credentials (RL-4): user root with an empty password. Only the postgres-pro row uses the server.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: root
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U root"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Every later step runs only when this says so, so a pull request that does not touch the setup skips the job
+      # without failing it.
+      - name: Changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          run=false
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run=true
+          elif [ "$EVENT_NAME" = pull_request ]; then
+            changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+            if grep -qE '^(composer\.json$|\.env\.example$|app/Setup/|app/Console/Commands/)' <<< "$changed"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Setup PHP
+        if: steps.changes.outputs.run == 'true'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_pgsql, pdo_sqlite, gd
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # The installer commits the new app (--git); the runner has no git identity of its own.
+      - name: Serve the commit under test as dev-ci
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          git config --global user.name "e2e"
+          git config --global user.email "e2e@example.com"
+          git switch -C ci
+          composer config -g repositories.skv3 vcs "$GITHUB_WORKSPACE"
+
+      - name: Install the Laravel installer
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          composer global require laravel/installer --no-interaction
+          echo "$(composer global config bin-dir --absolute)" >> "$GITHUB_PATH"
+
+      # Herd's exact command (§8); the installer's log proves the hooks below.
+      - name: laravel new
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          cd "$RUNNER_TEMP" && laravel new tmp --using=frankcornet/skv3:dev-ci --no-interaction --no-ansi --database=sqlite --npm ${{ matrix.flags }} 2>&1 | tee install.log
+
+      # §5.2, §7.2, §8: bootstrap ran once (it prints the skv:install hint), the SQLite file is migrated, the build
+      # exists, the installer left tests.yml, tests/Pest.php and tests/ alone, and post-update-cmd holds at most one
+      # boost:update.
+      - name: Phase 1 assertions
+        if: steps.changes.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          FLAGS: ${{ matrix.flags }}
+        run: |
+          bootstraps="$(grep -c 'skv:install' install.log || true)"
+          [ "$bootstraps" = 1 ] || { echo "FAIL: skv:bootstrap ran $bootstraps times, expected once"; exit 1; }
+          grep -q '^DB_CONNECTION=sqlite' tmp/.env || { echo "FAIL: .env does not use SQLite"; exit 1; }
+          status="$(cd tmp && php artisan migrate:status --no-ansi)" || { echo "FAIL: migrate:status"; exit 1; }
+          if grep -q 'Pending' <<< "$status"; then echo "FAIL: pending migrations"; echo "$status"; exit 1; fi
+          test -f tmp/public/build/manifest.json || { echo "FAIL: public/build/manifest.json is missing"; exit 1; }
+          diff "$GITHUB_WORKSPACE/.github/workflows/tests.yml" tmp/.github/workflows/tests.yml || { echo "FAIL: tests.yml changed"; exit 1; }
+          if [[ "$FLAGS" == *--pest* ]]; then
+            diff "$GITHUB_WORKSPACE/tests/Pest.php" tmp/tests/Pest.php || { echo "FAIL: tests/Pest.php changed"; exit 1; }
+            diff -r "$GITHUB_WORKSPACE/tests" tmp/tests || { echo "FAIL: tests/ changed"; exit 1; }
+          fi
+          php -r '$c = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); exit(count(array_filter($c["scripts"]["post-update-cmd"] ?? [], fn ($line) => str_contains($line, "boost:update"))) <= 1 ? 0 : 1);' tmp/composer.json || { echo "FAIL: post-update-cmd holds more than one boost:update"; exit 1; }
+
+      # No Herd in CI, so RL-7 turns passkeys off again after asking for them.
+      - name: Answers
+        if: steps.changes.outputs.run == 'true'
+        env:
+          DB: ${{ matrix.db }}
+        run: |
+          if [ "$DB" = pgsql ]; then
+            jq '.database="pgsql" | .modules=["passkeys","backups","impersonation"] | .https=true' "$GITHUB_WORKSPACE/tests/Fixtures/e2e-answers.json" > "$RUNNER_TEMP/e2e-answers.json"
+          else
+            cp "$GITHUB_WORKSPACE/tests/Fixtures/e2e-answers.json" "$RUNNER_TEMP/e2e-answers.json"
+          fi
+
+      # The same lines as the check job (§6.7), inside the new app and only on the postgres-pro row.
+      - name: Enable Flux Pro
+        if: steps.changes.outputs.run == 'true' && env.FLUX_PRO_SECRETS == 'true' && matrix.name == 'postgres-pro'
+        working-directory: ${{ runner.temp }}/tmp
+        env:
+          FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}
+          FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
+        run: |
+          composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"
+          php artisan skv:flux-pro --no-interaction
+
+      - name: skv:install
+        if: steps.changes.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}/tmp
+        run: |
+          sed -i 's#^APP_URL=.*#APP_URL=http://localhost#' .env
+          php artisan skv:install --no-interaction --answers="$(cat "$RUNNER_TEMP/e2e-answers.json")"
+
+      # DEC-22 rule 5: skv:install restores the Boost constraint the installer lowered to ^2.2.
+      - name: Boost constraint
+        if: steps.changes.outputs.run == 'true' && !contains(matrix.flags, '--no-boost')
+        working-directory: ${{ runner.temp }}/tmp
+        run: |
+          php -r '$c = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); exit(($c["require-dev"]["laravel/boost"] ?? null) === "^2.10" ? 0 : 1);' || { echo "FAIL: require-dev laravel/boost is not ^2.10"; exit 1; }
+
+      # RL-11: exits non-zero on any fail. An apex under localhost passes the subdomains check (RFC 6761).
+      - name: skv:doctor
+        if: steps.changes.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}/tmp
+        run: php artisan skv:doctor --json
+
+      - name: composer check
+        if: steps.changes.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}/tmp
+        run: composer check

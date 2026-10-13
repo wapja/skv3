@@ -7,6 +7,7 @@
     ":email is a super admin.": ":email is superbeheerder.",
     ":host does not resolve": ":host wordt niet gevonden",
     ":host does not resolve; add these lines to /etc/hosts": ":host wordt niet gevonden; zet deze regels in /etc/hosts",
+    ":host is a loopback name (RFC 6761)": ":host is een loopback-naam (RFC 6761)",
     ":host resolves": ":host wordt gevonden",
     ":name can no longer sign in. You can restore the account from the archived view.": ":name kan dan niet meer inloggen. Je kunt het account herstellen vanuit de gearchiveerde weergave.",
     ":name was deleted.": ":name is verwijderd.",

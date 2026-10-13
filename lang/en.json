@@ -7,6 +7,7 @@
     ":email is a super admin.": ":email is a super admin.",
     ":host does not resolve": ":host does not resolve",
     ":host does not resolve; add these lines to /etc/hosts": ":host does not resolve; add these lines to /etc/hosts",
+    ":host is a loopback name (RFC 6761)": ":host is a loopback name (RFC 6761)",
     ":host resolves": ":host resolves",
     ":name can no longer sign in. You can restore the account from the archived view.": ":name can no longer sign in. You can restore the account from the archived view.",
     ":name was deleted.": ":name was deleted.",

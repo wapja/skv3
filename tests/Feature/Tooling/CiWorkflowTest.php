@@ -145,7 +145,7 @@ it('enables Flux Pro in CI only when the secrets exist, before any view compiles
         ->toContain('FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != \'\' && secrets.FLUX_LICENSE_KEY != \'\' }}')
         ->not->toContain('secrets.FLUX_USERNAME }}')
         ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
-        ->and(substr_count($workflow, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
+        ->and(substr_count($check, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
         ->and($step)
         ->toContain("if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'")
         ->toContain('FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}')
@@ -155,4 +155,50 @@ it('enables Flux Pro in CI only when the secrets exist, before any view compiles
         ->toContain('composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"')
         ->toContain('php artisan skv:flux-pro --no-interaction')
         ->and(Str::before($workflow, 'composer check'))->toContain('skv:flux-pro');
+});
+
+it('runs the installer end to end in an e2e job (§8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+    // Derived from composer.json: NameLeakTest scans tests/, so this file holds no kit name literal.
+    $package = (string) json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR)['name'];
+
+    expect($workflow)
+        ->toContain('workflow_dispatch:')
+        ->toContain('schedule:')
+        ->toContain('  e2e:')
+        ->toContain('fetch-depth: 0')
+        ->toContain('git switch -C ci')
+        ->toContain('composer config -g repositories.'.Str::after($package, '/').' vcs "$GITHUB_WORKSPACE"')
+        ->toContain("--using={$package}:dev-ci")
+        ->toContain('--no-interaction --no-ansi --database=sqlite --npm')
+        ->toContain('skv:install --no-interaction --answers=')
+        ->toContain('skv:doctor --json')
+        ->toContain("flags: '--pest --git --boost'")
+        ->toContain("flags: '--phpunit --git --no-boost'");
+});
+
+it('maps the Flux Pro credentials of the e2e job in its Flux Pro step alone (§6.7, §8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+    $e2e = Str::after($workflow, "\n  e2e:\n");
+    $jobEnv = Str::before(Str::after($e2e, "\n    env:\n"), "\n    services:\n");
+    $step = Str::before(Str::after($e2e, '- name: Enable Flux Pro'), '- name: ');
+
+    expect($workflow)->toContain("\n  e2e:\n")
+        ->and($jobEnv)
+        ->toContain('FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != \'\' && secrets.FLUX_LICENSE_KEY != \'\' }}')
+        ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
+        ->and(substr_count($e2e, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
+        ->and($step)
+        ->toContain("env.FLUX_PRO_SECRETS == 'true'")
+        ->toContain('FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}')
+        ->toContain('php artisan skv:flux-pro --no-interaction');
+});
+
+it('ships a local e2e script that never touches global Composer config (OD-3)', function (): void {
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+
+    expect(is_executable(base_path('scripts/e2e-local.sh')))->toBeTrue()
+        ->and($script)->toContain('COMPOSER_HOME=')
+        ->and($script)->toContain('skv:install --no-interaction --answers=')
+        ->and($script)->not->toContain('composer config --global --list');
 });
