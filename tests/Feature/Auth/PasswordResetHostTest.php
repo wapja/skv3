@@ -81,6 +81,7 @@ it('sends the reset link only after the response is handled', function (): void 
 
 it('throttles reset-link requests per address and per IP address', function (string $limit): void {
     Sleep::fake(); // counts requests, not time
+    $this->freezeTime(); // a system sleep mid-test must not expire the one-minute window
     Notification::fake();
     onApex();
     $request = fn (int $number): TestResponse => $this->post(route('password.email'), [
@@ -144,6 +145,7 @@ it('answers a bad reset token the same way for known and unknown addresses (R1)'
 
 it('throttles password resets per address and per IP address', function (string $limit): void {
     Sleep::fake(); // counts requests, not time
+    $this->freezeTime(); // a system sleep mid-test must not expire the one-minute window
     onApex();
     $attempt = fn (int $number): TestResponse => $this->post(route('password.update'), [
         'token' => 'not-a-valid-token',

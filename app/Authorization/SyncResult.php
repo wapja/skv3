@@ -16,6 +16,7 @@ final readonly class SyncResult
         public bool $organisationAdminChanged,
         public int $superOnlyDetached,
         public int $badgesRepaired,
+        public int $badgePermissionsStripped = 0,
     ) {}
 
     public function changed(): bool
@@ -24,6 +25,7 @@ final readonly class SyncResult
             || $this->pruned !== []
             || $this->organisationAdminChanged
             || $this->superOnlyDetached > 0
-            || $this->badgesRepaired > 0;
+            || $this->badgesRepaired > 0
+            || $this->badgePermissionsStripped > 0;
     }
 }

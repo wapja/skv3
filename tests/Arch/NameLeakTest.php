@@ -13,7 +13,7 @@ it('hard-codes no kit or site name in app-identity values', function (): void {
         '/config\/skv\.php/',
         '/\bSkv::/',
         '/App\\\\Support\\\\Skv\b/', // the Skv support class name (RL-1)
-        '/skv-[a-z-]+/',            // storage marker / state files
+        '/skv-(installed|setup-token|setup|herd)\b/', // the setup marker and state files (FU-nameleak, DEC-25)
         '/\.ai\/guidelines\/skv3\.md/',
     ];
 

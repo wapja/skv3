@@ -29,12 +29,10 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
-use Symfony\Component\Mailer\Envelope;
-use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Email;
-use Symfony\Component\Mime\RawMessage;
+use Tests\Fixtures\FailingMailTransport;
 
 $templateRoleId = fn (): int => (int) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
 
@@ -201,18 +199,7 @@ it('keeps the invitation when the mail transport fails in the worker (W10, C-23)
         'mail.default' => 'failing',
         'mail.mailers.failing' => ['transport' => 'failing'],
     ]);
-    Mail::extend('failing', fn (): TransportInterface => new class implements TransportInterface
-    {
-        public function __toString(): string
-        {
-            return 'failing';
-        }
-
-        public function send(RawMessage $message, ?Envelope $envelope = null): ?SentMessage
-        {
-            throw new TransportException('The mail server is down.');
-        }
-    });
+    Mail::extend('failing', fn (): TransportInterface => new FailingMailTransport);
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($organisation);
     $invitation = inviteMember($organisation, $admin);

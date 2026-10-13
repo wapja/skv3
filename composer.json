@@ -12,6 +12,7 @@
         "php": "^8.4",
         "laravel/fortify": "^1.37.2",
         "laravel/framework": "^13.35",
+        "laravel/prompts": "^0.3",
         "laravel/tinker": "^3.0",
         "livewire/blaze": "^1.0",
         "livewire/flux": "^2.13.1",
@@ -56,13 +57,8 @@
             "Composer\\Config::disableProcessTimeout",
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
-            "@php -r \"preg_match('/^APP_KEY=.+$/m', (string) file_get_contents('.env')) || passthru('php artisan key:generate --ansi');\"",
-            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
-            "@php artisan migrate --force --ansi",
-            "@php artisan boost:update --ansi",
-            "@php -r \"is_dir('.git') && exec('git config core.hooksPath .githooks');\"",
-            "npm ci",
-            "npm run build"
+            "@php artisan skv:bootstrap --no-interaction",
+            "@php artisan skv:install"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
@@ -93,6 +89,9 @@
             "@php artisan config:clear --ansi",
             "pest --testsuite=Browser"
         ],
+        "doctor": [
+            "@php artisan skv:doctor --ansi"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
@@ -104,9 +103,7 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
         ],
         "post-create-project-cmd": [
-            "@php artisan key:generate --ansi",
-            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
-            "@php artisan migrate --graceful --ansi"
+            "@php artisan skv:bootstrap --no-interaction --ansi"
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
@@ -117,6 +114,7 @@
             "dont-discover": [],
             "installer": {
                 "post-create-project": [
+                    "@php artisan skv:bootstrap --no-interaction"
                 ]
             }
         }

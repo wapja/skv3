@@ -14,6 +14,9 @@ use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
 use App\Providers\FortifyServiceProvider;
+use App\Setup\Answers;
+use App\Setup\Detection;
+use App\Setup\SetupContext;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Events\TenantForgotten;
 use App\Tenancy\Events\TenantResolved;
@@ -37,6 +40,8 @@ use Illuminate\Support\Uri;
 use Illuminate\Testing\TestResponse;
 use Laravel\Fortify\Features;
 use Livewire\Livewire;
+use Pest\Support\Reflection;
+use Pest\TestSuite;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
@@ -411,4 +416,33 @@ function browserUser(?Organisation $organisation = null, string $email = 'member
 function sameOrigin(string $currentUrl, string $path): string
 {
     return (string) Uri::of($currentUrl)->withPath($path)->withQuery([], merge: false)->withoutFragment();
+}
+
+/**
+ * A throwaway project directory for setup steps (RL-2): .env from .env.example, storage and database folders.
+ * Removed when the test ends; never the repository itself. A $prefix starts the folder name, e.g. setup_probe_
+ * for the Database step's PostgreSQL databases, which take their name from the folder.
+ */
+function setupSandbox(?Detection $detection = null, string $prefix = ''): SetupContext
+{
+    $directory = storage_path('framework/testing/setup/'.$prefix.Str::uuid());
+
+    foreach (['storage/app/private', 'database', 'public'] as $folder) {
+        File::ensureDirectoryExists($directory.'/'.$folder);
+    }
+
+    File::copy(base_path('.env.example'), $directory.'/.env');
+
+    // Register the clean-up on the running test case; Pest's test() proxy does not expose it to Larastan.
+    $test = TestSuite::getInstance()->test;
+
+    if (! $test instanceof TestCase) {
+        throw new LogicException('setupSandbox() runs inside a test only.');
+    }
+
+    Reflection::call($test, 'beforeApplicationDestroyed', [fn () => File::deleteDirectory($directory)]);
+
+    $detection ??= Detection::none();
+
+    return new SetupContext($directory, Answers::defaults($detection, basename($directory)), $detection);
 }

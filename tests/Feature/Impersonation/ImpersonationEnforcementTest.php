@@ -17,8 +17,6 @@ use App\Tenancy\Hosts;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
 use App\Tenancy\Http\Middleware\InitializeTenancy;
 use Illuminate\Auth\Middleware\Authenticate;
-use Illuminate\Contracts\Encryption\Encrypter;
-use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Router;
@@ -29,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Tests\Fixtures\CsrfEnforcingPreventRequestForgery;
 
 beforeEach(function (): void {
     useImpersonationModule(true);
@@ -115,13 +114,7 @@ it('renders an error page raised before the re-check without resolving the user,
 
     // The CSRF middleware sits ahead of EnforceImpersonation and skips itself in unit tests; this subclass
     // turns that off, so its 419 page renders before the impersonation is re-checked.
-    $this->app->bind(PreventRequestForgery::class, fn (Application $app): PreventRequestForgery => new class($app, $app->make(Encrypter::class)) extends PreventRequestForgery
-    {
-        protected function runningUnitTests(): bool
-        {
-            return false;
-        }
-    });
+    $this->app->bind(PreventRequestForgery::class, CsrfEnforcingPreventRequestForgery::class);
     Route::middleware('web')->post('_csrf-probe', fn (): string => 'ok');
 
     DB::table('users')->where('id', $member->id)->update(['deleted_at' => now()]);

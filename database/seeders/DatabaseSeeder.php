@@ -4,28 +4,20 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Authorization\SetSuperAdmin;
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
-     * Seed the application's database.
+     * Seed the application's database. Model events stay on: the demo data runs through the real actions (DEC-28).
      */
-    public function run(SetSuperAdmin $setSuperAdmin): void
+    public function run(): void
     {
         $this->call(EssentialsSeeder::class);
 
-        // Temporary development login until the M6 setup engine and demo seeder exist.
-        $user = User::factory()->superAdmin()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
-
-        $setSuperAdmin->handle($user, true);
+        // Demo data never runs in production (§4.12); setup's database step decides for installs.
+        if (! app()->isProduction()) {
+            $this->call(DemoSeeder::class);
+        }
     }
 }

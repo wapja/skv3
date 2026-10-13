@@ -122,6 +122,23 @@ it('attaches the badge even when the flag was already set, and records nothing (
         ->and(recordedActivity(ActivityEvent::SuperAdminGranted))->toBeEmpty();
 });
 
+it('attaches the badge of a user created as super admin and records the grant once (§4.8)', function (): void {
+    $user = User::factory()->superAdmin()->create();
+
+    app(SetSuperAdmin::class)->handleCreated($user);
+    app(SetSuperAdmin::class)->handleCreated($user);
+
+    expect(badgeRows($user))->toBe([null])
+        ->and(recordedActivity(ActivityEvent::SuperAdminGranted)->sole()->subject_id)->toBe($user->id);
+});
+
+it('refuses handleCreated for a user who was not just created as super admin (§4.8)', function (User $user): void {
+    app(SetSuperAdmin::class)->handleCreated($user);
+})->with([
+    'created without the flag' => fn (): User => User::factory()->create(),
+    'read back from the database' => fn (): User => User::factory()->superAdmin()->create()->fresh() ?? throw new RuntimeException,
+])->throws(LogicException::class);
+
 it('refuses to demote a promoted super admin while their organisation is archived (FU3-4)', function (): void {
     // Fails on main: the demotion went through and left a member whose home host is an archived organisation.
     $keeper = User::factory()->superAdmin()->create();

@@ -13,13 +13,12 @@ use App\Models\User;
 use App\Tenancy\Hosts;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Events\Login;
-use Illuminate\Contracts\Encryption\Encrypter;
-use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Tests\Fixtures\CsrfEnforcingPreventRequestForgery;
 
 it('signs a super admin in on another host with a single-use link', function (): void {
     Event::fake([HandoffConsumed::class]);
@@ -87,6 +86,7 @@ it('only hands off to relative paths', function (string $path): void {
 })->with(['https://evil.test/', '//evil.test/', 'dashboard', '/\\evil.test']);
 
 it('throttles handoff attempts per IP address', function (): void {
+    $this->freezeTime(); // counts requests: a system sleep mid-test must not expire the one-minute window
     onApex();
 
     foreach (range(1, 10) as $attempt) {
@@ -204,13 +204,7 @@ it('records the sign-out of the user whose session the confirmation POST replace
 
 it('refuses the confirmation POST without a CSRF token', function (): void {
     // The CSRF middleware skips itself in unit tests; this subclass turns that off for this test only.
-    $this->app->bind(PreventRequestForgery::class, fn (Application $app): PreventRequestForgery => new class($app, $app->make(Encrypter::class)) extends PreventRequestForgery
-    {
-        protected function runningUnitTests(): bool
-        {
-            return false;
-        }
-    });
+    $this->app->bind(PreventRequestForgery::class, CsrfEnforcingPreventRequestForgery::class);
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();
     $superAdmin = User::factory()->superAdmin()->create();

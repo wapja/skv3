@@ -27,6 +27,17 @@ final class SyncPermissionsCommand extends Command
             $this->components->twoColumnDetail($name, 'pruned');
         }
 
+        foreach ([
+            'organisation admin template updated' => $result->organisationAdminChanged ? 1 : 0,
+            'super-only permissions detached from team roles' => $result->superOnlyDetached,
+            'super admin badges repaired' => $result->badgesRepaired,
+            'super admin badge permissions stripped' => $result->badgePermissionsStripped,
+        ] as $label => $count) {
+            if ($count > 0) {
+                $this->components->twoColumnDetail($label, (string) $count);
+            }
+        }
+
         return self::SUCCESS;
     }
 }

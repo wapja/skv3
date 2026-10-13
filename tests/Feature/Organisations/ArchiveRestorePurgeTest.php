@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Fixtures\FailureSwitch;
 
 /** A database-driver session row and a "remember me" token, as a signed-in browser leaves them. */
 $signIn = function (User $user, string $rememberToken = 'old-remember-token'): void {
@@ -51,10 +52,7 @@ it('archives in a transaction, cascades and records it (ORG-21)', function () us
     $member = User::factory()->for($organisation)->create();
     // A holder with a typed property, not a by-reference bool or a stdClass: PHPStan would type a captured
     // `true` as always true.
-    $audit = new class
-    {
-        public bool $fails = true;
-    };
+    $audit = new FailureSwitch(fails: true);
     Activity::creating(function (Activity $activity) use ($audit): void {
         if ($audit->fails && $activity->event === ActivityEvent::OrganisationArchived->value) {
             throw new RuntimeException('The audit log is unavailable.');

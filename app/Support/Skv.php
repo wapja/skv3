@@ -39,6 +39,12 @@ final class Skv
             && (bool) config("skv.modules.{$module}", false);
     }
 
+    /** §6.8: database-only backups need PostgreSQL, so the module is off on SQLite whatever MODULE_BACKUPS says. */
+    public static function backupsAvailable(string $connection, bool $flag): bool
+    {
+        return $flag && $connection !== 'sqlite';
+    }
+
     public static function passkeysEnabled(): bool
     {
         return self::moduleEnabled('passkeys');

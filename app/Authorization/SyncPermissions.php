@@ -29,12 +29,21 @@ final class SyncPermissions
             $created = $this->upsertPermissions();
             $pruned = $this->prunePermissions();
             $organisationAdminChanged = $this->syncOrganisationAdmin();
-            $this->systemRole(Role::SuperAdmin)->syncPermissions([]);
+            $badge = $this->systemRole(Role::SuperAdmin);
+            $badgePermissionsStripped = $badge->permissions()->count();
+            $badge->syncPermissions([]);
             $superOnlyDetached = $this->detachSuperOnlyFromTeamRoles();
 
             $badgesRepaired = $this->repairSuperAdminBadges();
 
-            return new SyncResult($created, $pruned, $organisationAdminChanged, $superOnlyDetached, $badgesRepaired);
+            return new SyncResult(
+                $created,
+                $pruned,
+                $organisationAdminChanged,
+                $superOnlyDetached,
+                $badgesRepaired,
+                badgePermissionsStripped: $badgePermissionsStripped,
+            );
         }));
 
         $registrar->forgetCachedPermissions();

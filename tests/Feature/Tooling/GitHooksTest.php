@@ -11,3 +11,12 @@ it('ships an executable pre-commit hook that checks staged PHP files', function 
         ->and(file_get_contents($hook))->toContain('vendor/bin/pint --test')
         ->and(file_get_contents($hook))->toContain('vendor/bin/phpstan analyse');
 });
+
+it('passes staged file names safely and refuses partially staged PHP files (DEC-25)', function (): void {
+    $hook = (string) file_get_contents(base_path('.githooks/pre-commit'));
+
+    expect($hook)->toContain('-z')
+        ->toContain('xargs -0')
+        ->toContain('git diff --name-only')
+        ->not->toContain(' $FILES');
+});

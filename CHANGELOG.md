@@ -33,6 +33,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Optional passkeys module (`MODULE_PASSKEYS`): when it is off, passkey routes, buttons and the settings section are gone.
 - An optional Flux Pro layer: with `livewire/flux-pro` installed you get a listbox for roles, tabs, date pickers, a ⌘K command palette and a sign-in chart; without it everything works on free Flux.
 - Browser tests in Chromium with the Pest browser plugin (`composer test:browser`), including a CI job.
+- The setup engine: `php artisan skv:install` (questions or `--answers=JSON`, resumable, `--force`), `skv:bootstrap` for the Composer and installer hooks, `skv:doctor` (`--fix`, `--json`, also `composer doctor`), `skv:create-super-admin`, `skv:create-organisation` and `skv:flux-pro`.
+- A demo seeder with a super admin and the organisations `demo1` and `demo2`, each with an admin, a user and a pending invitation; it never runs in production.
+- An installer end-to-end CI job (`laravel new --using` with Herd's flags, then `skv:install`, `skv:doctor` and `composer check`) and `scripts/e2e-local.sh` to run it locally.
+
+### Changed
+- `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
+- `permissions:sync` also reports the permissions it strips from the super admin badge.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
