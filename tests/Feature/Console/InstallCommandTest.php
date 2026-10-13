@@ -1,0 +1,140 @@
+<?php
+
+declare(strict_types=1);
+
+/** covers §5.3.3, §5.3.2 */
+
+use App\Setup\Detector;
+use App\Setup\Marker;
+use App\Setup\SetupContext;
+use App\Setup\SetupRunner;
+use App\Setup\SetupStep;
+use App\Setup\StepResult;
+use App\Setup\Support\Bootstrap;
+use App\Setup\Support\EnvFile;
+use App\Setup\Support\Toolchain;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
+use Symfony\Component\Console\Output\BufferedOutput;
+
+beforeEach(function (): void {
+    Process::preventStrayProcesses();
+    Process::fake(['*' => Process::result('')]);
+    $this->sandbox = setupSandbox();
+    app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
+    app()->instance(SetupContext::class, $this->sandbox);
+    app()->instance(Bootstrap::class, new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home'))));
+    app()->instance(Detector::class, new Detector(new Toolchain($this->sandbox->path('home'))));
+    $this->previousConnection = config('database.default');
+});
+
+// afterEach, not beforeApplicationDestroyed: RefreshDatabase reads database.default again at teardown.
+afterEach(function (): void {
+    DB::purge('setup');
+    config(['database.default' => $this->previousConnection]);
+});
+
+/**
+ * Runs skv:install into its own buffer: the steps call Artisan themselves, which replaces Artisan::output().
+ *
+ * @param  array<string, mixed>  $parameters
+ * @return array{0: int, 1: string}
+ */
+$install = function (array $parameters): array {
+    $output = new BufferedOutput;
+    $exitCode = Artisan::call('skv:install', $parameters, $output);
+
+    return [$exitCode, $output->fetch()];
+};
+
+it('installs non-interactively from the e2e answers and writes the marker (§5.3.3, §7.2)', function () use ($install): void {
+    $answers = (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json'));
+
+    [$exitCode, $output] = $install(['--answers' => $answers, '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain(__('Summary'))->toContain('password')
+        ->and(Marker::exists($this->sandbox))->toBeTrue()
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_NAME'))->toBe('E2E App');
+});
+
+it('fails before any step when the super admin credentials are missing (§5.3.2)', function () use ($install): void {
+    [$exitCode, $output] = $install(['--answers' => json_encode(['start_with' => 'super_admin'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->not->toContain(__('Summary'))
+        ->and(Marker::exists($this->sandbox))->toBeFalse()
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_NAME'))->toBe('Laravel')
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_KEY'))->toBe('');
+});
+
+it('rejects answers that are not JSON (§5.3.2)', function () use ($install): void {
+    [$exitCode, $output] = $install(['--answers' => '{not json', '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(__('The --answers value is not valid JSON.'));
+});
+
+it('never prints the super admin password (RL-5)', function () use ($install): void {
+    [$exitCode, $output] = $install(['--answers' => json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('owner@example.com')
+        ->not->toContain('correct-horse-battery');
+});
+
+it('stops at the step that throws and writes no marker (RL-6)', function () use ($install): void {
+    // A schema dump makes the database step throw (§7.3).
+    mkdir($this->sandbox->path('database/schema'), 0755, true);
+    touch($this->sandbox->path('database/schema/pgsql-schema.sql'));
+
+    [$exitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(__('Setup stopped at :step: :message', [
+            'step' => __('Database'),
+            'message' => __('Remove database/schema/pgsql-schema.* first: setup runs plain migrations (§7.3).'),
+        ]))
+        ->and(Marker::exists($this->sandbox))->toBeFalse();
+});
+
+it('names only the driver message of a failed query, never its bindings (RL-6)', function () use ($install): void {
+    app()->instance(SetupRunner::class, new SetupRunner([new readonly class implements SetupStep
+    {
+        public function key(): string
+        {
+            return 'database';
+        }
+
+        public function label(): string
+        {
+            return 'Database';
+        }
+
+        public function isComplete(SetupContext $context): bool
+        {
+            return false;
+        }
+
+        public function isLong(): bool
+        {
+            return false;
+        }
+
+        public function run(SetupContext $context): StepResult
+        {
+            throw new QueryException('setup', 'insert into users (password) values (?)', ['$2y$12$secret-hash'], new PDOException('UNIQUE constraint failed: users.email'));
+        }
+    }]));
+
+    [$exitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('UNIQUE constraint failed: users.email')
+        ->not->toContain('secret-hash');
+});

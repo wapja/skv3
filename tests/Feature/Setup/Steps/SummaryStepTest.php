@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Setup\Answers;
 use App\Setup\StepResult;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\Toolchain;
 use Database\Seeders\DemoSeeder;
@@ -40,4 +41,13 @@ it('names the super admin login without a password (§5.3.3 step 11)', function 
 
     expect($summary['logins'])->toBe([['email' => 'owner@example.com', 'password' => null, 'url' => 'http://admin.'.$context->detection->host]])
         ->and(json_encode($summary, JSON_THROW_ON_ERROR))->not->toContain('correct-horse-battery');
+});
+
+it('lists the step notes without the Herd step prefix, then the setup notes (§5.3.3 step 11, RL-7)', function (): void {
+    $context = setupSandbox();
+    $context->results['database'] = StepResult::done('Database ready: SQLite');
+    $context->results['herd-site'] = StepResult::done(HerdSiteStep::SECURED.': Site secured with HTTPS');
+    $context->notes[] = 'Passkeys are off';
+
+    expect(Summary::build($context)['notes'])->toBe(['Database ready: SQLite', 'Site secured with HTTPS', 'Passkeys are off']);
 });

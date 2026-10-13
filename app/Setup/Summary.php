@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Setup;
 
 use App\Authorization\Role;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Support\EnvFile;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Support\Str;
@@ -51,10 +52,11 @@ final class Summary
             if ($result->isManual()) {
                 $manual[] = ['step' => $step, 'command' => (string) $result->command, 'reason' => $result->message];
             } elseif ($result->status === 'done' && $result->message !== '') {
-                $notes[] = $result->message;
+                // The Herd step's machine prefix (RL-7) is for skv:install, not for the owner.
+                $notes[] = Str::chopStart($result->message, HerdSiteStep::SECURED.': ');
             }
         }
 
-        return ['urls' => array_values(array_unique($urls)), 'logins' => $logins, 'manual' => $manual, 'notes' => $notes];
+        return ['urls' => array_values(array_unique($urls)), 'logins' => $logins, 'manual' => $manual, 'notes' => [...$notes, ...$context->notes]];
     }
 }

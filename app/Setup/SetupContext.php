@@ -10,6 +10,9 @@ final class SetupContext
     /** @var array<string, StepResult> results by step key, in run order */
     public array $results = [];
 
+    /** @var list<string> notes for the summary that belong to no single step (the passkeys consequence, RL-7) */
+    public array $notes = [];
+
     public function __construct(
         public readonly string $basePath,
         public Answers $answers,
