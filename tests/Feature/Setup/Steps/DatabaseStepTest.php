@@ -124,6 +124,18 @@ it('refuses to make a pending user the super admin (§5.3.3 step 2)', function (
         ->and((bool) DB::connection('setup')->table('users')->where('email', $invited)->value('is_super_admin'))->toBeFalse();
 });
 
+it('asks for a password when the super admin of an earlier install is gone (§5.3.3 step 2, DEC-30)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName(), [
+        'start_with' => 'super_admin',
+        'super_admin_email' => 'owner@example.com',
+    ]);
+
+    expect(fn (): mixed => new DatabaseStep()->run($context))->toThrow(RuntimeException::class, __('The super admin :email does not exist; pass super_admin_password to create it.', ['email' => 'owner@example.com']))
+        ->and(DB::connection('setup')->table('users')->where('email', 'owner@example.com')->exists())->toBeFalse()
+        ->and(is_file($context->path('.env.testing')))->toBeFalse();
+});
+
 it('is not complete before it ran (§5.3.1)', function (): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());

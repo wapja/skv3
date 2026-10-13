@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 /** covers §5.3.3, §5.3.2 */
 
+use App\Models\User;
 use App\Setup\Detector;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
+use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
@@ -137,4 +139,34 @@ it('names only the driver message of a failed query, never its bindings (RL-6)',
     expect($exitCode)->toBe(1)
         ->and($output)->toContain('UNIQUE constraint failed: users.email')
         ->not->toContain('secret-hash');
+});
+
+it('keeps the earlier install\'s answers on a re-run that leaves them out (§5.3.2, RL-6, DEC-30)', function () use ($install): void {
+    [$exitCode] = $install(['--answers' => json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    [$rerunExitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    /** @var array{start_with: string} $marker */
+    $marker = Marker::read($this->sandbox);
+
+    expect($exitCode)->toBe(0)
+        ->and($rerunExitCode)->toBe(0)
+        ->and($output)->not->toContain('superadmin@')
+        ->and(DB::connection(DatabaseStep::CONNECTION)->table('users')->where('is_super_admin', true)->pluck('email')->all())->toBe(['owner@example.com'])
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('MODULE_IMPERSONATION'))->toBe('false')
+        ->and($marker['start_with'])->toBe('super_admin');
+});
+
+it('refuses the default demo data next to an existing super admin unless asked for (§5.3.2, DEC-30)', function () use ($install): void {
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+
+    [$exitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(__('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.'))
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_KEY'))->toBe('')
+        ->and(Marker::exists($this->sandbox))->toBeFalse();
 });

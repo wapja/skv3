@@ -246,6 +246,11 @@ final class DatabaseStep implements SetupStep
             return;
         }
 
+        // A re-run keeps the earlier install's super admin without asking its password again (Answers, DEC-30).
+        if ($answers->superAdminPasswordHash === null) {
+            throw new RuntimeException(__('The super admin :email does not exist; pass super_admin_password to create it.', ['email' => $email]));
+        }
+
         DB::transaction(function () use ($answers, $email, $setSuperAdmin): void {
             $user = new User;
             // The hashed cast keeps a value that is already a hash (Answers hashes the password on entry, RL-5).

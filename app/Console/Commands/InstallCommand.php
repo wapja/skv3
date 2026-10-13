@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\User;
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
+use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Summary;
 use App\Setup\Support\Bootstrap;
+use App\Tenancy\Facades\Tenant;
 use Closure;
+use Database\Seeders\DemoSeeder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use JsonException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -31,7 +36,9 @@ use function Laravel\Prompts\text;
 /**
  * Sets the kit up from the terminal (§5.3.3, RL-6): asks the §5.3.2 questions (or takes --answers), validates them
  * before anything is written, runs the bootstrap as step 0 and then every setup step in order, and prints the
- * summary. A step that throws stops the run without writing the marker, so a re-run resumes at that step.
+ * summary. A step that throws stops the run without writing the marker, so a re-run resumes at that step. After an
+ * install, the marker's answers stand in for the defaults, so a re-run never switches the database, the modules or
+ * the start; the built-in demo default is refused next to an existing super admin (DEC-30).
  */
 #[Description('Set up the kit: environment, database, Herd, frontend, Claude and the summary (§5.3)')]
 #[Signature('skv:install {--answers= : JSON answers (§5.3.2)} {--force : Re-run complete steps}')]
@@ -44,7 +51,16 @@ final class InstallCommand extends Command
         $detection = $detector->detect();
 
         try {
-            $answers = Answers::fromArray($this->rawAnswers($detection, $folder), $detection, $folder);
+            $installed = $this->installedAnswers();
+        } catch (JsonException) {
+            $this->components->error(__('The marker :file is not valid JSON; fix or delete it.', ['file' => Marker::FILE]));
+
+            return self::FAILURE;
+        }
+
+        try {
+            $input = $this->rawAnswers($detection, $folder, $installed);
+            $answers = Answers::fromArray($input, $detection, $folder, $installed);
         } catch (JsonException) {
             $this->components->error(__('The --answers value is not valid JSON.'));
 
@@ -55,6 +71,16 @@ final class InstallCommand extends Command
                     $this->components->error($message);
                 }
             }
+
+            return self::FAILURE;
+        }
+
+        // Only the built-in default, never a chosen or installed start: demo data would add a super admin whose
+        // password everyone knows next to the owner's own.
+        $demoByDefault = $answers->startWith === 'demo' && ! array_key_exists('start_with', $input) && ! array_key_exists('start_with', $installed);
+
+        if ($demoByDefault && $this->ownSuperAdminExists($detection)) {
+            $this->components->error(__('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.'));
 
             return self::FAILURE;
         }
@@ -83,13 +109,41 @@ final class InstallCommand extends Command
     }
 
     /**
-     * The raw answers: --answers, else the interactive form, else none (every default applies).
+     * The public answers of an earlier install, from the marker, or none on a first install. A re-run takes every
+     * answer it is not given from here instead of from the §5.3.2 defaults, which describe a first install (DEC-30).
      *
+     * @return array<string, mixed>
+     *
+     * @throws JsonException when the marker is not valid JSON
+     */
+    private function installedAnswers(): array
+    {
+        $marker = Marker::read(app(SetupContext::class));
+
+        return is_array($marker['answers'] ?? null) ? $marker['answers'] : [];
+    }
+
+    /** A super admin other than the demo one, in the database the app opens now; none when it cannot be read. */
+    private function ownSuperAdminExists(Detection $detection): bool
+    {
+        $demoSuperAdmins = [DemoSeeder::accounts()[0]['email'], DemoSeeder::accounts($detection->host)[0]['email']];
+
+        try {
+            return Tenant::bypass(fn (): bool => User::query()->where('is_super_admin', true)->whereNotIn('email', $demoSuperAdmins)->exists());
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * The raw answers: --answers, else the interactive form, else none (the installed answers, then the defaults apply).
+     *
+     * @param  array<string, mixed>  $installed
      * @return array<string, mixed>
      *
      * @throws JsonException
      */
-    private function rawAnswers(Detection $detection, string $folder): array
+    private function rawAnswers(Detection $detection, string $folder, array $installed): array
     {
         $json = $this->option('answers');
 
@@ -104,23 +158,29 @@ final class InstallCommand extends Command
             return $input;
         }
 
-        return $this->input->isInteractive() ? $this->askQuestions(Answers::defaults($detection, $folder)) : [];
+        return $this->input->isInteractive() ? $this->askQuestions(Answers::fromArray([], $detection, $folder, $installed)) : [];
     }
 
     /**
-     * The §5.3.2 questions in order, pre-filled with the defaults; the super-admin login only for start_with=super_admin.
+     * The §5.3.2 questions in order, pre-filled with the defaults (an earlier install's answers on a re-run); the
+     * super-admin login only for start_with=super_admin, its password optional for the super admin installed before.
      *
      * @return array<string, mixed>
      */
     private function askQuestions(Answers $defaults): array
     {
+        $isInstalledSuperAdmin = fn (array $responses): bool => $defaults->superAdminEmail !== null
+            && Str::lower(trim((string) $responses['super_admin_email'])) === $defaults->superAdminEmail;
+
         /** @var array<string, mixed> $responses */
         $responses = form()
             ->text(__('App name'), default: $defaults->appName, required: true, name: 'app_name')
             ->select(__('Database'), ['pgsql' => 'PostgreSQL', 'sqlite' => 'SQLite'], default: $defaults->database, name: 'database')
             ->select(__('Start with'), ['demo' => __('Demo data'), 'super_admin' => __('My own super admin')], default: $defaults->startWith, name: 'start_with')
-            ->addIf(fn (array $responses): bool => $responses['start_with'] === 'super_admin', fn (): string => text(__('Super admin email'), required: true), 'super_admin_email')
-            ->addIf(fn (array $responses): bool => $responses['start_with'] === 'super_admin', fn (): string => password(__('Super admin password'), required: true), 'super_admin_password')
+            ->addIf(fn (array $responses): bool => $responses['start_with'] === 'super_admin', fn (): string => text(__('Super admin email'), default: $defaults->superAdminEmail ?? '', required: true), 'super_admin_email')
+            ->addIf(fn (array $responses): bool => $responses['start_with'] === 'super_admin', fn (array $responses): string => $isInstalledSuperAdmin($responses)
+                ? password(__('Super admin password'), hint: __('Leave empty to keep the current password.'))
+                : password(__('Super admin password'), required: true), 'super_admin_password')
             ->multiselect(__('Modules'), ['passkeys' => __('Passkeys'), 'backups' => __('Backups'), 'impersonation' => __('Impersonation')], default: $defaults->modules, name: 'modules')
             ->confirm(__('Use HTTPS'), default: $defaults->https, name: 'https')
             ->confirm(__('Install Playwright'), default: $defaults->playwright, name: 'playwright')

@@ -89,3 +89,25 @@ it('rejects an app name the environment file cannot hold literally', function (s
     'a newline' => ["Shop\nINJECTED=true"],
     'a tab' => ["Shop\tName"],
 ]);
+
+it('takes every answer it is not given from the earlier install, not from the defaults (§5.3.2, DEC-30)', function (): void {
+    $withPostgres = new Detection(herd: true, herdPro: true, herdMail: true, herdSmtpPort: 2525, postgres: true, fluxPro: false, claude: true, host: 'my-app.test', scheme: 'http');
+    $installed = ['app_name' => 'Owner App', 'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'modules' => [], 'https' => false, 'playwright' => false, 'claude' => false];
+
+    $answers = Answers::fromArray(['app_name' => 'Renamed'], $withPostgres, 'my-app', $installed);
+
+    expect($answers->appName)->toBe('Renamed')
+        ->and($answers->database)->toBe('sqlite')
+        ->and($answers->startWith)->toBe('super_admin')
+        ->and($answers->superAdminEmail)->toBe('owner@example.com')
+        ->and($answers->superAdminPasswordHash)->toBeNull()
+        ->and($answers->modules)->toBe([])
+        ->and($answers->https)->toBeFalse()
+        ->and($answers->claude)->toBeFalse();
+});
+
+it('still requires a password for a super admin the earlier install did not create (§5.3.2)', function (): void {
+    $installed = ['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com'];
+
+    Answers::fromArray(['super_admin_email' => 'someone-else@example.com'], Detection::none(), 'tmp', $installed);
+})->throws(ValidationException::class);

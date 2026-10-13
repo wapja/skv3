@@ -39,17 +39,32 @@ final readonly class Answers
      * app_name may not hold control characters, a double quote, a dollar sign or a backslash, so EnvFile writes it
      * to .env literally (double-quoted, no escapes, no ${VAR} interpolation).
      *
+     * $installed holds the public answers of an earlier install (the marker's): every key $input leaves out comes
+     * from there instead of from the defaults, so a re-run keeps the project as it was set up (DEC-30). The super
+     * admin that install created needs no password again; the database step only promotes an existing account.
+     *
      * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>  $installed
      *
      * @throws ValidationException
      */
-    public static function fromArray(array $input, Detection $detection, string $folderName): self
+    public static function fromArray(array $input, Detection $detection, string $folderName, array $installed = []): self
     {
         $unknown = array_diff(array_keys($input), self::KEYS);
 
         if ($unknown !== []) {
             throw ValidationException::withMessages(['answers' => __('Unknown setup answers: :keys', ['keys' => implode(', ', $unknown)])]);
         }
+
+        $notNull = fn (mixed $value): bool => $value !== null;
+        $installed = array_filter(array_intersect_key($installed, array_flip(array_diff(self::KEYS, ['super_admin_password']))), $notNull);
+
+        // An empty password prompt (the installed super admin's is optional) counts as no password.
+        if (($input['super_admin_password'] ?? null) === '') {
+            unset($input['super_admin_password']);
+        }
+
+        $input = array_filter($input, $notNull);
 
         $values = array_merge([
             'app_name' => Str::headline($folderName),
@@ -61,7 +76,12 @@ final readonly class Answers
             'https' => true,
             'playwright' => false,
             'claude' => $detection->claude,
-        ], array_filter($input, fn (mixed $value): bool => $value !== null));
+        ], $installed, $input);
+
+        $isInstalledSuperAdmin = ($installed['start_with'] ?? null) === 'super_admin'
+            && is_string($installed['super_admin_email'] ?? null)
+            && is_string($values['super_admin_email'])
+            && Str::lower(trim($values['super_admin_email'])) === Str::lower(trim($installed['super_admin_email']));
 
         /** @var array{app_name: string, database: string, start_with: string, super_admin_email: ?string, super_admin_password: ?string, modules: list<string>, https: bool, playwright: bool, claude: bool} $valid */
         $valid = Validator::make($values, [
@@ -69,7 +89,7 @@ final readonly class Answers
             'database' => ['required', Rule::in(['pgsql', 'sqlite'])],
             'start_with' => ['required', Rule::in(['demo', 'super_admin'])],
             'super_admin_email' => ['nullable', 'required_if:start_with,super_admin', 'email', 'max:255'],
-            'super_admin_password' => ['nullable', 'required_if:start_with,super_admin', 'string', 'min:8'],
+            'super_admin_password' => ['nullable', Rule::requiredIf($values['start_with'] === 'super_admin' && ! $isInstalledSuperAdmin), 'string', 'min:8'],
             'modules' => ['present', 'array'],
             'modules.*' => [Rule::in(self::MODULES)],
             'https' => ['required', 'boolean'],
@@ -90,7 +110,7 @@ final readonly class Answers
             database: $valid['database'],
             startWith: $valid['start_with'],
             superAdminEmail: $usesSuperAdmin ? Str::lower(trim((string) $valid['super_admin_email'])) : null,
-            superAdminPasswordHash: $usesSuperAdmin ? Hash::make((string) $valid['super_admin_password']) : null,
+            superAdminPasswordHash: $usesSuperAdmin && $valid['super_admin_password'] !== null ? Hash::make($valid['super_admin_password']) : null,
             modules: $modules,
             https: (bool) $valid['https'] || in_array('passkeys', $modules, true),
             playwright: (bool) $valid['playwright'],
