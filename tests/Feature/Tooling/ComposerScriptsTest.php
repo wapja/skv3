@@ -55,3 +55,10 @@ it('sets up through skv:bootstrap and skv:install (§5.3.3)', function (): void 
         '@php artisan skv:install',
     ]);
 });
+
+it('sets the hooks path in a git worktree too (DEC-25)', function (): void {
+    /** @var array{scripts: array<string, list<string>>} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    expect(implode("\n", $composer['scripts']['setup']))->not->toContain("is_dir('.git')");
+});
