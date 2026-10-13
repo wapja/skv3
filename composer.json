@@ -94,6 +94,9 @@
             "@php artisan config:clear --ansi",
             "pest --testsuite=Browser"
         ],
+        "doctor": [
+            "@php artisan skv:doctor --ansi"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

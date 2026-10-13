@@ -22,11 +22,12 @@ use stdClass;
  */
 final readonly class ClaudeStep implements SetupStep
 {
+    /** The plugin id in `.claude/settings.json` enabledPlugins and in `claude plugin list`; the doctor checks it too. */
+    public const string PLUGIN = 'superpowers@superpowers-marketplace';
+
     private const string BOOST_CONSTRAINT = '^2.10';
 
     private const string BOOST_UPDATE = '@php artisan boost:update --ansi';
-
-    private const string PLUGIN = 'superpowers@superpowers-marketplace';
 
     private const string HERD_APP_PHAR = '/Applications/Herd.app/Contents/Resources/herd-mcp.phar';
 

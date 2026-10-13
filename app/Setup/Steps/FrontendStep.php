@@ -40,6 +40,34 @@ final readonly class FrontendStep implements SetupStep
         return (version_compare($v, '20.19.0', '>=') && version_compare($v, '21.0.0', '<')) || version_compare($v, '22.12.0', '>=');
     }
 
+    /**
+     * The manifest exists and is newer than every file under resources/css and resources/js, and package-lock.json.
+     * The doctor's `assets` check uses the same rule (§5.4).
+     */
+    public static function manifestIsCurrent(string $basePath): bool
+    {
+        $path = fn (string $relative): string => rtrim($basePath, '/').'/'.$relative;
+        $manifest = $path('public/build/manifest.json');
+
+        if (! is_file($manifest)) {
+            return false;
+        }
+
+        $sources = is_file($path('package-lock.json')) ? [$path('package-lock.json')] : [];
+
+        foreach (['resources/css', 'resources/js'] as $directory) {
+            if (is_dir($path($directory))) {
+                foreach (File::allFiles($path($directory)) as $file) {
+                    $sources[] = $file->getPathname();
+                }
+            }
+        }
+
+        $builtAt = (int) filemtime($manifest);
+
+        return array_all($sources, fn (string $source): bool => (int) filemtime($source) <= $builtAt);
+    }
+
     public function key(): string
     {
         return 'frontend';
@@ -52,7 +80,7 @@ final readonly class FrontendStep implements SetupStep
 
     public function isComplete(SetupContext $context): bool
     {
-        return $this->manifestIsCurrent($context)
+        return self::manifestIsCurrent($context->basePath)
             && (! $context->answers->playwright || is_file($context->path('node_modules/.bin/playwright')));
     }
 
@@ -75,7 +103,7 @@ final readonly class FrontendStep implements SetupStep
 
         $npm = $this->toolchain->which('npm') ?? 'npm';
 
-        if (! $this->manifestIsCurrent($context)) {
+        if (! self::manifestIsCurrent($context->basePath)) {
             foreach ([[$npm, 'ci'], [$npm, 'run', 'build']] as $command) {
                 $failure = $this->failure($context, $command);
 
@@ -118,30 +146,6 @@ final readonly class FrontendStep implements SetupStep
         $lines = array_filter(array_map(trim(...), preg_split('/\R/', $result->output()."\n".$result->errorOutput()) ?: []));
 
         return $lines === [] ? __('The command failed (exit code :code).', ['code' => $result->exitCode()]) : end($lines);
-    }
-
-    /** The manifest exists and is newer than every file under resources/css and resources/js, and package-lock.json. */
-    private function manifestIsCurrent(SetupContext $context): bool
-    {
-        $manifest = $context->path('public/build/manifest.json');
-
-        if (! is_file($manifest)) {
-            return false;
-        }
-
-        $sources = is_file($context->path('package-lock.json')) ? [$context->path('package-lock.json')] : [];
-
-        foreach (['resources/css', 'resources/js'] as $directory) {
-            if (is_dir($context->path($directory))) {
-                foreach (File::allFiles($context->path($directory)) as $file) {
-                    $sources[] = $file->getPathname();
-                }
-            }
-        }
-
-        $builtAt = (int) filemtime($manifest);
-
-        return array_all($sources, fn (string $source): bool => (int) filemtime($source) <= $builtAt);
     }
 
     private function process(SetupContext $context, int $timeout): PendingProcess

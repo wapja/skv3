@@ -78,6 +78,25 @@ final readonly class HerdSiteStep implements SetupStep
         }
     }
 
+    /**
+     * Whether Herd serves this project: parked, or linked to this path (the doctor's `herd-site` check). False without
+     * the herd binary; a Herd command that hangs throws ProcessTimedOutException.
+     */
+    public function servesProject(SetupContext $context): bool
+    {
+        $herd = $this->toolchain->herd();
+
+        return $herd !== null && $this->siteState($context, $herd) === self::SERVED;
+    }
+
+    /** Whether `herd secured` lists this project's site (the doctor's `herd-secured` check); false without the herd binary. */
+    public function securesProject(SetupContext $context): bool
+    {
+        $herd = $this->toolchain->herd();
+
+        return $herd !== null && $this->isSecured($context, $herd);
+    }
+
     public function isLong(): bool
     {
         return false;

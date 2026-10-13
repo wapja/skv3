@@ -6,6 +6,8 @@ namespace App\Providers;
 
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
+use App\Setup\Detector;
+use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\Toolchain;
 use App\Support\FluxProBranches;
@@ -38,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
         AliasLoader::getInstance()->alias('Skv', Skv::class);
 
         $this->app->bind(Bootstrap::class, fn (Application $app): Bootstrap => new Bootstrap($app->basePath(), $app->make(Toolchain::class)));
+        // skv:doctor examines the running application; tests bind a sandbox context instead (§5.4).
+        $this->app->bind(DoctorContext::class, fn (Application $app): DoctorContext => DoctorContext::forApplication($app->make(Toolchain::class), $app->make(Detector::class)));
 
         $this->configureModules();
     }
