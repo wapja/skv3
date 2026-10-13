@@ -146,6 +146,9 @@ it('enables Flux Pro in CI only when the secrets exist, before any view compiles
         ->not->toContain('secrets.FLUX_USERNAME }}')
         ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
         ->and(substr_count($check, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
+        // Workflow-wide: one Flux Pro step in check and one in e2e, so no workflow-level env or browser step maps them.
+        ->and(substr_count($workflow, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(2)
+        ->and(substr_count($workflow, 'secrets.FLUX_USERNAME }}'))->toBe(2)
         ->and($step)
         ->toContain("if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'")
         ->toContain('FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}')
