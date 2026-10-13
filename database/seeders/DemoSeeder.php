@@ -19,6 +19,7 @@ use App\Tenancy\Facades\Tenant;
 use App\Tenancy\Hosts;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -35,15 +36,19 @@ final class DemoSeeder extends Seeder
     /** The custom role of the demo user and the pending invitation (RL-8: InviteUser needs at least one role). */
     private const string MEMBER_ROLE = 'Member';
 
-    /** @return list<array{email: string, role: string, host: string}> */
-    public static function accounts(): array
+    /**
+     * @param  string|null  $apex  the apex to derive emails and hosts from; null reads the configured one (setup passes its detected host)
+     * @return list<array{email: string, role: string, host: string}>
+     */
+    public static function accounts(?string $apex = null): array
     {
-        $apex = Hosts::apex();
-        $accounts = [['email' => "superadmin@{$apex}", 'role' => Role::SuperAdmin->value, 'host' => Hosts::admin()]];
+        $apex = $apex === null ? Hosts::apex() : Str::lower($apex);
+        $adminHost = Str::lower((string) config('tenancy.admin_subdomain')).'.'.$apex;
+        $accounts = [['email' => "superadmin@{$apex}", 'role' => Role::SuperAdmin->value, 'host' => $adminHost]];
 
         foreach (self::SLUGS as $slug) {
-            $accounts[] = ['email' => "admin@{$slug}.{$apex}", 'role' => Role::OrganisationAdmin->value, 'host' => Hosts::tenant($slug)];
-            $accounts[] = ['email' => "user@{$slug}.{$apex}", 'role' => self::MEMBER_ROLE, 'host' => Hosts::tenant($slug)];
+            $accounts[] = ['email' => "admin@{$slug}.{$apex}", 'role' => Role::OrganisationAdmin->value, 'host' => "{$slug}.{$apex}"];
+            $accounts[] = ['email' => "user@{$slug}.{$apex}", 'role' => self::MEMBER_ROLE, 'host' => "{$slug}.{$apex}"];
         }
 
         return $accounts;
