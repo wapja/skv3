@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §8 */
 
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
@@ -17,9 +18,14 @@ it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
         ->and(file_exists(base_path('.github/workflows/ci.yml')))->toBeFalse();
 });
 
-it('never references Flux Pro in the committed composer files', function (): void {
-    expect(file_get_contents(base_path('composer.json')))->not->toContain('flux-pro')
-        ->and(file_get_contents(base_path('composer.lock')))->not->toContain('flux-pro');
+it('never references Flux Pro in the committed composer files (committed)', function (): void {
+    // A CI job that ran skv:flux-pro has flux-pro in its working tree, so read what is committed (§6.7).
+    $committed = fn (string $file): string => file_exists(base_path('.git'))
+        ? Process::path(base_path())->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
+        : (string) file_get_contents(base_path($file));
+
+    expect($committed('composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
+        ->and($committed('composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
 });
 
 it('reports abandoned packages in composer audit instead of failing', function (): void {
@@ -100,4 +106,16 @@ it('caches Composer and the Playwright browsers in the browser job and keeps fai
         ->toContain('npx playwright install-deps chromium')
         ->toContain('retention-days: 7')
         ->and(preg_match_all('/uses: actions\/cache@[0-9a-f]{40}/', $browser))->toBe(2);
+});
+
+it('enables Flux Pro in CI only when the secrets exist, before any view compiles (§6.7, §8)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+
+    expect($workflow)
+        ->toContain('FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}')
+        ->toContain('FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}')
+        ->toContain("if: env.FLUX_USERNAME != '' && matrix.db == 'pgsql'")
+        ->toContain('composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"')
+        ->toContain('php artisan skv:flux-pro --no-interaction')
+        ->and(Str::before($workflow, 'composer check'))->toContain('skv:flux-pro');
 });
