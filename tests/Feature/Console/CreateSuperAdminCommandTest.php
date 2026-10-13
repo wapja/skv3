@@ -47,6 +47,32 @@ it('promotes an existing user through SetSuperAdmin (RL-9)', function (): void {
         ->and(recordedActivity(ActivityEvent::SuperAdminGranted))->toHaveCount(1);
 });
 
+it('applies a given name and password to an existing user it promotes (RL-9)', function (): void {
+    $member = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->create(['email' => 'member@example.com', 'name' => 'Old Name', 'password' => 'old-password-123']);
+    $rememberToken = $member->remember_token;
+
+    expect(Artisan::call('skv:create-super-admin', ['email' => 'member@example.com', '--name' => 'New Name', '--password' => 'correct-horse-battery', '--no-interaction' => true]))->toBe(0)
+        ->and(Artisan::output())->not->toContain('correct-horse-battery');
+
+    $member = $member->fresh();
+
+    expect($member?->isSuperAdmin())->toBeTrue()
+        ->and($member?->name)->toBe('New Name')
+        ->and(Hash::check('correct-horse-battery', (string) $member?->password))->toBeTrue()
+        ->and($member?->remember_token)->not->toBe($rememberToken)
+        ->and(recordedActivity(ActivityEvent::PasswordChanged))->toHaveCount(1)
+        ->and(recordedActivity(ActivityEvent::UserUpdated))->toHaveCount(1);
+});
+
+it('keeps an existing user\'s password when the new one is too weak (RL-9)', function (): void {
+    $member = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->create(['email' => 'member@example.com', 'password' => 'old-password-123']);
+
+    expect(Artisan::call('skv:create-super-admin', ['email' => 'member@example.com', '--password' => 'short', '--no-interaction' => true]))->toBe(1);
+
+    expect($member->fresh()?->isSuperAdmin())->toBeFalse()
+        ->and(Hash::check('old-password-123', (string) $member->fresh()?->password))->toBeTrue();
+});
+
 it('refuses a user who is not active (RL-9)', function (): void {
     $pending = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->pending()->create(['email' => 'invited@example.com']);
 

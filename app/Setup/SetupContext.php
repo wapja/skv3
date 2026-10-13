@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Setup;
 
+use App\Setup\Support\EnvFile;
+use Illuminate\Support\Facades\Crypt;
+
 /** Where setup writes and what it was told (RL-2): steps resolve every file through path(), never base_path(). */
 final class SetupContext
 {
@@ -33,5 +36,37 @@ final class SetupContext
     public function folderName(): string
     {
         return basename($this->basePath);
+    }
+
+    /**
+     * Points the running process at what setup wrote to .env, as the next process will boot: the application key
+     * (step 0 writes it after boot, and the demo invitations are encrypted with it) and the address, apex and admin
+     * subdomain (step 1 writes the detected host, from which the demo seeder derives its emails). An empty key is
+     * never applied. Mirrors config/app.php and config/tenancy.php.
+     */
+    public function syncRuntimeConfig(): void
+    {
+        $env = new EnvFile($this->path('.env'));
+
+        if (! $env->exists()) {
+            return;
+        }
+
+        $key = (string) $env->get('APP_KEY');
+
+        if ($key !== '' && $key !== config('app.key')) {
+            config(['app.key' => $key]);
+            app()->forgetInstance('encrypter');
+            Crypt::clearResolvedInstance('encrypter');
+        }
+
+        $url = (string) $env->get('APP_URL');
+        $urlHost = parse_url($url, PHP_URL_HOST);
+
+        config([
+            'app.url' => $url !== '' ? $url : config('app.url'),
+            'tenancy.apex_domain' => $env->get('TENANCY_APEX_DOMAIN') ?: (is_string($urlHost) && $urlHost !== '' ? $urlHost : 'localhost'),
+            'tenancy.admin_subdomain' => $env->get('TENANCY_ADMIN_SUBDOMAIN') ?: 'admin',
+        ]);
     }
 }

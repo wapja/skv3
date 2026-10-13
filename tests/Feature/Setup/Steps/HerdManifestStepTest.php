@@ -51,3 +51,18 @@ it('is complete once herd.yml matches the answers (§5.3.1)', function (): void 
     $context->answers = $context->answers->withHttps(false)->withModules([]);
     expect($step->isComplete($context))->toBeFalse();
 });
+
+it('keeps the top-level keys it does not write, such as a Forge link (§5.3.3 step 3, DEC-30)', function (): void {
+    $context = setupSandbox();
+    file_put_contents($context->path('herd.yml'), "name: old-name\nphp: '8.3'\nsecured: true\naliases:\n- legacy\nintegrations:\n  forge:\n    server-id: 123\n    site-id: 456\n");
+    $step = new HerdManifestStep;
+
+    $step->run($context);
+    $manifest = Yaml::parseFile($context->path('herd.yml'));
+
+    expect($manifest['name'])->toBe($context->folderName())
+        ->and($manifest['php'])->toBe('8.4')
+        ->and($manifest['aliases'])->toBe(['legacy'])
+        ->and($manifest['integrations']['forge'] ?? null)->toBe(['server-id' => 123, 'site-id' => 456])
+        ->and($step->isComplete($context))->toBeTrue();
+});

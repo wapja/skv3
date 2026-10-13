@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Setup\Steps;
 
+use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\ActivityEvent;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\User;
@@ -87,9 +89,11 @@ final class DatabaseStep implements SetupStep
                 return false;
             }
 
+            // A password in the answers is applied on every run, also to an account that exists (createSuperAdmin()).
             return $answers->startWith === 'demo'
                 ? DB::connection(self::CONNECTION)->table('organisations')->whereIn('slug', DemoSeeder::SLUGS)->count() === count(DemoSeeder::SLUGS)
-                : DB::connection(self::CONNECTION)->table('users')->where('email', $answers->superAdminEmail)->where('is_super_admin', true)->exists();
+                : $answers->superAdminPasswordHash === null
+                    && DB::connection(self::CONNECTION)->table('users')->where('email', $answers->superAdminEmail)->where('is_super_admin', true)->exists();
         } catch (Throwable) {
             return false;
         } finally {
@@ -227,7 +231,9 @@ final class DatabaseStep implements SetupStep
 
     /**
      * The real super admin (§5.3.3 step 2): an existing user is promoted, a new one is inserted with the flag (W8)
-     * and completed by handleCreated(), in one transaction, so it never exists without the badge and the grant.
+     * and completed by handleCreated(), in one transaction, so it never exists without the badge and the grant. A
+     * password given for an existing account replaces its own (a demo account's shared one too): its remember token
+     * changes and PasswordChanged is recorded, and AuthenticateSession signs its other sessions out.
      */
     private function createSuperAdmin(Answers $answers): void
     {
@@ -241,7 +247,15 @@ final class DatabaseStep implements SetupStep
                 throw new RuntimeException(__('Only an active user can become a super admin; :email is :status.', ['email' => $email, 'status' => $existing->status->label()]));
             }
 
-            $setSuperAdmin->handle($existing, true);
+            DB::transaction(function () use ($answers, $existing, $setSuperAdmin): void {
+                $setSuperAdmin->handle($existing, true);
+
+                if ($answers->superAdminPasswordHash !== null) {
+                    // The hashed cast keeps a value that is already a hash (Answers hashes the password on entry, RL-5).
+                    $existing->forceFill(['password' => $answers->superAdminPasswordHash, 'remember_token' => Str::random(60)])->save();
+                    app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $existing);
+                }
+            });
 
             return;
         }

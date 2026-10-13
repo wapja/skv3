@@ -41,9 +41,9 @@ The first two routes install the package from Packagist, so they work once it is
 
 | Command | What it does |
 |---|---|
-| `php artisan skv:install [--answers=JSON] [--no-interaction] [--force]` | Runs the setup steps in order. Complete steps are skipped unless `--force`; a re-run keeps the answers of the earlier install. A step that cannot run prints its command to run yourself. |
+| `php artisan skv:install [--answers=JSON] [--no-interaction] [--force]` | Runs the setup steps in order. Complete steps are skipped unless `--force`; a re-run keeps the answers of the earlier install and names the `.env` keys it changed. A step that cannot run prints its command to run yourself. |
 | `php artisan skv:doctor [--fix] [--json]` | Checks the installation and prints the fix for every problem. Green means no `fail`. `--fix` performs only the safe repairs (`permissions:sync`, flag and role drift, `storage:link`, `core.hooksPath`, the asset build). `--json` prints the report and exits 1 when it is not green. |
-| `php artisan skv:create-super-admin` | Creates a super admin, or promotes an existing active user. Prompts for what is missing; with `--no-interaction` the email and `--password` are required. |
+| `php artisan skv:create-super-admin` | Creates a super admin, or promotes an existing active user; a `--name` or `--password` given for an existing user replaces its own. Prompts for what is missing; with `--no-interaction` the email and `--password` are required for a new user. |
 | `php artisan skv:create-organisation` | Creates an organisation and invites its first admin. Needs an active super admin. |
 | `php artisan skv:flux-pro` | Installs Flux Pro with your own Composer credentials (see [Flux Pro](#flux-pro)). |
 | `php artisan permissions:sync` | Syncs the permission catalogue and the system roles, and prints every change it made. |
@@ -63,7 +63,7 @@ The first two routes install the package from Packagist, so they work once it is
 | `playwright` | bool | false |
 | `claude` | bool | true if `claude` is on PATH, else false |
 
-After an install, the answers of that install take the place of these defaults on a re-run, and the super admin it created needs no password again.
+After an install, the answers of that install take the place of these defaults on a re-run, and the super admin it created needs no password again. Every run that finishes stores its answers, so the next re-run keeps what it changed. The `MODULE_*` flags in `.env` stand in for the `modules` answer, so a module you switched in `.env` stays switched. A `super_admin_password` given for an account that already exists replaces its password, also a demo account's.
 
 ## Demo accounts
 
@@ -102,7 +102,7 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 ## AI
 
 - `.claude/settings.json` denies dangerous commands with Bash deny rules, but a deny rule cannot stop every bypass (for example `--env`, `/usr/bin/php` or `sh -c`), as the Claude Code documentation says (DEC-25).
-- Setup registers the Herd MCP server as `herd` in `.mcp.json`, so the deny on `mcp__herd__get_all_sites` applies.
+- Setup registers the Herd MCP server as `herd` in `.mcp.json`, so the deny on `mcp__herd__get_all_sites` applies. It registers it without `SITE_PATH`: with that variable (Herd's own AI integration adds it) the server also offers the tool `get_site_information` and the resource `herd://sites/information`, which return this site's `.env`, and, when `herd.yml` links a Forge site, tools that return the Forge site's environment and deployment output. `.claude/settings.json` does not deny those, so leave `SITE_PATH` out.
 - Project plugins (superpowers) activate only after you accept Claude Code's workspace-trust dialog (§9).
 
 ## Develop the kit

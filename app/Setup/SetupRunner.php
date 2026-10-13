@@ -17,11 +17,15 @@ use App\Setup\Steps\MarkerStep;
 use App\Setup\Steps\SummaryStep;
 use App\Setup\Support\EnvFile;
 use Closure;
+use Illuminate\Support\Str;
 
 /**
  * Runs the setup steps of §5.3.3 in order (RL-6): a complete step is skipped unless forced, a manual() result never
- * stops the run, and a step that throws stops it before the next one. After the Herd step has run, a site that was
- * not secured switches the passkeys module off (RL-7). The CLI runs the whole list; M6b drives it one step per request.
+ * stops the run, and a step that throws stops it before the next one. Before the first step and after every step,
+ * the process's runtime config follows what the steps wrote to .env. After the Herd step has run, a site that was
+ * not secured switches the passkeys module off (RL-7). A run that finishes rewrites an existing marker with its
+ * answers, so the next re-run keeps what this one changed, and a re-run names the .env keys it changed (DEC-30). The
+ * CLI runs the whole list; M6b drives it one step per request.
  */
 final readonly class SetupRunner
 {
@@ -49,6 +53,10 @@ final readonly class SetupRunner
     /** @param  (Closure(SetupStep, Closure(): StepResult): StepResult)|null  $around  wraps each step (the CLI's task() spinner) */
     public function run(SetupContext $context, ?Closure $around = null): SetupContext
     {
+        $environment = new EnvFile($context->path('.env'));
+        $before = Marker::exists($context) ? $environment->all() : null;
+        $context->syncRuntimeConfig();
+
         foreach ($this->steps() as $step) {
             $wasComplete = ! $context->force && $step->isComplete($context);
             $execute = fn (): StepResult => $wasComplete ? StepResult::skipped(__('Already done')) : $step->run($context);
@@ -59,6 +67,21 @@ final readonly class SetupRunner
             if ($step->key() === 'herd-site' && ! $wasComplete) {
                 $this->applyHttpsConsequence($context);
             }
+
+            $context->syncRuntimeConfig();
+        }
+
+        if ($before !== null) {
+            $after = $environment->all();
+            $changed = array_keys(array_diff_assoc($after, $before) + array_diff_assoc($before, $after));
+
+            if ($changed !== []) {
+                $context->notes[] = __('Setup changed :keys in .env.', ['keys' => implode(', ', $changed)]);
+            }
+        }
+
+        if (Marker::exists($context)) {
+            Marker::write($context, Summary::build($context));
         }
 
         return $context;
@@ -67,13 +90,15 @@ final readonly class SetupRunner
     /**
      * §6.8, RL-7: passkeys need HTTPS. When they were chosen but the Herd step did not secure the site, the module is
      * switched off in .env and in the answers, the summary says how to turn it back on, and an existing marker is
-     * rewritten so its answers and notes match .env (the doctor then no longer expects a certificate).
+     * rewritten so its answers and notes match .env (the doctor then no longer expects a certificate). Without Herd,
+     * an APP_URL that already is https on the detected host is served over HTTPS by something else (a TLS-terminating
+     * proxy), so APP_URL does not stay http (§5.3.4) and passkeys stay on.
      */
     public function applyHttpsConsequence(SetupContext $context): void
     {
         $message = $context->results['herd-site']->message ?? '';
 
-        if (! $context->answers->moduleEnabled('passkeys') || str_starts_with($message, HerdSiteStep::SECURED)) {
+        if (! $context->answers->moduleEnabled('passkeys') || str_starts_with($message, HerdSiteStep::SECURED) || $this->servedOverHttpsWithoutHerd($context)) {
             return;
         }
 
@@ -88,5 +113,14 @@ final readonly class SetupRunner
         if (Marker::exists($context)) {
             Marker::write($context, Summary::build($context));
         }
+    }
+
+    private function servedOverHttpsWithoutHerd(SetupContext $context): bool
+    {
+        $appUrl = (string) new EnvFile($context->path('.env'))->get('APP_URL');
+
+        return ! $context->detection->herd
+            && parse_url($appUrl, PHP_URL_SCHEME) === 'https'
+            && Str::lower((string) parse_url($appUrl, PHP_URL_HOST)) === Str::lower($context->detection->host);
     }
 }

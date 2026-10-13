@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 /** covers §5.3.3 */
 
+use App\Setup\Answers;
+use App\Setup\Detection;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
+use App\Setup\Steps\EnvironmentStep;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
@@ -143,6 +147,34 @@ it('applies the HTTPS consequence after a Herd step that ran without securing th
     $context = setupSandbox();
 
     new SetupRunner([$fakeStep('herd-site', new ArrayObject, StepResult::manual('herd secure x', 'not confirmed'))])->run($context);
+
+    expect(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false')
+        ->and($context->answers->moduleEnabled('passkeys'))->toBeFalse();
+});
+
+it('keeps passkeys on without Herd when APP_URL already is https on the detected host (§5.3.4, RL-7)', function (): void {
+    // A TLS-terminating deployment: no Herd, served over https by something else.
+    $detection = Detection::none('app.example.com');
+    $context = setupSandbox($detection);
+    $context->answers = Answers::fromArray(['modules' => ['passkeys']], $detection, $context->folderName());
+    new EnvFile($context->path('.env'))->set(['APP_URL' => 'https://app.example.com']);
+
+    new SetupRunner([new EnvironmentStep, new HerdSiteStep])->run($context);
+
+    expect($context->results['herd-site']->status)->toBe('skipped')
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://app.example.com')
+        ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('true')
+        ->and($context->answers->moduleEnabled('passkeys'))->toBeTrue()
+        ->and($context->notes)->toBe([]);
+});
+
+it('still turns passkeys off without Herd while APP_URL is http (§5.3.4, RL-7)', function (): void {
+    $detection = Detection::none('app.example.com');
+    $context = setupSandbox($detection);
+    $context->answers = Answers::fromArray(['modules' => ['passkeys']], $detection, $context->folderName());
+    new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://app.example.com']);
+
+    new SetupRunner([new EnvironmentStep, new HerdSiteStep])->run($context);
 
     expect(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false')
         ->and($context->answers->moduleEnabled('passkeys'))->toBeFalse();

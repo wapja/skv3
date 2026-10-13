@@ -17,7 +17,9 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -85,9 +87,16 @@ it('never prints the super admin password (RL-5)', function () use ($install): v
         'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
     ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
 
+    // RL-14: the marker holds the public answers only, never the password or its hash.
+    $marker = (string) file_get_contents($this->sandbox->path(Marker::FILE));
+
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('owner@example.com')
-        ->not->toContain('correct-horse-battery');
+        ->not->toContain('correct-horse-battery')
+        ->and($marker)->toContain('owner@example.com')
+        ->not->toContain('correct-horse-battery')
+        ->not->toContain('$2y$')
+        ->not->toContain('password_hash');
 });
 
 it('stops at the step that throws and writes no marker (RL-6)', function () use ($install): void {
@@ -170,3 +179,65 @@ it('refuses the default demo data next to an existing super admin unless asked f
         ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_KEY'))->toBe('')
         ->and(Marker::exists($this->sandbox))->toBeFalse();
 });
+
+it('keeps a changed answer on the next plain re-run (§5.3.2, RL-14, DEC-30)', function () use ($install): void {
+    [$exitCode] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);
+    [$changedExitCode, $changedOutput] = $install(['--answers' => json_encode(['modules' => []], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+    [$plainExitCode] = $install(['--no-interaction' => true]);
+
+    /** @var array{answers: array{modules: list<string>}} $marker */
+    $marker = Marker::read($this->sandbox);
+
+    expect([$exitCode, $changedExitCode, $plainExitCode])->toBe([0, 0, 0])
+        // The summary's bullet list drops the closing full stop.
+        ->and($changedOutput)->toContain(rtrim(__('Setup changed :keys in .env.', ['keys' => 'MODULE_IMPERSONATION']), '.'))
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('MODULE_IMPERSONATION'))->toBe('false')
+        ->and($marker['answers']['modules'])->toBe([]);
+});
+
+it('keeps a module flag the owner switched in .env on a re-run (§6.8, DEC-30)', function (bool $force) use ($install): void {
+    [$exitCode] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);
+    new EnvFile($this->sandbox->path('.env'))->set(['MODULE_IMPERSONATION' => false]);
+
+    [$rerunExitCode] = $install(['--no-interaction' => true, '--force' => $force]);
+
+    /** @var array{answers: array{modules: list<string>}} $marker */
+    $marker = Marker::read($this->sandbox);
+
+    expect([$exitCode, $rerunExitCode])->toBe([0, 0])
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('MODULE_IMPERSONATION'))->toBe('false')
+        ->and($marker['answers']['modules'])->not->toContain('impersonation');
+})->with(['plain' => false, 'forced' => true]);
+
+it('installs on a clone whose boot config has no key and another apex than the detected host (§5.3.3, §4.12)', function () use ($install): void {
+    // A clone boots before step 0 writes APP_KEY, and before step 1 writes the detected host as the apex.
+    config(['app.key' => '', 'app.url' => 'http://myapp.test']);
+    app()->forgetInstance('encrypter');
+    Crypt::clearResolvedInstance('encrypter');
+
+    [$exitCode, $output] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);
+
+    $emails = DB::connection(DatabaseStep::CONNECTION)->table('users')->pluck('email')->all();
+
+    expect($exitCode)->toBe(0)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('TENANCY_APEX_DOMAIN'))->toBe('myapp.test')
+        ->and($output)->toContain('superadmin@myapp.test')->toContain('admin@demo1.myapp.test')
+        ->and($emails)->toContain('superadmin@myapp.test', 'admin@demo1.myapp.test', 'user@demo2.myapp.test')
+        ->and(collect($emails)->filter(fn (string $email): bool => str_ends_with($email, '@localhost') || str_ends_with($email, '.localhost'))->all())->toBe([]);
+});
+
+it('applies a super admin password given for the installed account (§5.3.3 step 2)', function (bool $force) use ($install): void {
+    [$exitCode] = $install(['--answers' => json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'old-password-123', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    [$rerunExitCode, $output] = $install(['--answers' => json_encode(['super_admin_password' => 'new-password-456'], JSON_THROW_ON_ERROR), '--no-interaction' => true, '--force' => $force]);
+
+    $owner = DB::connection(DatabaseStep::CONNECTION)->table('users')->where('email', 'owner@example.com')->sole();
+
+    expect([$exitCode, $rerunExitCode])->toBe([0, 0])
+        ->and($output)->not->toContain('new-password-456')
+        ->and(Hash::check('new-password-456', (string) $owner->password))->toBeTrue()
+        ->and(Hash::check('old-password-123', (string) $owner->password))->toBeFalse();
+})->with(['plain' => false, 'forced' => true]);

@@ -150,7 +150,11 @@ final readonly class ClaudeStep implements SetupStep
         return $context->detection->herd && $this->herdMcpPhar() !== null;
     }
 
-    /** Adds the Herd MCP server as `herd` to .mcp.json (created when missing), keeping every other server. */
+    /**
+     * Adds the Herd MCP server as `herd` to .mcp.json (created when missing), keeping every other server. It gets no
+     * SITE_PATH: with one, Herd's server also offers get_site_information and the resource herd://sites/information,
+     * which return this site's .env, and, for a Forge-linked herd.yml, Forge's remote environment (DEC-30).
+     */
     private function registerHerdMcp(SetupContext $context): void
     {
         $phar = $this->herdMcpPhar();
@@ -164,7 +168,7 @@ final readonly class ClaudeStep implements SetupStep
         $config = $config instanceof stdClass ? $config : new stdClass;
         $servers = $this->mcpServers($context);
 
-        $servers->herd = ['command' => 'php', 'args' => [$phar], 'env' => ['SITE_PATH' => $context->basePath]];
+        $servers->herd = ['command' => 'php', 'args' => [$phar]];
         $config->mcpServers = $servers;
 
         file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");

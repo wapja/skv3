@@ -11,7 +11,7 @@ use Dotenv\Parser\Value;
 use Illuminate\Support\Env;
 use RuntimeException;
 
-/** Reads and atomically writes one .env file (§5.3.3 step 1): values never leave this class except through get(). */
+/** Reads and atomically writes one .env file (§5.3.3 step 1): values never leave this class except through get() and all(). */
 final readonly class EnvFile
 {
     public function __construct(private string $path) {}
@@ -23,13 +23,19 @@ final readonly class EnvFile
 
     public function get(string $key): ?string
     {
+        $values = $this->all();
+
+        return $values[$key] ?? null;
+    }
+
+    /** @return array<string, string> every value as Dotenv reads it; none when the file is missing */
+    public function all(): array
+    {
         if (! $this->exists()) {
-            return null;
+            return [];
         }
 
-        $values = Dotenv::parse((string) file_get_contents($this->path));
-
-        return array_key_exists($key, $values) ? (string) $values[$key] : null;
+        return array_map(strval(...), Dotenv::parse((string) file_get_contents($this->path)));
     }
 
     /**

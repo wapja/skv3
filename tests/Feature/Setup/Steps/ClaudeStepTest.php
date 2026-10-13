@@ -55,7 +55,8 @@ it('installs Boost, registers the Herd MCP server as herd and adds boost:update 
     $composer = json_decode((string) file_get_contents($context->path('composer.json')), true);
 
     expect($mcp['mcpServers'])->toHaveKeys(['laravel-boost', 'herd'])
-        ->and($mcp['mcpServers']['herd']['env']['SITE_PATH'] ?? null)->toBe($context->basePath)
+        // Without SITE_PATH, Herd's MCP server offers no tool or resource with this site's .env (§9).
+        ->and($mcp['mcpServers']['herd'])->not->toHaveKey('env')
         ->and($mcp['mcpServers']['herd']['args'][0] ?? null)->toBe($this->home.'/Library/Application Support/Herd/bin/herd-mcp.phar')
         ->and(array_filter($composer['scripts']['post-update-cmd'], fn (string $line): bool => str_contains($line, 'boost:update')))->toHaveCount(1)
         ->and($context->path('.claude/settings.local.json'))->toBeFile();

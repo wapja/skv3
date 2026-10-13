@@ -89,7 +89,12 @@ it('creates the real super admin instead of demo data when asked (§5.3.3 step 2
         ->and(Hash::check('correct-horse-battery', (string) $owner->password))->toBeTrue()
         ->and(DB::connection('setup')->table('organisations')->count())->toBe(0)
         ->and(DB::connection('setup')->table('activity_log')->where('event', 'user.super_admin_granted')->where('subject_id', $owner->id)->count())->toBe(1)
-        ->and(new DatabaseStep()->isComplete($context))->toBeTrue();
+        // Answers that still carry a password are applied again; a re-run without one finds the step complete.
+        ->and(new DatabaseStep()->isComplete($context))->toBeFalse();
+
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName(), $context->answers->toPublicArray());
+
+    expect(new DatabaseStep()->isComplete($context))->toBeTrue();
 });
 
 it('is idempotent: a second run keeps one super admin and one grant (§5.3.1)', function (): void {
@@ -106,6 +111,55 @@ it('is idempotent: a second run keeps one super admin and one grant (§5.3.1)', 
 
     expect(DB::connection('setup')->table('users')->where('email', 'owner@example.com')->count())->toBe(1)
         ->and(DB::connection('setup')->table('activity_log')->where('event', 'user.super_admin_granted')->count())->toBe(1);
+});
+
+it('replaces the password of an existing account when one is given (§5.3.3 step 2)', function (string $email): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
+    new DatabaseStep()->run($context);
+    $email = str_replace('{apex}', Hosts::apex(), $email);
+    $before = DB::connection('setup')->table('users')->where('email', $email)->sole();
+    $context->answers = Answers::fromArray([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => $email, 'super_admin_password' => 'correct-horse-battery',
+    ], Detection::none(), $context->folderName());
+
+    expect(new DatabaseStep()->isComplete($context))->toBeFalse();
+
+    new DatabaseStep()->run($context);
+    $after = DB::connection('setup')->table('users')->where('email', $email)->sole();
+
+    // The demo's shared password no longer opens the account; its remember-me cookies stop working too.
+    expect((bool) $after->is_super_admin)->toBeTrue()
+        ->and(Hash::check('correct-horse-battery', (string) $after->password))->toBeTrue()
+        ->and(Hash::check(DemoSeeder::PASSWORD, (string) $after->password))->toBeFalse()
+        ->and($after->remember_token)->not->toBe($before->remember_token)
+        ->and(DB::connection('setup')->table('activity_log')->where('event', 'security.password_changed')->where('subject_id', $after->id)->count())->toBe(1);
+})->with([
+    'the demo super admin' => ['superadmin@{apex}'],
+    'a demo organisation admin' => ['admin@demo1.{apex}'],
+]);
+
+it('is not complete for a super admin start after a demo install, nor for a demo start after a super admin install (§5.3.1)', function (): void {
+    $context = setupSandbox();
+    $demo = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
+    $superAdmin = Answers::fromArray([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery',
+    ], Detection::none(), $context->folderName());
+    $installedSuperAdmin = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName(), $superAdmin->toPublicArray());
+
+    $context->answers = $demo;
+    new DatabaseStep()->run($context);
+    $context->answers = $installedSuperAdmin;
+    $afterDemo = new DatabaseStep()->isComplete($context);
+
+    $other = setupSandbox();
+    $other->answers = $superAdmin;
+    new DatabaseStep()->run($other);
+    $other->answers = $demo;
+    $afterSuperAdmin = new DatabaseStep()->isComplete($other);
+
+    expect($afterDemo)->toBeFalse()
+        ->and($afterSuperAdmin)->toBeFalse();
 });
 
 it('refuses to make a pending user the super admin (§5.3.3 step 2)', function (): void {

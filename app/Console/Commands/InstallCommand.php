@@ -15,6 +15,7 @@ use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Summary;
 use App\Setup\Support\Bootstrap;
+use App\Setup\Support\EnvFile;
 use App\Tenancy\Facades\Tenant;
 use Closure;
 use Database\Seeders\DemoSeeder;
@@ -111,6 +112,8 @@ final class InstallCommand extends Command
     /**
      * The public answers of an earlier install, from the marker, or none on a first install. A re-run takes every
      * answer it is not given from here instead of from the §5.3.2 defaults, which describe a first install (DEC-30).
+     * The MODULE_* keys in .env are the modules' switch (§6.8), so a flag the owner changed there wins over the
+     * marker, and over the defaults without one.
      *
      * @return array<string, mixed>
      *
@@ -118,9 +121,35 @@ final class InstallCommand extends Command
      */
     private function installedAnswers(): array
     {
-        $marker = Marker::read(app(SetupContext::class));
+        $context = app(SetupContext::class);
+        $marker = Marker::read($context);
+        $answers = is_array($marker['answers'] ?? null) ? $marker['answers'] : [];
+        $env = new EnvFile($context->path('.env'));
+        $modules = is_array($answers['modules'] ?? null) ? $answers['modules'] : Answers::MODULES;
+        $switched = false;
 
-        return is_array($marker['answers'] ?? null) ? $marker['answers'] : [];
+        foreach (Answers::MODULES as $module) {
+            $flag = $env->get('MODULE_'.Str::upper($module));
+
+            if ($flag === null) {
+                continue;
+            }
+
+            $switched = true;
+            $modules = $this->isOn($flag) ? [...$modules, $module] : array_diff($modules, [$module]);
+        }
+
+        if ($switched) {
+            $answers['modules'] = array_values(array_intersect(Answers::MODULES, $modules));
+        }
+
+        return $answers;
+    }
+
+    /** A MODULE_* value as config/skv.php reads it: env() casts, then (bool). */
+    private function isOn(string $flag): bool
+    {
+        return ! in_array(Str::lower(trim($flag)), ['', '0', 'false', '(false)', 'empty', '(empty)', 'null', '(null)'], true);
     }
 
     /** A super admin other than the demo one, in the database the app opens now; none when it cannot be read. */

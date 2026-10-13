@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
 use App\Concerns\ProfileValidationRules;
+use App\Enums\ActivityEvent;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\User;
@@ -15,6 +17,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -23,10 +26,11 @@ use function Laravel\Prompts\text;
 
 /**
  * Creates a super admin, or promotes an existing user (§4.12, RL-9). A new address becomes an active user without an
- * organisation (W8); an existing one is promoted through SetSuperAdmin, whose guards apply. The password is never echoed.
+ * organisation (W8); an existing one is promoted through SetSuperAdmin, whose guards apply, and a --name or
+ * --password given for it replaces its own, as skv:install does with a given password. The password is never echoed.
  */
 #[Description('Create a super admin, or promote an existing user (§4.12)')]
-#[Signature('skv:create-super-admin {email? : The email address} {--name= : The name for a new user} {--password= : The password for a new user}')]
+#[Signature('skv:create-super-admin {email? : The email address} {--name= : The name (replaces an existing user\'s)} {--password= : The password (replaces an existing user\'s)}')]
 final class CreateSuperAdminCommand extends Command
 {
     use ProfileValidationRules;
@@ -53,7 +57,7 @@ final class CreateSuperAdminCommand extends Command
 
         try {
             if ($existing instanceof User) {
-                $setSuperAdmin->handle($existing, true);
+                $this->promote($setSuperAdmin, $existing);
             } else {
                 // One transaction: a new user never exists without the badge and the audit entry.
                 DB::transaction(fn () => $setSuperAdmin->handleCreated($this->createUser($email)));
@@ -69,6 +73,42 @@ final class CreateSuperAdminCommand extends Command
         $this->components->info(__(':email is a super admin.', ['email' => $email]));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Promotes an existing user and applies a given name and password, validated before anything changes. A new
+     * password changes the remember token and is recorded (§4.8), and AuthenticateSession signs the user's other
+     * sessions out; UserActivityObserver records a new name.
+     *
+     * @throws ValidationException
+     */
+    private function promote(SetSuperAdmin $setSuperAdmin, User $user): void
+    {
+        $name = $this->option('name');
+
+        /** @var array{name?: string, password?: string} $changes */
+        $changes = Validator::make(array_filter(['name' => is_string($name) ? trim($name) : null, 'password' => $this->option('password')], fn (mixed $value): bool => $value !== null), [
+            'name' => ['sometimes', ...$this->nameRules()],
+            'password' => ['sometimes', 'required', 'string', Password::default()],
+        ])->validate();
+
+        DB::transaction(function () use ($setSuperAdmin, $user, $changes): void {
+            $setSuperAdmin->handle($user, true);
+
+            if ($changes === []) {
+                return;
+            }
+
+            $user->forceFill(array_filter([
+                'name' => $changes['name'] ?? null,
+                'password' => $changes['password'] ?? null,
+                'remember_token' => isset($changes['password']) ? Str::random(60) : null,
+            ], fn (?string $value): bool => $value !== null))->save();
+
+            if (isset($changes['password'])) {
+                app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $user);
+            }
+        });
     }
 
     /**
