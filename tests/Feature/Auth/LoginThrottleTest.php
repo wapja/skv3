@@ -84,9 +84,11 @@ function trustedProxiesConfig(?string $value): mixed
     }
 }
 
-// These tests count requests, not time: the Timebox would add half a second to every failed attempt.
+// These tests count requests, not time: the Timebox would add half a second to every failed attempt, and
+// a system sleep mid-test would expire the one-minute windows.
 beforeEach(function (): void {
     Sleep::fake();
+    $this->freezeTime();
 });
 
 it('does not count successful sign-ins', function (): void {

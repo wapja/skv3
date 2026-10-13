@@ -87,6 +87,7 @@ it('only hands off to relative paths', function (string $path): void {
 })->with(['https://evil.test/', '//evil.test/', 'dashboard', '/\\evil.test']);
 
 it('throttles handoff attempts per IP address', function (): void {
+    $this->freezeTime(); // counts requests: a system sleep mid-test must not expire the one-minute window
     onApex();
 
     foreach (range(1, 10) as $attempt) {
