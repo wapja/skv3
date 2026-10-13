@@ -12,11 +12,13 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Hosts;
 use Database\Seeders\DemoSeeder;
+use Illuminate\Cache\DatabaseStore;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 
 $testDatabaseExists = function (PDO $admin, string $database): bool {
     $statement = $admin->prepare('SELECT 1 FROM pg_database WHERE datname = ?');
@@ -52,6 +54,7 @@ beforeEach(function (): void {
 // afterEach, not beforeApplicationDestroyed: RefreshDatabase reads database.default again at teardown.
 afterEach(function (): void {
     DB::purge('setup');
+    DB::purge('boot');
     config(['database.default' => $this->previousConnection]);
 });
 
@@ -69,6 +72,27 @@ it('migrates, syncs and seeds the demo on SQLite, then writes DB_* and .env.test
         ->and(DB::connection('setup')->table('organisations')->whereIn('slug', DemoSeeder::SLUGS)->count())->toBe(2)
         ->and(config('database.default'))->toBe('setup')
         ->and(new DatabaseStep()->isComplete($context))->toBeTrue();
+});
+
+it('moves the database cache and the permission cache to the new connection, so SQLite never locks itself (§5.3.3 step 2)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
+    touch($context->path(DatabaseStep::SQLITE_DATABASE));
+
+    // As after `laravel new`: the boot connection opens the same file, and the permission cache was resolved on it.
+    config([
+        'database.connections.boot' => array_merge(config('database.connections.sqlite'), ['url' => null, 'database' => $context->path(DatabaseStep::SQLITE_DATABASE)]),
+        'database.default' => 'boot',
+        'cache.default' => 'database',
+    ]);
+    app(PermissionRegistrar::class)->initializeCache();
+
+    $result = new DatabaseStep()->run($context);
+    $store = app(PermissionRegistrar::class)->getCacheStore();
+
+    expect($result->status)->toBe('done')
+        ->and($store)->toBeInstanceOf(DatabaseStore::class)
+        ->and($store instanceof DatabaseStore ? $store->getConnection() : null)->toBe(DB::connection('setup'));
 });
 
 it('creates the real super admin instead of demo data when asked (§5.3.3 step 2)', function (): void {

@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PDO;
 use RuntimeException;
+use Spatie\Permission\PermissionRegistrar;
 use Throwable;
 
 /**
@@ -123,6 +124,7 @@ final class DatabaseStep implements SetupStep
 
         $this->configureConnection($context);
         config(['database.default' => self::CONNECTION]);
+        $this->rebindDatabaseCaches();
 
         $this->artisan('migrate', ['--database' => self::CONNECTION, '--force' => true]);
         $this->artisan('permissions:sync');
@@ -215,6 +217,22 @@ final class DatabaseStep implements SetupStep
     private function identifier(string $database): string
     {
         return '"'.str_replace('"', '""', $database).'"';
+    }
+
+    /**
+     * Database cache stores, and the permission cache that holds one, keep the connection that was the default when
+     * they were resolved. On SQLite that is a second handle on the same file, which cannot write while the `setup`
+     * connection holds a transaction ("database is locked"); on PostgreSQL it would clear the old database's cache.
+     */
+    private function rebindDatabaseCaches(): void
+    {
+        foreach (config()->array('cache.stores') as $name => $store) {
+            if (is_array($store) && ($store['driver'] ?? null) === 'database') {
+                app('cache')->forgetDriver((string) $name);
+            }
+        }
+
+        app(PermissionRegistrar::class)->initializeCache();
     }
 
     /** Points the runtime `setup` connection at the step's database, without creating anything. */
