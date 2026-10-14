@@ -23,7 +23,8 @@ use Throwable;
  * codes are unreliable (§13), so every change is verified by reading Herd's own listings back; what cannot be
  * verified is returned as `manual()`. A name another Herd site already uses (a link to another path, or another
  * parked directory holding the folder name) is never linked, isolated or secured. A secured site's result message
- * starts with SECURED, which skv:install reads for the passkeys consequence (RL-7).
+ * starts with SECURED, which the setup runner reads for the HTTPS consequence (RL-7, OD-2). APP_URL gets the name it
+ * secured, {folder}.{tld}, never the request host (RL-16).
  */
 final readonly class HerdSiteStep implements SetupStep
 {
@@ -163,7 +164,7 @@ final readonly class HerdSiteStep implements SetupStep
             return StepResult::manual($pending, __('The command did not finish within :seconds seconds.', ['seconds' => self::TIMEOUT]));
         }
 
-        new EnvFile($context->path('.env'))->set(['APP_URL' => 'https://'.$context->detection->host]);
+        new EnvFile($context->path('.env'))->set(['APP_URL' => 'https://'.$this->domain($context)]);
 
         // The summary is read from the marker (§5.3.4): rewrite it so its addresses say https.
         if (Marker::exists($context)) {

@@ -190,3 +190,27 @@ it('declares which steps run detached in the browser (A25, §5.3.1)', function (
     ['environment', false], ['database', false], ['herd-manifest', false], ['branding', false], ['frontend', true],
     ['git', false], ['claude', true], ['doctor', false], ['marker', false], ['herd-site', false], ['summary', false],
 ]);
+
+it('records an unsecured site as http even without passkeys (OD-2)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    $context->results['herd-site'] = StepResult::manual('herd secure x', 'not confirmed');
+    Marker::write($context, []);
+
+    new SetupRunner([])->applyHttpsConsequence($context);
+
+    expect($context->answers->https)->toBeFalse()
+        ->and(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
+        ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->not->toBe('false')
+        ->and(implode(' ', $context->notes))->toContain('herd secure '.$context->folderName());
+});
+
+it('keeps https when the site was secured (OD-2)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    $context->results['herd-site'] = StepResult::done(HerdSiteStep::SECURED.': Site secured with HTTPS');
+
+    new SetupRunner([])->applyHttpsConsequence($context);
+
+    expect($context->answers->https)->toBeTrue()->and($context->notes)->toBe([]);
+});

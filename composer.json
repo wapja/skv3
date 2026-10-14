@@ -80,7 +80,7 @@
             "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi",
             "@php scripts/create-pgsql-test-database.php",
-            "DB_CONNECTION=pgsql DB_HOST=${DB_HOST:-127.0.0.1} DB_PORT=${DB_PORT:-5432} DB_DATABASE=${DB_TEST_DATABASE:-$(basename \"$PWD\")_test} DB_USERNAME=${DB_USERNAME:-root} DB_PASSWORD=${DB_PASSWORD:-} pest --parallel --exclude-group=browser"
+            "DB_CONNECTION=pgsql DB_HOST=${DB_HOST:-127.0.0.1} DB_PORT=${DB_PORT:-5432} DB_DATABASE=${DB_TEST_DATABASE:-$(php scripts/create-pgsql-test-database.php --print-name)} DB_USERNAME=${DB_USERNAME:-root} DB_PASSWORD=${DB_PASSWORD:-} pest --parallel --exclude-group=browser"
         ],
         "test:browser": [
             "Composer\\Config::disableProcessTimeout",

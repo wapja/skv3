@@ -96,13 +96,22 @@ final readonly class Doctor
         ];
     }
 
-    /** @return array<string, CheckResult> keyed by check key */
-    public function run(DoctorContext $context, bool $fix = false): array
+    /**
+     * @param  list<string>  $deferred  check keys reported as skipped without running (setup step 8, RL-8)
+     * @return array<string, CheckResult> keyed by check key
+     */
+    public function run(DoctorContext $context, bool $fix = false, array $deferred = []): array
     {
         $context->forgetSync();
         $results = [];
 
         foreach ($this->checks() as $check) {
+            if (in_array($check->key(), $deferred, true)) {
+                $results[$check->key()] = CheckResult::skipped(__('Checked after the Herd step'));
+
+                continue;
+            }
+
             try {
                 $result = $check->run($context);
             } catch (Throwable $exception) {

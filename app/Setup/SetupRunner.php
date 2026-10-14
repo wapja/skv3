@@ -23,9 +23,10 @@ use Illuminate\Support\Str;
  * Runs the setup steps of §5.3.3 in order (RL-6): a complete step is skipped unless forced, a manual() result never
  * stops the run, and a step that throws stops it before the next one. Before the first step and after every step,
  * the process's runtime config follows what the steps wrote to .env. After the Herd step has run, a site that was
- * not secured switches the passkeys module off (RL-7). A run that finishes rewrites an existing marker with its
- * answers, so the next re-run keeps what this one changed, and a re-run names the .env keys it changed (DEC-30). The
- * CLI runs the whole list; the browser wizard calls runStep() once per request and finish() at the end.
+ * not secured is recorded as http and switches the passkeys module off (RL-7, OD-2). A run that finishes rewrites an
+ * existing marker with its answers, so the next re-run keeps what this one changed, and a re-run names the .env keys
+ * it changed (DEC-30). The CLI runs the whole list; the browser wizard calls runStep() once per request and finish()
+ * at the end.
  */
 final readonly class SetupRunner
 {
@@ -117,27 +118,31 @@ final readonly class SetupRunner
     }
 
     /**
-     * §6.8, RL-7: passkeys need HTTPS. When they were chosen but the Herd step did not secure the site, the module is
-     * switched off in .env and in the answers, the summary says how to turn it back on, and an existing marker is
-     * rewritten so its answers and notes match .env (the doctor then no longer expects a certificate). Without Herd,
-     * an APP_URL that already is https on the detected host is served over HTTPS by something else (a TLS-terminating
-     * proxy), so APP_URL does not stay http (§5.3.4) and passkeys stay on.
+     * §6.8, RL-7, OD-2: when HTTPS was chosen but the Herd step did not secure the site, APP_URL stays http and the
+     * answers say so (the doctor then expects no certificate). Passkeys need HTTPS, so they are switched off in .env
+     * and in the answers. The summary says how to secure the site later, and an existing marker is rewritten. Without
+     * Herd, an APP_URL that already is https on the detected host is served over HTTPS by something else (a
+     * TLS-terminating proxy), so nothing changes.
      */
     public function applyHttpsConsequence(SetupContext $context): void
     {
         $message = $context->results['herd-site']->message ?? '';
 
-        if (! $context->answers->moduleEnabled('passkeys') || str_starts_with($message, HerdSiteStep::SECURED) || $this->servedOverHttpsWithoutHerd($context)) {
+        if (! $context->answers->https || str_starts_with($message, HerdSiteStep::SECURED) || $this->servedOverHttpsWithoutHerd($context)) {
             return;
         }
 
-        new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => false]);
+        $name = $context->folderName();
 
-        $context->answers = $context->answers
-            ->withModules(array_diff($context->answers->modules, ['passkeys']))
-            ->withHttps(false);
+        if ($context->answers->moduleEnabled('passkeys')) {
+            new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => false]);
+            $context->answers = $context->answers->withModules(array_diff($context->answers->modules, ['passkeys']));
+            $context->notes[] = __('Passkeys are off because the site has no HTTPS. To turn them on: herd secure :name, set MODULE_PASSKEYS=true, then php artisan skv:doctor --fix.', ['name' => $name]);
+        } else {
+            $context->notes[] = __('The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force.', ['name' => $name]);
+        }
 
-        $context->notes[] = __('Passkeys are off because the site has no HTTPS. To turn them on: herd secure :name, set MODULE_PASSKEYS=true, then php artisan skv:doctor --fix.', ['name' => $context->folderName()]);
+        $context->answers = $context->answers->withHttps(false);
 
         if (Marker::exists($context)) {
             Marker::write($context, Summary::build($context));

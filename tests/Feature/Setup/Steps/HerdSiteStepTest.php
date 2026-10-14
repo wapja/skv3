@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Marker;
+use App\Setup\SetupContext;
 use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
@@ -66,11 +67,33 @@ it('links an unparked site, secures it and rewrites APP_URL to https after verif
 
     $result = new HerdSiteStep()->run($context);
 
-    // APP_URL uses the detected host; herd commands use the folder name (in real installs they agree).
+    // APP_URL and the herd commands use the folder name, the name Herd secured (RL-16).
     expect($result->message)->toStartWith(HerdSiteStep::SECURED)
-        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://my-app.test');
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe("https://{$name}.test");
     Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "link {$name}") && $process->path === $context->basePath);
     Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}") && $process->path === $context->basePath);
+});
+
+it('writes the name it secured into APP_URL, not the request host (A20, RL-16)', function () use ($herdLinksRow): void {
+    $context = setupSandbox($this->detection);
+    $name = $context->folderName();
+    $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: 'admin.'.$name.'.test', scheme: 'http');
+    $context = new SetupContext($context->basePath, Answers::fromArray(['https' => true], $detection, $name), $detection);
+
+    Process::fake([
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($herdLinksRow($name, $context->basePath))),
+        "*herd' 'link'*" => Process::result('linked'),
+        "*herd' 'secured'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result("| Site | Expires |\n| {$name}.test | 2027-01-01 00:00:00 GMT |\n")),
+        "*herd' 'secure'*" => Process::result('Secured', exitCode: 0),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($result->message)->toStartWith(HerdSiteStep::SECURED)
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://'.$context->folderName().'.test');
 });
 
 it('does not run herd secure for a site that is already secured (§5.3.3 step 10)', function (): void {
@@ -271,7 +294,7 @@ it('rewrites the marker summary with the https address after securing (§5.3.4)'
 
     new HerdSiteStep()->run($context);
 
-    expect(Marker::read($context)['summary']['urls'] ?? [])->toContain('https://my-app.test');
+    expect(Marker::read($context)['summary']['urls'] ?? [])->toContain("https://{$context->folderName()}.test");
 });
 
 it('is complete once served and secured, and not when herd fails (§5.3.1)', function (string $secured, bool $fails, bool $complete): void {
