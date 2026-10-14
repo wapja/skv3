@@ -110,7 +110,7 @@ it('lists every named GET route in the matrix or the exclusions', function (): v
         'two-factor.secret-key', 'two-factor.recovery-codes', 'storage.local', '__flux.flag', 'email-change.confirm',
         'auth.handoff', 'invitations.accept',
         // §5.3.4: local-only setup routes, covered by tests/Feature/Setup/Wizard
-        'setup.wizard',
+        'setup.wizard', 'setup.herd-status', 'setup.finish', 'setup.login',
     ];
 
     $named = collect(Route::getRoutes()->getRoutes())
