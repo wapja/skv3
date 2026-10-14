@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\StepResult;
+use App\Setup\Support\StateFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
 use App\Setup\Wizard\WizardState;
@@ -58,4 +59,26 @@ it('keeps only the secret\'s hash in the Herd state and expires it after 30 minu
     $this->travel(31)->minutes();
 
     expect(HerdState::load($context->basePath)?->isFresh())->toBeFalse();
+});
+
+it('never stores the super admin\'s password or its hash in the Herd state (RL-5, RL-6)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery'], Detection::none(), $context->folderName());
+    $hash = (string) $context->answers->superAdminPasswordHash;
+    $stored = function () use ($context, $hash): void {
+        $file = (string) file_get_contents($context->path(HerdState::PATH));
+
+        expect($file)->not->toContain('correct-horse-battery')
+            ->and($file)->not->toContain($hash)
+            ->and(StateFile::readJson($context->path(HerdState::PATH))['answers'] ?? [])->toHaveKey('super_admin_password_hash', null)
+            ->and(HerdState::load($context->basePath)?->answers->superAdminPasswordHash)->toBeNull();
+    };
+
+    [$state] = HerdState::begin($context->basePath, $context, 'my-app.test');
+    $stored();
+    expect($state->answers->superAdminPasswordHash)->toBeNull();
+
+    $state->absorb($context);
+    $state->save($context->basePath);
+    $stored();
 });

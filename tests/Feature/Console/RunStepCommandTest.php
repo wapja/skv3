@@ -8,7 +8,9 @@ use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
+use App\Setup\SetupRunner;
 use App\Setup\StepResult;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Support\StateFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Tests\Fixtures\CallbackSetupStep;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -86,4 +89,31 @@ it('leaves the Herd state and the marker alone when the page moved on while Herd
     expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0)
         ->and(file_get_contents($context->path(Marker::FILE)))->toBe($marker)
         ->and(HerdState::load($context->basePath)?->result?->message)->toBe($used ? null : 'Continued without HTTPS.');
+})->with(['login used the secret' => [true], 'continued without HTTPS' => [false]]);
+
+it('never writes the Herd state back when the page moved on during the Herd step (RL-6)', function (bool $used): void {
+    $context = setupSandbox();
+    app()->instance(SetupContext::class, $context);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    Marker::write($context, []);
+    [$state] = HerdState::begin($context->basePath, $context, 'localhost');
+    $marker = (string) file_get_contents($context->path(Marker::FILE));
+    $movedOn = function () use ($used, $state, $context): void {
+        if ($used) {
+            HerdState::forget($context->basePath);
+        } else {
+            $state->result = StepResult::manual('herd secure '.$context->folderName(), 'Continued without HTTPS.');
+            $state->save($context->basePath);
+        }
+    };
+    app()->instance(SetupRunner::class, new SetupRunner([
+        new CallbackSetupStep('herd-site', $movedOn, StepResult::done(HerdSiteStep::SECURED.': late')),
+    ]));
+
+    expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0)
+        ->and(file_get_contents($context->path(Marker::FILE)))->toBe($marker);
+
+    // A state written back would make the used-up secret valid again, or overwrite the user's choice.
+    $after = HerdState::load($context->basePath);
+    expect($used ? $after : $after?->result?->message)->toBe($used ? null : 'Continued without HTTPS.');
 })->with(['login used the secret' => [true], 'continued without HTTPS' => [false]]);
