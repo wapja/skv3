@@ -14,6 +14,7 @@ use App\Setup\SetupMode;
 use App\Setup\SetupToken;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
+use Illuminate\Session\FileSessionHandler;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -47,7 +48,10 @@ it('moves every web request onto a file session, a file cache and the sync queue
 
     $this->get('/login')->assertOk();
 
-    expect(config('session.driver'))->toBe('file')
+    // The handler the request's session actually used: switching the config after StartSession would leave
+    // the request on the project's database session (ImpersonationAwareSessionHandler) and still pass a config check.
+    expect(app('request')->session()->getHandler())->toBeInstanceOf(FileSessionHandler::class)
+        ->and(config('session.driver'))->toBe('file')
         ->and(config('cache.default'))->toBe('file')
         ->and(config('queue.default'))->toBe('sync');
 });
