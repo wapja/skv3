@@ -209,3 +209,18 @@ it('checks in CI that the setup stylesheet is current (OD-1)', function (): void
     expect((string) file_get_contents(base_path('.github/workflows/tests.yml')))
         ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css');
 });
+
+it('checks the wizard after every entry point in the phase-1 job (§7.2, OD-3)', function (): void {
+    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+
+    expect($workflow)->toContain('  phase1:')
+        ->toContain('entry: [terminal, terminal-nodb, composer, clone]')
+        ->toContain('scripts/e2e-local.sh "$RUNNER_TEMP/phase1-app" --entry=${{ matrix.entry }}')
+        ->and($script)->toContain('--entry=')
+        ->toContain('--phase1-only')
+        ->toContain('php artisan serve')
+        ->toContain('/welcome-setup')
+        ->toContain('SetupToken::PATH')
+        ->not->toContain('composer config --global --list');
+});
