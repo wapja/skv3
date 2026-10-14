@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Support\Toolchain;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -111,3 +112,31 @@ it('still requires a password for a super admin the earlier install did not crea
 
     Answers::fromArray(['super_admin_email' => 'someone-else@example.com'], Detection::none(), 'tmp', $installed);
 })->throws(ValidationException::class);
+
+it('round-trips its state with the password hash, never the password (A11)', function (): void {
+    $answers = Answers::fromArray(
+        ['start_with' => 'super_admin', 'super_admin_email' => 'Owner@Example.com', 'super_admin_password' => 'correct-horse-battery', 'modules' => ['impersonation']],
+        Detection::none(),
+        'my-app',
+    );
+
+    $state = $answers->toState();
+    $restored = Answers::fromState(json_decode(json_encode($state, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR));
+
+    expect($state)->not->toHaveKey('super_admin_password')
+        ->and(json_encode($state, JSON_THROW_ON_ERROR))->not->toContain('correct-horse-battery')
+        ->and(Hash::check('correct-horse-battery', (string) $state['super_admin_password_hash']))->toBeTrue()
+        ->and($restored)->toEqual($answers);
+});
+
+it('refuses a state with a missing or wrongly typed key (A11)', function (string $key, mixed $value): void {
+    $state = Answers::defaults(Detection::none(), 'my-app')->toState();
+    $state[$key] = $value;
+
+    expect(fn (): Answers => Answers::fromState($state))->toThrow(InvalidArgumentException::class);
+})->with([
+    'database' => ['database', 'mysql'],
+    'modules' => ['modules', 'passkeys'],
+    'https' => ['https', 'yes'],
+    'start_with' => ['start_with', null],
+]);

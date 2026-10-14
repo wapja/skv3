@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Setup;
 
+use App\Setup\Support\StateFile;
 use Composer\InstalledVersions;
 use Illuminate\Support\Facades\Date;
+use JsonException;
 
-/** storage/app/skv-installed (§5.3.3 step 9, RL-14): written once setup has finished; its absence means "not set up". */
+/**
+ * storage/app/skv-installed (§5.3.3 step 9, RL-14): written once setup has finished; its absence means "not set up".
+ * Written atomically with mode 0600 (A17, A22).
+ */
 final class Marker
 {
     public const string FILE = 'storage/app/skv-installed';
@@ -25,27 +30,24 @@ final class Marker
      */
     public static function write(SetupContext $context, array $summary): void
     {
-        $path = $context->path(self::FILE);
-        @mkdir(dirname($path), 0755, true);
-
-        file_put_contents($path, json_encode([
+        StateFile::writeJson($context->path(self::FILE), [
             'kit_version' => InstalledVersions::getRootPackage()['pretty_version'],
             'answers' => $context->answers->toPublicArray(),
             'start_with' => $context->answers->startWith,
             'installed_at' => self::installedAt($context) ?? Date::now()->toIso8601String(),
             'summary' => $summary,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+        ]);
     }
 
-    /** @return array{kit_version: string, answers: array<string, mixed>, start_with: string, installed_at: string, summary: array<string, mixed>}|null */
+    /**
+     * @return array{kit_version: string, answers: array<string, mixed>, start_with: string, installed_at: string, summary: array<string, mixed>}|null
+     *
+     * @throws JsonException when the marker is not a JSON object
+     */
     public static function read(SetupContext $context): ?array
     {
-        if (! self::exists($context)) {
-            return null;
-        }
-
-        /** @var array{kit_version: string, answers: array<string, mixed>, start_with: string, installed_at: string, summary: array<string, mixed>} $marker */
-        $marker = json_decode((string) file_get_contents($context->path(self::FILE)), true, flags: JSON_THROW_ON_ERROR);
+        /** @var array{kit_version: string, answers: array<string, mixed>, start_with: string, installed_at: string, summary: array<string, mixed>}|null $marker */
+        $marker = StateFile::readJson($context->path(self::FILE));
 
         return $marker;
     }
@@ -53,8 +55,12 @@ final class Marker
     /** The installed_at of an existing, readable marker, or null. */
     private static function installedAt(SetupContext $context): ?string
     {
-        $marker = self::exists($context) ? json_decode((string) file_get_contents($context->path(self::FILE)), true) : null;
+        try {
+            $marker = StateFile::readJson($context->path(self::FILE));
+        } catch (JsonException) {
+            return null;
+        }
 
-        return is_array($marker) && is_string($marker['installed_at'] ?? null) ? $marker['installed_at'] : null;
+        return is_string($marker['installed_at'] ?? null) ? $marker['installed_at'] : null;
     }
 }

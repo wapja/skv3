@@ -18,6 +18,7 @@ use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Tests\Fixtures\RecordingSetupStep;
+use Tests\Fixtures\ThrowingCompletenessStep;
 
 /** @param  ArrayObject<int, string>  $ran */
 $fakeStep = fn (string $key, ArrayObject $ran, ?StepResult $result = null, bool $complete = false): SetupStep => new RecordingSetupStep($key, $ran, $result ?? StepResult::done(), $complete);
@@ -148,3 +149,44 @@ it('still turns passkeys off without Herd while APP_URL is http (§5.3.4, RL-7)'
     expect(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false')
         ->and($context->answers->moduleEnabled('passkeys'))->toBeFalse();
 });
+
+it('runs one step at a time with the same rules as a full run (A12)', function () use ($fakeStep): void {
+    $context = setupSandbox();
+    $ran = new ArrayObject;
+    $runner = new SetupRunner;
+
+    $skipped = $runner->runStep($context, $fakeStep('a', $ran, complete: true));
+    $done = $runner->runStep($context, $fakeStep('b', $ran));
+
+    expect($skipped->status)->toBe('skipped')
+        ->and($done->status)->toBe('done')
+        ->and($ran->getArrayCopy())->toBe(['b'])
+        ->and(array_keys($context->results))->toBe(['a', 'b']);
+});
+
+it('hands the step to the wrapper before it checks completeness, so a throwing check is named (A12)', function (): void {
+    $context = setupSandbox();
+    $named = null;
+    $step = new ThrowingCompletenessStep;
+
+    // A plain closure: an arrow function would capture $named by value, so the wrapper's write would never arrive.
+    $run = function () use ($step, $context, &$named): void {
+        new SetupRunner([$step])->run($context, function (SetupStep $current, Closure $execute) use (&$named): StepResult {
+            $named = $current->key();
+
+            return $execute();
+        });
+    };
+
+    expect($run)->toThrow(RuntimeException::class);
+    expect($named)->toBe('throws-on-check');
+});
+
+it('declares which steps run detached in the browser (A25, §5.3.1)', function (string $key, bool $long): void {
+    $step = collect(app(SetupRunner::class)->steps())->first(fn (SetupStep $step): bool => $step->key() === $key);
+
+    expect($step?->isLong())->toBe($long);
+})->with([
+    ['environment', false], ['database', false], ['herd-manifest', false], ['branding', false], ['frontend', true],
+    ['git', false], ['claude', true], ['doctor', false], ['marker', false], ['herd-site', false], ['summary', false],
+]);

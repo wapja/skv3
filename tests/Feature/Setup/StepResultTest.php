@@ -24,3 +24,16 @@ it('carries the command and reason of a manual step (§5.3.1)', function (): voi
         ->and(StepResult::done()->isManual())->toBeFalse()
         ->and(StepResult::skipped('not needed')->status)->toBe('skipped');
 });
+
+it('round-trips through an array (A11)', function (StepResult $result): void {
+    expect(StepResult::fromArray($result->toArray()))->toEqual($result);
+})->with([
+    'done' => [StepResult::done('ok')],
+    'skipped' => [StepResult::skipped('why')],
+    'manual' => [StepResult::manual('herd secure x', 'not confirmed')],
+]);
+
+it('refuses an unknown status (A11)', function (): void {
+    expect(fn (): StepResult => StepResult::fromArray(['status' => 'later', 'message' => '', 'command' => null]))
+        ->toThrow(InvalidArgumentException::class);
+});

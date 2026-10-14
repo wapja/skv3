@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 /** The setup questions and the --answers JSON schema (§5.3.2, RL-5). */
 final readonly class Answers
@@ -118,6 +119,46 @@ final readonly class Answers
         );
     }
 
+    /**
+     * The answers as the wizard stored them (RL-5): trusted input written by toState(), so it is checked for shape,
+     * not validated again. The password hash stays a hash.
+     *
+     * @param  array<string, mixed>  $state
+     *
+     * @throws InvalidArgumentException when a key is missing or has the wrong type
+     */
+    public static function fromState(array $state): self
+    {
+        $string = fn (string $key): string => is_string($state[$key] ?? null) ? $state[$key] : throw new InvalidArgumentException("Setup state: {$key} must be a string.");
+        $nullableString = fn (string $key): ?string => ($state[$key] ?? null) === null || is_string($state[$key]) ? ($state[$key] ?? null) : throw new InvalidArgumentException("Setup state: {$key} must be a string or null.");
+        $bool = fn (string $key): bool => is_bool($state[$key] ?? null) ? $state[$key] : throw new InvalidArgumentException("Setup state: {$key} must be a boolean.");
+        $modules = $state['modules'] ?? null;
+
+        if (! is_array($modules) || ! array_is_list($modules) || array_diff($modules, self::MODULES) !== []) {
+            throw new InvalidArgumentException('Setup state: modules must be a list of known modules.');
+        }
+
+        $database = $string('database');
+        $startWith = $string('start_with');
+
+        if (! in_array($database, ['pgsql', 'sqlite'], true) || ! in_array($startWith, ['demo', 'super_admin'], true)) {
+            throw new InvalidArgumentException('Setup state: unknown database or start.');
+        }
+
+        /** @var list<string> $modules */
+        return new self(
+            appName: $string('app_name'),
+            database: $database,
+            startWith: $startWith,
+            superAdminEmail: $nullableString('super_admin_email'),
+            superAdminPasswordHash: $nullableString('super_admin_password_hash'),
+            modules: $modules,
+            https: $bool('https'),
+            playwright: $bool('playwright'),
+            claude: $bool('claude'),
+        );
+    }
+
     /** @param  array<int, string>  $modules  any int-keyed module list, e.g. the result of array_diff(); re-indexed here */
     public function withModules(array $modules): self
     {
@@ -147,5 +188,11 @@ final readonly class Answers
             'playwright' => $this->playwright,
             'claude' => $this->claude,
         ];
+    }
+
+    /** @return array<string, mixed> the public answers plus the password hash, for the wizard's 0600 state file only (RL-5) */
+    public function toState(): array
+    {
+        return [...$this->toPublicArray(), 'super_admin_password_hash' => $this->superAdminPasswordHash];
     }
 }

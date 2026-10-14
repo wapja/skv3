@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
  * the process's runtime config follows what the steps wrote to .env. After the Herd step has run, a site that was
  * not secured switches the passkeys module off (RL-7). A run that finishes rewrites an existing marker with its
  * answers, so the next re-run keeps what this one changed, and a re-run names the .env keys it changed (DEC-30). The
- * CLI runs the whole list; M6b drives it one step per request.
+ * CLI runs the whole list; the browser wizard calls runStep() once per request and finish() at the end.
  */
 final readonly class SetupRunner
 {
@@ -53,27 +53,58 @@ final readonly class SetupRunner
     /** @param  (Closure(SetupStep, Closure(): StepResult): StepResult)|null  $around  wraps each step (the CLI's task() spinner) */
     public function run(SetupContext $context, ?Closure $around = null): SetupContext
     {
-        $environment = new EnvFile($context->path('.env'));
-        $before = Marker::exists($context) ? $environment->all() : null;
+        $before = Marker::exists($context) ? new EnvFile($context->path('.env'))->all() : null;
         $context->syncRuntimeConfig();
 
         foreach ($this->steps() as $step) {
-            $wasComplete = ! $context->force && $step->isComplete($context);
-            $execute = fn (): StepResult => $wasComplete ? StepResult::skipped(__('Already done')) : $step->run($context);
-
-            $context->results[$step->key()] = $around instanceof Closure ? $around($step, $execute) : $execute();
-
-            // A Herd step skipped as complete found the site secured, so a resumed install never turns passkeys off.
-            if ($step->key() === 'herd-site' && ! $wasComplete) {
-                $this->applyHttpsConsequence($context);
-            }
-
-            $context->syncRuntimeConfig();
+            $this->runStep($context, $step, $around);
         }
 
-        if ($before !== null) {
-            $after = $environment->all();
-            $changed = array_keys(array_diff_assoc($after, $before) + array_diff_assoc($before, $after));
+        $this->finish($context, $before);
+
+        return $context;
+    }
+
+    /**
+     * One step under the runner's rules (RL-6, A12): skipped when complete unless forced; after the Herd step has run,
+     * the HTTPS consequence; then the runtime config follows .env. The wrapper sees the step before its completeness
+     * check, so a check that throws is reported under the right step. The browser wizard calls this once per request.
+     *
+     * @param  (Closure(SetupStep, Closure(): StepResult): StepResult)|null  $around
+     */
+    public function runStep(SetupContext $context, SetupStep $step, ?Closure $around = null): StepResult
+    {
+        $wasComplete = false;
+        $execute = function () use ($context, $step, &$wasComplete): StepResult {
+            $wasComplete = ! $context->force && $step->isComplete($context);
+
+            return $wasComplete ? StepResult::skipped(__('Already done')) : $step->run($context);
+        };
+
+        $result = $around instanceof Closure ? $around($step, $execute) : $execute();
+        $context->results[$step->key()] = $result;
+
+        // A Herd step skipped as complete found the site secured, so a resumed install never turns passkeys off.
+        if ($step->key() === 'herd-site' && ! $wasComplete) {
+            $this->applyHttpsConsequence($context);
+        }
+
+        $context->syncRuntimeConfig();
+
+        return $result;
+    }
+
+    /**
+     * The end of a run: a re-run names the .env keys it changed (never their values), and an existing marker is
+     * rewritten with the final answers and summary (DEC-30 (14), (29)).
+     *
+     * @param  array<string, string>|null  $environmentBefore  .env before the run, when a marker existed
+     */
+    public function finish(SetupContext $context, ?array $environmentBefore): void
+    {
+        if ($environmentBefore !== null) {
+            $after = new EnvFile($context->path('.env'))->all();
+            $changed = array_keys(array_diff_assoc($after, $environmentBefore) + array_diff_assoc($environmentBefore, $after));
 
             if ($changed !== []) {
                 $context->notes[] = __('Setup changed :keys in .env.', ['keys' => implode(', ', $changed)]);
@@ -83,8 +114,6 @@ final readonly class SetupRunner
         if (Marker::exists($context)) {
             Marker::write($context, Summary::build($context));
         }
-
-        return $context;
     }
 
     /**
