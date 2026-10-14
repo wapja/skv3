@@ -36,7 +36,7 @@ it('maps a configured accent to the html element and falls back to neutral (RL-5
 ]);
 
 it('ships a CSS rule for every accent preset', function (): void {
-    $css = (string) file_get_contents(resource_path('css/app.css'));
+    $css = (string) file_get_contents(resource_path('css/theme.css'));
 
     foreach (array_diff(Branding::ACCENTS, ['neutral']) as $accent) {
         expect($css)->toContain("[data-accent=\"{$accent}\"]");

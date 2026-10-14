@@ -51,3 +51,23 @@ it('lists the step notes without the Herd step prefix, then the setup notes (§5
 
     expect(Summary::build($context)['notes'])->toBe(['Database ready: SQLite', 'Site secured with HTTPS', 'Passkeys are off']);
 });
+
+it('lists the next steps for a demo install (§5.3.3 step 11)', function (): void {
+    $context = setupSandbox();
+
+    expect(Summary::build($context)['next'])->toBe([
+        __('Run composer dev while you work: it starts Vite, the queue worker, the logs and the scheduler.'),
+        __('Sign in with one of the demo accounts above; the login page also lists them under Quick login.'),
+        __('Run php artisan skv:doctor whenever you want to check the installation.'),
+    ]);
+});
+
+it('lists the next steps for a super admin install (§5.3.3 step 11)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray([
+        'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery',
+    ], $context->detection, $context->folderName());
+
+    expect(Summary::build($context)['next'][1] ?? null)
+        ->toBe(__('Sign in as :email on the admin host and create your first organisation under Organisations.', ['email' => 'owner@example.com']));
+});

@@ -62,3 +62,24 @@ it('sets the hooks path in a git worktree too (DEC-25)', function (): void {
 
     expect(implode("\n", $composer['scripts']['setup']))->not->toContain("is_dir('.git')");
 });
+
+it('runs the pgsql suite on the sanitised test database (A7, RL-14)', function (): void {
+    /** @var array{scripts: array<string, list<string>>} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    expect(implode("\n", $composer['scripts']['test:pgsql']))
+        ->toContain('DB_DATABASE=${DB_TEST_DATABASE:-$(php scripts/create-pgsql-test-database.php --print-name)}')
+        ->not->toContain('$(basename "$PWD")_test');
+});
+
+it('ends composer setup with the CLI after the commands the clone route repeats (RL-11, §5.3.3)', function (): void {
+    /** @var array{scripts: array{setup: list<string>}} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+    $setup = $composer['scripts']['setup'];
+
+    expect(array_slice($setup, 1, 3))->toBe([
+        'composer install',
+        "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+        '@php artisan skv:bootstrap --no-interaction',
+    ])->and(end($setup))->toBe('@php artisan skv:install');
+});

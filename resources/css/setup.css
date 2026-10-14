@@ -1,0 +1,19 @@
+/*
+ * The setup wizard's stylesheet source (§5.3.4, RL-15). `npm run build:setup` compiles it to
+ * resources/setup/setup.css, which layouts/setup inlines: the wizard runs before `npm run build`.
+ */
+@import 'tailwindcss' source(none);
+@import '../../vendor/livewire/flux/dist/flux.css';
+@import './theme.css';
+
+@source '../views/layouts/setup.blade.php';
+@source '../views/pages/setup';
+@source '../views/setup';
+@source '../../vendor/livewire/flux/stubs/resources/views/flux';
+/* flux.css adds `@source "../../flux-pro/stubs"`: free Flux only (DEC-02), so the build is the same with or without Pro installed. */
+@source not '../../vendor/livewire/flux-pro';
+
+/* No @fonts in the setup layout: the system font stack. */
+@theme {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

@@ -27,7 +27,7 @@ final class BootstrapCommand extends Command
             $this->components->twoColumnDetail($action, __('done'));
         }
 
-        $this->components->info(__('Run php artisan skv:install to finish setting up.'));
+        $this->components->info(__('Open :url to finish setting up in the browser, or run php artisan skv:install.', ['url' => $bootstrap->appUrl()]));
 
         return self::SUCCESS;
     }

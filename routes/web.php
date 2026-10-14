@@ -3,16 +3,24 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Auth\HandoffController;
+use App\Http\Controllers\Auth\QuickLoginController;
 use App\Http\Controllers\LocaleController;
 use App\Models\User;
+use App\Setup\SetupMode;
 use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
 // §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
-// everyone else (and super admins on a tenant host) lands on the dashboard.
+// everyone else (and super admins on a tenant host) lands on the dashboard. In setup mode a direct visitor goes
+// to the wizard, with the token, until a super admin exists (§5.3.4).
 Route::get('/', function (): RedirectResponse {
+    // §5.3.4: before setup, `/` leads to the wizard.
+    if (($wizard = app(SetupMode::class)->homeRedirect(request())) !== null) {
+        return redirect($wizard);
+    }
+
     $user = auth()->user();
 
     if (! $user instanceof User) {
@@ -35,12 +43,16 @@ Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
     ->middleware('throttle:handoff')
     ->name('auth.handoff.store');
 
+// §6.5: the local quick login for the demo accounts (RL-9); QuickLogin decides, so it answers 404 elsewhere.
+Route::post('quick-login', QuickLoginController::class)->middleware(['guest', 'throttle:10,1'])->name('quick-login');
+
 // §6.5: the language toggle on every host, for guests (session) and users (account).
 Route::post('locale', LocaleController::class)->middleware('throttle:30,1')->name('locale.update');
 
 require __DIR__.'/fortify.php';
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
+require __DIR__.'/setup.php';
 
 // §6.8: the optional impersonation module registers its routes only while it is on.
 if (Skv::impersonationEnabled()) {

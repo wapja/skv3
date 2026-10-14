@@ -7,13 +7,12 @@ namespace App\Setup\Doctor\Checks;
 use App\Setup\Doctor\Check;
 use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\SetupToken;
 use Illuminate\Support\Facades\File;
 
 /** §5.4, §5.3.4: once setup has finished, the one-time setup token is gone; the fix deletes it. */
 final readonly class SetupTokenCheck implements Check
 {
-    private const string TOKEN = 'storage/app/private/skv-setup-token';
-
     public function key(): string
     {
         return 'setup-token';
@@ -30,7 +29,7 @@ final readonly class SetupTokenCheck implements Check
             return CheckResult::skipped(__('Setup has not finished yet'));
         }
 
-        if (! file_exists($context->path(self::TOKEN))) {
+        if (! file_exists($context->path(SetupToken::PATH))) {
             return CheckResult::pass(__('The setup token is gone'));
         }
 
@@ -43,7 +42,7 @@ final readonly class SetupTokenCheck implements Check
             return null;
         }
 
-        File::delete($context->path(self::TOKEN));
+        File::delete($context->path(SetupToken::PATH));
         $context->forgetSync();
 
         return $this->run($context);

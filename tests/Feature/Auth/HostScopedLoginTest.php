@@ -100,17 +100,21 @@ it('pads every failed sign-in to the same minimum time and lets a success return
 });
 
 it('pads failed sign-ins to auth.timebox_duration, 500 ms unless configured otherwise', function (): void {
+    expect(config('auth.timebox_duration'))->toBe(500_000);
+
+    // The box sleeps what the sign-in left of the duration, and the sign-in runs inside the request: measuring the
+    // request bounds the sleep without guessing how long a sign-in takes under load. The fake sleeps return at once.
     Sleep::fake();
     onApex();
-    $failedSignIn = fn () => $this->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'password'])
+    config(['auth.timebox_duration' => 30_000_000]);
+
+    $started = microtime(true);
+    $this->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'password'])
         ->assertSessionHasErrors(['email' => __('auth.failed')]);
+    $elapsed = (int) ceil((microtime(true) - $started) * 1_000_000);
 
-    $failedSignIn();
-    config(['auth.timebox_duration' => 900_000]);
-    $failedSignIn();
-
-    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMicroseconds > 400_000 && $duration->totalMicroseconds <= 500_000);
-    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMicroseconds > 800_000);
+    Sleep::assertSleptTimes(1);
+    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMicroseconds >= 30_000_000 - $elapsed - 1 && $duration->totalMicroseconds <= 30_000_000);
 });
 
 it('hashes the password for an unknown address too, so a failed sign-in costs one hash either way', function (): void {

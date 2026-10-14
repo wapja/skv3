@@ -23,9 +23,10 @@ use Illuminate\Support\Str;
  * Runs the setup steps of §5.3.3 in order (RL-6): a complete step is skipped unless forced, a manual() result never
  * stops the run, and a step that throws stops it before the next one. Before the first step and after every step,
  * the process's runtime config follows what the steps wrote to .env. After the Herd step has run, a site that was
- * not secured switches the passkeys module off (RL-7). A run that finishes rewrites an existing marker with its
- * answers, so the next re-run keeps what this one changed, and a re-run names the .env keys it changed (DEC-30). The
- * CLI runs the whole list; M6b drives it one step per request.
+ * not secured is recorded as http and switches the passkeys module off (RL-7, OD-2). A run that finishes rewrites an
+ * existing marker with its answers, so the next re-run keeps what this one changed, and a re-run names the .env keys
+ * it changed (DEC-30). The CLI runs the whole list; the browser wizard calls runStep() once per request and finish()
+ * at the end.
  */
 final readonly class SetupRunner
 {
@@ -53,27 +54,58 @@ final readonly class SetupRunner
     /** @param  (Closure(SetupStep, Closure(): StepResult): StepResult)|null  $around  wraps each step (the CLI's task() spinner) */
     public function run(SetupContext $context, ?Closure $around = null): SetupContext
     {
-        $environment = new EnvFile($context->path('.env'));
-        $before = Marker::exists($context) ? $environment->all() : null;
+        $before = Marker::exists($context) ? new EnvFile($context->path('.env'))->all() : null;
         $context->syncRuntimeConfig();
 
         foreach ($this->steps() as $step) {
-            $wasComplete = ! $context->force && $step->isComplete($context);
-            $execute = fn (): StepResult => $wasComplete ? StepResult::skipped(__('Already done')) : $step->run($context);
-
-            $context->results[$step->key()] = $around instanceof Closure ? $around($step, $execute) : $execute();
-
-            // A Herd step skipped as complete found the site secured, so a resumed install never turns passkeys off.
-            if ($step->key() === 'herd-site' && ! $wasComplete) {
-                $this->applyHttpsConsequence($context);
-            }
-
-            $context->syncRuntimeConfig();
+            $this->runStep($context, $step, $around);
         }
 
-        if ($before !== null) {
-            $after = $environment->all();
-            $changed = array_keys(array_diff_assoc($after, $before) + array_diff_assoc($before, $after));
+        $this->finish($context, $before);
+
+        return $context;
+    }
+
+    /**
+     * One step under the runner's rules (RL-6, A12): skipped when complete unless forced; after the Herd step has run,
+     * the HTTPS consequence; then the runtime config follows .env. The wrapper sees the step before its completeness
+     * check, so a check that throws is reported under the right step. The browser wizard calls this once per request.
+     *
+     * @param  (Closure(SetupStep, Closure(): StepResult): StepResult)|null  $around
+     */
+    public function runStep(SetupContext $context, SetupStep $step, ?Closure $around = null): StepResult
+    {
+        $wasComplete = false;
+        $execute = function () use ($context, $step, &$wasComplete): StepResult {
+            $wasComplete = ! $context->force && $step->isComplete($context);
+
+            return $wasComplete ? StepResult::skipped(__('Already done')) : $step->run($context);
+        };
+
+        $result = $around instanceof Closure ? $around($step, $execute) : $execute();
+        $context->results[$step->key()] = $result;
+
+        // A Herd step skipped as complete found the site secured, so a resumed install never turns passkeys off.
+        if ($step->key() === 'herd-site' && ! $wasComplete) {
+            $this->applyHttpsConsequence($context);
+        }
+
+        $context->syncRuntimeConfig();
+
+        return $result;
+    }
+
+    /**
+     * The end of a run: a re-run names the .env keys it changed (never their values), and an existing marker is
+     * rewritten with the final answers and summary (DEC-30 (14), (29)).
+     *
+     * @param  array<string, string>|null  $environmentBefore  .env before the run, when a marker existed
+     */
+    public function finish(SetupContext $context, ?array $environmentBefore): void
+    {
+        if ($environmentBefore !== null) {
+            $after = new EnvFile($context->path('.env'))->all();
+            $changed = array_keys(array_diff_assoc($after, $environmentBefore) + array_diff_assoc($environmentBefore, $after));
 
             if ($changed !== []) {
                 $context->notes[] = __('Setup changed :keys in .env.', ['keys' => implode(', ', $changed)]);
@@ -83,32 +115,35 @@ final readonly class SetupRunner
         if (Marker::exists($context)) {
             Marker::write($context, Summary::build($context));
         }
-
-        return $context;
     }
 
     /**
-     * §6.8, RL-7: passkeys need HTTPS. When they were chosen but the Herd step did not secure the site, the module is
-     * switched off in .env and in the answers, the summary says how to turn it back on, and an existing marker is
-     * rewritten so its answers and notes match .env (the doctor then no longer expects a certificate). Without Herd,
-     * an APP_URL that already is https on the detected host is served over HTTPS by something else (a TLS-terminating
-     * proxy), so APP_URL does not stay http (§5.3.4) and passkeys stay on.
+     * §6.8, RL-7, OD-2: when HTTPS was chosen but the Herd step did not secure the site, APP_URL stays http and the
+     * answers say so (the doctor then expects no certificate). Passkeys need HTTPS, so they are switched off in .env
+     * and in the answers. The summary says how to secure the site later (a re-run takes its answers from the marker,
+     * so the note passes https: true), and an existing marker is rewritten. Without
+     * Herd, an APP_URL that already is https on the detected host is served over HTTPS by something else (a
+     * TLS-terminating proxy), so nothing changes.
      */
     public function applyHttpsConsequence(SetupContext $context): void
     {
         $message = $context->results['herd-site']->message ?? '';
 
-        if (! $context->answers->moduleEnabled('passkeys') || str_starts_with($message, HerdSiteStep::SECURED) || $this->servedOverHttpsWithoutHerd($context)) {
+        if (! $context->answers->https || str_starts_with($message, HerdSiteStep::SECURED) || $this->servedOverHttpsWithoutHerd($context)) {
             return;
         }
 
-        new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => false]);
+        $name = $context->folderName();
 
-        $context->answers = $context->answers
-            ->withModules(array_diff($context->answers->modules, ['passkeys']))
-            ->withHttps(false);
+        if ($context->answers->moduleEnabled('passkeys')) {
+            new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => false]);
+            $context->answers = $context->answers->withModules(array_diff($context->answers->modules, ['passkeys']));
+            $context->notes[] = __('Passkeys are off because the site has no HTTPS. To turn them on: herd secure :name, set MODULE_PASSKEYS=true, then php artisan skv:doctor --fix.', ['name' => $name]);
+        } else {
+            $context->notes[] = __('The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force --answers=\'{"https":true}\'.', ['name' => $name]);
+        }
 
-        $context->notes[] = __('Passkeys are off because the site has no HTTPS. To turn them on: herd secure :name, set MODULE_PASSKEYS=true, then php artisan skv:doctor --fix.', ['name' => $context->folderName()]);
+        $context->answers = $context->answers->withHttps(false);
 
         if (Marker::exists($context)) {
             Marker::write($context, Summary::build($context));

@@ -8,6 +8,7 @@ use App\Setup\Answers;
 use App\Setup\Marker;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -51,3 +52,20 @@ it('keeps the first install time when it rewrites the marker (RL-14)', function 
     expect(Marker::read($context)['installed_at'] ?? null)->toBe(Date::parse('2026-10-01 09:00:00')->toIso8601String())
         ->and(Marker::read($context)['summary'] ?? null)->toBe(['notes' => ['re-run']]);
 });
+
+it('writes the marker atomically with mode 0600 (A17, A22)', function (): void {
+    $context = setupSandbox();
+
+    Marker::write($context, ['urls' => []]);
+
+    expect(fileperms($context->path(Marker::FILE)) & 0777)->toBe(0600)
+        ->and(Marker::read($context)['summary'] ?? null)->toBe(['urls' => []]);
+});
+
+it('throws JsonException for a marker that is not a JSON object (A17)', function (string $contents): void {
+    $context = setupSandbox();
+    File::ensureDirectoryExists(dirname($context->path(Marker::FILE)));
+    file_put_contents($context->path(Marker::FILE), $contents);
+
+    expect(fn (): ?array => Marker::read($context))->toThrow(JsonException::class);
+})->with(['truncated' => ['{"answers":'], 'null' => ['null']]);

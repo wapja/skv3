@@ -107,6 +107,9 @@ jobs:
           npm ci
           npm run build
 
+      - name: Check the setup stylesheet is current
+        run: npm run build:setup && git diff --exit-code resources/setup/setup.css
+
       # §6.7, §8: only the main (PostgreSQL) row enables Pro, before any view compiles; without the secrets the step is
       # skipped and the job runs on free Flux. --global writes COMPOSER_HOME/auth.json, never a file in the checkout.
       # The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull requests
@@ -221,6 +224,82 @@ jobs:
           if-no-files-found: ignore
           # Traces hold request and response bodies and cookies of the test run; keep them only briefly.
           retention-days: 7
+
+  # §7.2 (OD-3, RL-11): installs the commit under test through each of the four entry points without Herd, then
+  # checks that .env and its APP_KEY exist and that the wizard renders, with its token, under php artisan serve.
+  phase1:
+    name: phase1 (${{ matrix.entry }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4']
+        entry: [terminal, terminal-nodb, composer, clone]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Every later step runs only when this says so, so a pull request that does not touch the setup skips the job
+      # without failing it.
+      - name: Changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          run=false
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run=true
+          elif [ "$EVENT_NAME" = pull_request ]; then
+            changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+            if grep -qE '^(composer\.json$|\.env\.example$|app/Setup/|app/Console/Commands/)' <<< "$changed"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Setup PHP
+        if: steps.changes.outputs.run == 'true'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_pgsql, pdo_sqlite, gd
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # The script installs dev-<branch>, so the commit under test becomes the branch ci.
+      - name: Serve the commit under test as dev-ci
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          git config --global user.name "e2e"
+          git config --global user.email "e2e@example.com"
+          git switch -C ci
+          composer config -g repositories.skv3 vcs "$GITHUB_WORKSPACE"
+
+      - name: Install the Laravel installer
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          composer global require laravel/installer --no-interaction
+          echo "$(composer global config bin-dir --absolute)" >> "$GITHUB_PATH"
+
+      - name: Phase 1 (${{ matrix.entry }})
+        if: steps.changes.outputs.run == 'true'
+        run: scripts/e2e-local.sh "$RUNNER_TEMP/phase1-app" --entry=${{ matrix.entry }}
 
   # §8: installs the commit under test with the installer, never Packagist, then runs skv:install, the doctor and
   # composer check in the new app. It runs nightly, on demand and on pull requests that touch the setup.

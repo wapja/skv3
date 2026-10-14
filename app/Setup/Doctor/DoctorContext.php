@@ -28,7 +28,7 @@ final class DoctorContext
 
     private ?bool $databaseReachable = null;
 
-    /** @param  array<string, mixed>|null  $marker  the decoded storage/app/skv-installed, or null before setup finished */
+    /** @param  array<string, mixed>|null  $marker  the decoded storage/app/skv-installed, or null before setup finished (fromSetup() synthesises one) */
     public function __construct(
         public readonly string $basePath,
         public readonly Toolchain $toolchain,
@@ -45,10 +45,12 @@ final class DoctorContext
         return new self(base_path(), $toolchain, $detection, Marker::read($setup));
     }
 
-    /** The project setup is installing (setup step 8); before step 9 there is no marker yet, so null. */
+    /** The setup's context; before the marker exists, the marker-gated checks read the answers being installed (RL-8). */
     public static function fromSetup(SetupContext $context, Toolchain $toolchain): self
     {
-        return new self($context->basePath, $toolchain, $context->detection, Marker::read($context));
+        $marker = Marker::read($context) ?? ['answers' => $context->answers->toPublicArray(), 'start_with' => $context->answers->startWith];
+
+        return new self($context->basePath, $toolchain, $context->detection, $marker);
     }
 
     public function path(string $relative = ''): string

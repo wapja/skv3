@@ -48,6 +48,7 @@ use App\Setup\Doctor\Checks\SuperpowersCheck;
 use App\Setup\Doctor\Checks\TestDatabaseCheck;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\SetupToken;
 use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
@@ -592,7 +593,7 @@ it('only warns when the superpowers plugin is not installed (§5.4)', function (
 
 it('warns about a leftover setup token and deletes it with --fix (§5.4)', function () use ($withMarker): void {
     $installed = $withMarker($this->context, []);
-    File::put($this->sandbox->path('storage/app/private/skv-setup-token'), Str::random(64));
+    File::put($this->sandbox->path(SetupToken::PATH), Str::random(64));
     $leftover = new SetupTokenCheck()->run($installed);
     $fixed = new SetupTokenCheck()->fix($installed);
 
@@ -600,7 +601,7 @@ it('warns about a leftover setup token and deletes it with --fix (§5.4)', funct
         ->and($leftover->status)->toBe(CheckStatus::Warn)
         ->and($leftover->fix)->toBe('php artisan skv:doctor --fix')
         ->and($fixed?->status)->toBe(CheckStatus::Pass)
-        ->and(is_file($this->sandbox->path('storage/app/private/skv-setup-token')))->toBeFalse();
+        ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse();
 });
 
 it('warns without public/storage and runs storage:link with --fix (§5.4)', function (): void {

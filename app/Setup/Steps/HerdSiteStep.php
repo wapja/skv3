@@ -23,7 +23,8 @@ use Throwable;
  * codes are unreliable (§13), so every change is verified by reading Herd's own listings back; what cannot be
  * verified is returned as `manual()`. A name another Herd site already uses (a link to another path, or another
  * parked directory holding the folder name) is never linked, isolated or secured. A secured site's result message
- * starts with SECURED, which skv:install reads for the passkeys consequence (RL-7).
+ * starts with SECURED, which the setup runner reads for the HTTPS consequence (RL-7, OD-2). APP_URL gets the name it
+ * secured, {folder}.{tld}, never the request host (RL-16).
  */
 final readonly class HerdSiteStep implements SetupStep
 {
@@ -163,14 +164,40 @@ final readonly class HerdSiteStep implements SetupStep
             return StepResult::manual($pending, __('The command did not finish within :seconds seconds.', ['seconds' => self::TIMEOUT]));
         }
 
-        new EnvFile($context->path('.env'))->set(['APP_URL' => 'https://'.$context->detection->host]);
+        return $this->secured($context, $this->withLink(__('Site secured with HTTPS'), $linked, $name));
+    }
 
-        // The summary is read from the marker (§5.3.4): rewrite it so its addresses say https.
-        if (Marker::exists($context)) {
-            Marker::write($context, Summary::build($context));
+    /**
+     * The result run() gives when nothing is left to do: Herd already serves the project and, when HTTPS was chosen,
+     * `herd secured` lists it (secured by hand, or by a detached step that did not live to write its result). A
+     * secured site gets its APP_URL and marker like run(). Null when Herd confirms less, or a listing fails. Only Herd's
+     * read-only listings run, never link, isolate or secure, so a web request may call it (§5.3.4, RL-6, DEC-23).
+     */
+    public function confirm(SetupContext $context): ?StepResult
+    {
+        $herd = $this->toolchain->herd();
+
+        if (! $context->detection->herd || $herd === null) {
+            return null;
         }
 
-        return StepResult::done(self::SECURED.': '.$this->withLink(__('Site secured with HTTPS'), $linked, $name));
+        try {
+            if ($this->siteState($context, $herd) !== self::SERVED) {
+                return null;
+            }
+
+            if (! $context->answers->https) {
+                return StepResult::done(__('Site served by Herd'));
+            }
+
+            if (! $this->isSecured($context, $herd)) {
+                return null;
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $this->secured($context, __('Site secured with HTTPS'));
     }
 
     /**
@@ -297,12 +324,28 @@ final readonly class HerdSiteStep implements SetupStep
         return array_map(trim(...), explode('|', trim(trim($match[0]), '|')));
     }
 
-    /** "{folder}.{tld}", with the tld taken from the detected host (Herd's default is "test"). */
+    /**
+     * "{folder}.{tld}" in lower case, as Herd lists it and as the detected host has it (so the Environment step's host
+     * checks still match on a re-run), with the tld taken from the detected host (Herd's default is "test").
+     */
     private function domain(SetupContext $context): string
     {
         $host = $context->detection->host;
 
-        return $context->folderName().'.'.(str_contains($host, '.') ? Str::afterLast($host, '.') : 'test');
+        return Str::lower($context->folderName()).'.'.(str_contains($host, '.') ? Str::afterLast($host, '.') : 'test');
+    }
+
+    /** The end of a secured run: APP_URL gets the name Herd secured (RL-16), and the marker's addresses say https. */
+    private function secured(SetupContext $context, string $message): StepResult
+    {
+        new EnvFile($context->path('.env'))->set(['APP_URL' => 'https://'.$this->domain($context)]);
+
+        // The summary is read from the marker (§5.3.4): rewrite it so its addresses say https.
+        if (Marker::exists($context)) {
+            Marker::write($context, Summary::build($context));
+        }
+
+        return StepResult::done(self::SECURED.': '.$message);
     }
 
     /** Names a link this step created, so whoever removes the site knows to run `herd unlink`. */

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Setup;
 
+use App\Setup\Support\HerdTld;
 use App\Setup\Support\Toolchain;
 use App\Support\Skv;
 use Illuminate\Support\Facades\Process;
 use PDO;
 use PDOException;
+use Throwable;
 
 /**
  * Takes the Detection snapshot before setup asks anything (§5.3.2, RL-4). Herd's exit codes are unreliable, so
@@ -19,7 +21,8 @@ final readonly class Detector
     public function __construct(private Toolchain $toolchain) {}
 
     /**
-     * @param  string|null  $requestHost  the host of the current request, when there is one (the browser wizard)
+     * @param  string|null  $requestHost  the host of the current request, when there is one (the browser wizard); one
+     *                                    that fails SetupHost::normalise() falls back to the CLI host (A4)
      * @param  string  $scheme  the scheme the site is served over now
      */
     public function detect(?string $requestHost = null, string $scheme = 'http'): Detection
@@ -35,7 +38,7 @@ final readonly class Detector
             postgres: $this->postgresReachable(),
             fluxPro: Skv::hasFluxPro(),
             claude: $this->toolchain->which('claude') !== null,
-            host: $requestHost ?? $this->cliHost($herd),
+            host: ($requestHost !== null ? SetupHost::normalise($requestHost) : null) ?? $this->cliHost(),
             scheme: $scheme,
         );
     }
@@ -55,10 +58,18 @@ final readonly class Detector
         }
     }
 
-    /** Herd Pro lists its services as a JSON array; the free edition prints a notice instead (RL-4). */
+    /**
+     * Herd Pro lists its services as a JSON array; the free edition prints a notice instead (RL-4). A Herd that hangs
+     * or fails to start counts as no Herd Pro (A5, A18).
+     */
     private function herdPro(string $herd): bool
     {
-        $result = Process::env($this->toolchain->environment())->timeout(10)->run([$herd, 'services:list', '--json']);
+        try {
+            $result = Process::env($this->toolchain->environment())->timeout(5)->run([$herd, 'services:list', '--json']);
+        } catch (Throwable) {
+            return false;
+        }
+
         $services = json_decode($result->output(), true);
 
         return is_array($services) && array_is_list($services);
@@ -81,15 +92,13 @@ final readonly class Detector
         return [true, $config['smtpPort']];
     }
 
-    /** The folder plus `herd tld` under Herd, else the APP_URL host, else localhost (RL-4). */
-    private function cliHost(?string $herd): string
+    /** The folder plus `herd tld` under Herd, else the APP_URL host, else localhost (RL-4, A5). */
+    private function cliHost(): string
     {
-        if ($herd !== null) {
-            $tld = trim(Process::env($this->toolchain->environment())->timeout(10)->run([$herd, 'tld'])->output());
+        $tld = HerdTld::read($this->toolchain);
 
-            if (preg_match('/^[a-z0-9-]+$/i', $tld) === 1) {
-                return strtolower(basename(base_path()).'.'.$tld);
-            }
+        if ($tld !== null) {
+            return strtolower(basename(base_path()).'.'.$tld);
         }
 
         $host = parse_url((string) config('app.url'), PHP_URL_HOST);

@@ -10,9 +10,15 @@ use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\SetupContext;
+use App\Setup\SetupMode;
+use App\Setup\SetupToken;
 use App\Setup\Support\Bootstrap;
+use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\DetachedStepLauncher;
+use App\Setup\Wizard\StepLauncher;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
@@ -31,6 +37,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Fortify\Features;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 
 class AppServiceProvider extends ServiceProvider
@@ -42,13 +49,21 @@ class AppServiceProvider extends ServiceProvider
     {
         AliasLoader::getInstance()->alias('Skv', Skv::class);
 
+        // Child processes of setup never inherit this project's .env values (RL-12); tests bind a sandbox toolchain.
+        $this->app->bind(Toolchain::class, fn (): Toolchain => new Toolchain(basePath: base_path()));
         $this->app->bind(Bootstrap::class, fn (Application $app): Bootstrap => new Bootstrap($app->basePath(), $app->make(Toolchain::class)));
+        $this->app->bind(BootstrapRunner::class, fn (Application $app): BootstrapRunner => $app->make(Bootstrap::class));
         // skv:doctor examines the running application; tests bind a sandbox context instead (§5.4).
         $this->app->bind(DoctorContext::class, fn (Application $app): DoctorContext => DoctorContext::forApplication($app->make(Toolchain::class), $app->make(Detector::class)));
         // skv:install sets up this application; tests bind a sandbox context instead (RL-2).
         $this->app->bind(SetupContext::class, fn (Application $app): SetupContext => SetupContext::forApplication(
             Answers::defaults(Detection::none(), basename($app->basePath())), Detection::none(),
         ));
+        // Setup mode and its token belong to this application; tests bind a sandbox instead (RL-1).
+        $this->app->bind(SetupMode::class, fn (): SetupMode => new SetupMode(base_path()));
+        $this->app->bind(SetupToken::class, fn (): SetupToken => new SetupToken(base_path()));
+        // The wizard's long steps and the Herd step run detached (RL-4); tests bind an inline launcher.
+        $this->app->bind(StepLauncher::class, DetachedStepLauncher::class);
 
         $this->configureModules();
     }
@@ -63,6 +78,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureAuthorization();
         $this->configureErrorPages();
         $this->configureFluxProBranches();
+        $this->configureSetupWizard();
     }
 
     /**
@@ -148,6 +164,15 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['errors::*', 'errors.*'], function (): void {
             Locales::apply(Locales::forErrorPage(request()));
         });
+    }
+
+    /**
+     * §5.3.4 / RL-2: the setup gate is re-applied on every Livewire update of the wizard, which arrives on the
+     * shared update route without the wizard's route middleware.
+     */
+    protected function configureSetupWizard(): void
+    {
+        Livewire::addPersistentMiddleware([EnsureSetupAccess::class]);
     }
 
     /**

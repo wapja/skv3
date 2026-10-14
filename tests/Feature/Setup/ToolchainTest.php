@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §5.3.2, §5.3.4 (DEC-23) */
 
+use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -49,4 +50,34 @@ it('looks binaries up on the built PATH without a shell', function (): void {
 
     expect(new Toolchain($this->home)->which('claude'))->toBe($claude)
         ->and(new Toolchain($this->home)->which('definitely-not-installed'))->toBeNull();
+});
+
+it('keeps the project\'s .env values out of child processes (RL-12)', function (): void {
+    $context = setupSandbox();
+    new EnvFile($context->path('.env'))->set(['DB_PASSWORD' => 'secret', 'APP_KEY' => 'base64:x', 'LANG' => 'nl_NL.UTF-8']);
+
+    $environment = new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid()), $context->basePath)->environment();
+
+    expect($environment['DB_PASSWORD'] ?? null)->toBeFalse()
+        ->and($environment['APP_KEY'] ?? null)->toBeFalse()
+        ->and($environment)->not->toHaveKey('LANG')
+        ->and($environment['HOME'])->toBeString();
+});
+
+it('resolves the toolchain from the container with this project as its base path (RL-12)', function (): void {
+    app()->forgetInstance(Toolchain::class);
+
+    $toolchain = app(Toolchain::class);
+
+    expect(new ReflectionProperty(Toolchain::class, 'basePath')->getValue($toolchain))->toBe(base_path())
+        ->and(new ReflectionProperty(Toolchain::class, 'home')->getValue($toolchain))->toBeNull();
+});
+
+it('finds the CLI php next to Herd\'s php-fpm (DEC-23)', function (): void {
+    $bin = $this->home.'/Library/Application Support/Herd/bin';
+    File::put($bin.'/php', "#!/bin/sh\n");
+    chmod($bin.'/php', 0755);
+
+    expect(new Toolchain($this->home)->which('php'))->toBe($bin.'/php')
+        ->and(is_executable((string) new Toolchain($this->home)->phpCli()))->toBeTrue();
 });

@@ -11,6 +11,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\Bootstrap;
+use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Artisan;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Tests\Fixtures\FailingBootstrap;
 use Tests\Fixtures\QueryFailingSetupStep;
 
 beforeEach(function (): void {
@@ -28,6 +30,7 @@ beforeEach(function (): void {
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     app()->instance(SetupContext::class, $this->sandbox);
     app()->instance(Bootstrap::class, new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home'))));
+    app()->instance(BootstrapRunner::class, app(Bootstrap::class));
     app()->instance(Detector::class, new Detector(new Toolchain($this->sandbox->path('home'))));
     $this->previousConnection = config('database.default');
 });
@@ -57,7 +60,7 @@ it('installs non-interactively from the e2e answers and writes the marker (§5.3
     [$exitCode, $output] = $install(['--answers' => $answers, '--no-interaction' => true]);
 
     expect($exitCode)->toBe(0)
-        ->and($output)->toContain(__('Summary'))->toContain('password')
+        ->and($output)->toContain(__('Summary'))->toContain('password')->toContain(__('Next steps'))->toContain('composer dev')
         ->and(Marker::exists($this->sandbox))->toBeTrue()
         ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_NAME'))->toBe('E2E App');
 });
@@ -224,3 +227,14 @@ it('applies a super admin password given for the installed account (§5.3.3 step
         ->and(Hash::check('new-password-456', (string) $owner->password))->toBeTrue()
         ->and(Hash::check('old-password-123', (string) $owner->password))->toBeFalse();
 })->with(['plain' => false, 'forced' => true]);
+
+it('reports a failing bootstrap as a setup stop without the process output (RL-13)', function () use ($install): void {
+    app()->instance(BootstrapRunner::class, new FailingBootstrap);
+
+    [$exitCode, $output] = $install(['--answers' => '{}', '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(__('Setup stopped at :step: :message', ['step' => __('Bootstrap'), 'message' => 'The command "php artisan migrate" failed.']))
+        ->not->toContain('migrate failed')
+        ->not->toContain('secret output');
+});

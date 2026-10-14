@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §5.2 */
 
+use App\Setup\SetupToken;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
@@ -139,4 +140,29 @@ it('tells the user to finish with skv:install (RL-1)', function (): void {
 
     expect(Artisan::call('skv:bootstrap', ['--no-interaction' => true, '--no-ansi' => true]))->toBe(0)
         ->and(Artisan::output())->toContain('php artisan skv:install');
+});
+
+it('survives a herd tld that times out (A5)', function (): void {
+    $herd = $this->context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+
+    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), '*' => Process::result('')]);
+
+    $actions = new Bootstrap($this->context->basePath, $this->toolchain)->run();
+
+    expect($actions)->not->toContain(__('Set APP_URL to the Herd address'))
+        ->and(new EnvFile($this->context->path('.env'))->get('APP_URL'))->toBe('http://localhost');
+});
+
+it('creates the one-time setup token (§5.2 point 5, RL-10)', function (): void {
+    Process::fake(["*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
+    $context = $this->context;
+    $bootstrap = new Bootstrap($context->basePath, $this->toolchain);
+
+    $actions = $bootstrap->run();
+
+    expect($actions)->toContain(__('Created the one-time setup token'))
+        ->and(new SetupToken($context->basePath)->value())->toMatch('/^[0-9a-f]{64}$/');
 });
