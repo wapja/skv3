@@ -13,8 +13,10 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * §5.3.4, RL-6: the Herd stage's finishing page while the Herd step runs, the manual page after the poll timed out,
- * and otherwise the summary from the marker; HerdStage holds the rules.
+ * §5.3.4, RL-6: the Herd stage's finishing page while the Herd step runs, and the summary from the marker once it
+ * has a result. When the answer is overdue (the page's poll timed out, the step's process exited without a result,
+ * or the poll's 60 seconds are over) the server confirms with Herd itself, and offers the manual command while Herd
+ * confirms nothing; so the finishing page never refreshes past the poll window. HerdStage holds the rules.
  */
 final class SetupFinishController extends Controller
 {
@@ -26,13 +28,17 @@ final class SetupFinishController extends Controller
         if (! $state->result instanceof StepResult && $request->boolean('without_https')) {
             $stage->continueWithoutHttps($state);
         } elseif (! $state->result instanceof StepResult) {
-            return $request->boolean('timeout')
-                ? view('setup.manual', [
+            if (! $request->boolean('timeout') && ! $stage->isOverdue($state)) {
+                return response()->view('setup.finishing')->header('Refresh', '2');
+            }
+
+            if (! $stage->confirm($state) instanceof StepResult) {
+                return view('setup.manual', [
                     'command' => 'herd secure '.app(SetupContext::class)->folderName(),
                     'continueUrl' => route('setup.finish', ['secret' => $secret, 'without_https' => 1], absolute: false),
                     'reloadUrl' => route('setup.finish', ['secret' => $secret], absolute: false),
-                ])
-                : response()->view('setup.finishing')->header('Refresh', '2');
+                ]);
+            }
         }
 
         return view('setup.finish', [

@@ -6,6 +6,8 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="noindex" />
+        {{-- RL-6: the Herd stage's URLs carry its secret, and Boost's browser logger would post window.location.href to storage/logs/browser.log. Boost injects nowhere that already names its marker. --}}
+        <!-- browser-logger-active: off on setup pages -->
 
         <title>{{ filled($title) ? __((string) $title).' - ' : '' }}{{ __('Setup') }}</title>
 

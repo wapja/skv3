@@ -17,9 +17,16 @@
                                 return;
                             }
 
-                            if (response.ok && (await response.json()).state === 'done') {
+                            const state = response.ok ? (await response.json()).state : null;
+
+                            if (state === 'done') {
                                 window.location.href = finishUrl + query;
                                 return;
+                            }
+
+                            // The Herd step exited without an answer: the finish page confirms with Herd or offers the command.
+                            if (state === 'timeout') {
+                                break;
                             }
                         } catch (error) {
                             // nginx is restarting; try again.
@@ -88,7 +95,7 @@
                         @if ($step['status'] === 'manual')
                             <div data-test="setup-manual-{{ $step['key'] }}" class="flex items-center gap-2" x-data>
                                 <code class="rounded bg-zinc-100 px-2 py-1 text-sm dark:bg-zinc-800">{{ $step['command'] }}</code>
-                                <flux:button size="xs" x-on:click="navigator.clipboard.writeText(@js($step['command']))">{{ __('Copy') }}</flux:button>
+                                <flux:button size="xs" x-on:click="navigator.clipboard?.writeText(@js($step['command'])).catch(() => {})">{{ __('Copy') }}</flux:button>
                                 <flux:button size="xs" wire:click="recheck(@js($step['key']))">{{ __('Re-check') }}</flux:button>
                             </div>
                         @endif

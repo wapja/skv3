@@ -36,7 +36,7 @@
                     <div data-test="setup-summary-manual-{{ $manual['step'] }}" class="space-y-1" x-data>
                         <div class="flex items-center gap-2">
                             <code class="rounded bg-zinc-100 px-2 py-1 text-sm dark:bg-zinc-800">{{ $manual['command'] }}</code>
-                            <flux:button size="xs" x-on:click="navigator.clipboard.writeText(@js($manual['command']))">{{ __('Copy') }}</flux:button>
+                            <flux:button size="xs" x-on:click="navigator.clipboard?.writeText(@js($manual['command'])).catch(() => {})">{{ __('Copy') }}</flux:button>
                         </div>
                         <flux:text size="sm">{{ $manual['reason'] }}</flux:text>
                     </div>

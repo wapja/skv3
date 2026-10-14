@@ -29,6 +29,9 @@ final class HerdState
     /** Seconds the secret stays valid. */
     public const int LIFETIME = 1800;
 
+    /** Seconds the page polls before the Herd step's answer is overdue and the manual command is offered (§5.3.4). */
+    public const int POLL_SECONDS = 60;
+
     /**
      * @param  array<string, StepResult>  $results
      * @param  list<string>  $notes

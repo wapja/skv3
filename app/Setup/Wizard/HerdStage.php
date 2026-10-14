@@ -13,6 +13,7 @@ use App\Setup\StepResult;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Date;
 use InvalidArgumentException;
 use JsonException;
 
@@ -39,6 +40,23 @@ final readonly class HerdStage
         abort_unless($state instanceof HerdState && is_string($secret) && $state->isFresh() && $state->matches($secret), 404);
 
         return $state;
+    }
+
+    /**
+     * Whether the Herd step's answer is overdue (§5.3.4): it has none, and its process exited without writing one (the
+     * exit file comes after the result), or the poll's 60 seconds since the stage began are over.
+     */
+    public function isOverdue(HerdState $state): bool
+    {
+        return ! $state->result instanceof StepResult
+            && (is_file(app(SetupContext::class)->path(HerdState::EXIT))
+                || Date::now()->getTimestamp() - $state->startedAt >= HerdState::POLL_SECONDS);
+    }
+
+    /** The server-side confirmation of an overdue Herd step: its result once Herd serves (and secures) the site, else null. */
+    public function confirm(HerdState $state): ?StepResult
+    {
+        return $this->wizard->confirmHerd($state);
     }
 
     /** "Continue without HTTPS": the Herd step gave no answer in time, so the HTTPS consequence applies now (OD-2). */

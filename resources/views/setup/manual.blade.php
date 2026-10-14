@@ -5,7 +5,7 @@
 
         <div class="flex items-center gap-2" x-data>
             <code class="rounded bg-zinc-100 px-2 py-1 text-sm dark:bg-zinc-800">{{ $command }}</code>
-            <flux:button size="xs" x-on:click="navigator.clipboard.writeText(@js($command))">{{ __('Copy') }}</flux:button>
+            <flux:button size="xs" x-on:click="navigator.clipboard?.writeText(@js($command)).catch(() => {})">{{ __('Copy') }}</flux:button>
         </div>
 
         <flux:text>{{ __('Run it in a terminal, then reload this page, or continue without HTTPS (passkeys are then switched off).') }}</flux:text>

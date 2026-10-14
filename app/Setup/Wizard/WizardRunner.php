@@ -12,7 +12,9 @@ use App\Setup\SetupHost;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Steps\MarkerStep;
+use App\Setup\Steps\SummaryStep;
 use App\Setup\Support\HerdTld;
 use App\Setup\Support\SafeMessage;
 use App\Setup\Support\StateFile;
@@ -200,6 +202,50 @@ final readonly class WizardRunner
             $herd->absorb($context);
             $herd->result = $context->results['herd-site'];
             $herd->save($basePath);
+        });
+    }
+
+    /**
+     * The server-side confirmation of an overdue Herd step (§5.3.4, RL-6): its process exited without a result, or the
+     * poll's 60 seconds are over. When Herd now serves (and secures) the site, the stage ends as the detached step
+     * would have ended it. Returns the Herd step's result, or null while Herd confirms nothing; a state that another
+     * finish() replaced is left alone.
+     */
+    public function confirmHerd(HerdState $herd): ?StepResult
+    {
+        $basePath = app(SetupContext::class)->basePath;
+        $current = HerdState::load($basePath);
+
+        if (! $current instanceof HerdState || ! hash_equals($herd->secretHash, $current->secretHash)) {
+            return null;
+        }
+
+        // The detached step may have answered since this request loaded the state: its answer stands (RL-6).
+        if ($current->result instanceof StepResult) {
+            return $current->result;
+        }
+
+        if ($this->toolchain->herd() === null) {
+            return null;
+        }
+
+        return Tenant::bypass(function () use ($current, $basePath): ?StepResult {
+            $context = $current->context($basePath, $this->detector->detect($current->host));
+            $result = app(HerdSiteStep::class)->confirm($context);
+
+            if (! $result instanceof StepResult) {
+                return null;
+            }
+
+            $context->results['herd-site'] = $result;
+            $this->runner->applyHttpsConsequence($context);
+            $this->runner->runStep($context, app(SummaryStep::class));
+            $this->runner->finish($context, null);
+            $current->absorb($context);
+            $current->result = $result;
+            $current->save($basePath);
+
+            return $result;
         });
     }
 
