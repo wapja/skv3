@@ -73,9 +73,9 @@ it('keeps one HTML shell and no starter leftovers (§6.5, DEC-25)', function ():
         ->values()
         ->all();
 
-    // Only the base layout and the self-contained error pages (Task 8) are documents.
+    // Only the base layout, the self-contained setup layout (§5.3.4) and the error pages are documents.
     expect(array_values(array_filter($documents, fn (string $path): bool => ! str_starts_with($path, 'errors/'))))
-        ->toBe(['layouts/base.blade.php']);
+        ->toBe(['layouts/base.blade.php', 'layouts/setup.blade.php']);
 
     foreach (['layouts/app/sidebar.blade.php', 'layouts/app/header.blade.php', 'layouts/auth/simple.blade.php',
         'layouts/auth/card.blade.php', 'layouts/auth/split.blade.php', 'partials/head.blade.php',
@@ -83,10 +83,13 @@ it('keeps one HTML shell and no starter leftovers (§6.5, DEC-25)', function ():
         expect(resource_path("views/{$path}"))->not->toBeFile();
     }
 
-    expect((string) file_get_contents(resource_path('css/app.css')))->not->toContain('!')
-        ->and(collect(File::allFiles(resource_path('views')))->filter(
-            fn ($file): bool => str_contains($file->getContents(), 'class="dark"'),
-        )->all())->toBe([]);
+    foreach (['css/app.css', 'css/theme.css', 'css/setup.css'] as $stylesheet) {
+        expect((string) file_get_contents(resource_path($stylesheet)))->not->toContain('!');
+    }
+
+    expect(collect(File::allFiles(resource_path('views')))->filter(
+        fn ($file): bool => str_contains($file->getContents(), 'class="dark"'),
+    )->all())->toBe([]);
 });
 
 it('shows the impersonation banner inside the app layout and on auth pages (RL-4)', function (): void {

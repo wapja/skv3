@@ -204,3 +204,8 @@ it('ships a local e2e script that never touches global Composer config (OD-3)', 
         ->and($script)->toContain('skv:install --no-interaction --answers=')
         ->and($script)->not->toContain('composer config --global --list');
 });
+
+it('checks in CI that the setup stylesheet is current (OD-1)', function (): void {
+    expect((string) file_get_contents(base_path('.github/workflows/tests.yml')))
+        ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css');
+});

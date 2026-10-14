@@ -442,6 +442,7 @@
     "Set up Claude Code": "Set up Claude Code",
     "Set your branding": "Set your branding",
     "Settings": "Settings",
+    "Setup": "Setup",
     "Setup changed :keys in .env.": "Setup changed :keys in .env.",
     "Setup has not finished yet": "Setup has not finished yet",
     "Setup stopped at :step: :message": "Setup stopped at :step: :message",

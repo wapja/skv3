@@ -107,6 +107,9 @@ jobs:
           npm ci
           npm run build
 
+      - name: Check the setup stylesheet is current
+        run: npm run build:setup && git diff --exit-code resources/setup/setup.css
+
       # §6.7, §8: only the main (PostgreSQL) row enables Pro, before any view compiles; without the secrets the step is
       # skipped and the job runs on free Flux. --global writes COMPOSER_HOME/auth.json, never a file in the checkout.
       # The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull requests

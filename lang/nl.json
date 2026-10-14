@@ -442,6 +442,7 @@
     "Set up Claude Code": "Claude Code instellen",
     "Set your branding": "Stel je huisstijl in",
     "Settings": "Instellingen",
+    "Setup": "Installatie",
     "Setup changed :keys in .env.": "Setup heeft :keys in .env gewijzigd.",
     "Setup has not finished yet": "De setup is nog niet klaar",
     "Setup stopped at :step: :message": "Setup gestopt bij :step: :message",
