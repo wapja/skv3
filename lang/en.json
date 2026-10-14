@@ -439,6 +439,7 @@
     "Set BRANDING_ACCENT or BRANDING_LOGO in .env.": "Set BRANDING_ACCENT or BRANDING_LOGO in .env.",
     "Set SESSION_DRIVER=database in your .env": "Set SESSION_DRIVER=database in your .env",
     "Set TENANCY_APEX_DOMAIN to the APP_URL host": "Set TENANCY_APEX_DOMAIN to the APP_URL host",
+    "Set up :name": "Set up :name",
     "Set up Claude Code": "Set up Claude Code",
     "Set your branding": "Set your branding",
     "Settings": "Settings",

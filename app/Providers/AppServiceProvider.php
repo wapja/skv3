@@ -10,6 +10,7 @@ use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\SetupContext;
 use App\Setup\SetupMode;
 use App\Setup\SetupToken;
@@ -34,6 +35,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Fortify\Features;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 
 class AppServiceProvider extends ServiceProvider
@@ -72,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureAuthorization();
         $this->configureErrorPages();
         $this->configureFluxProBranches();
+        $this->configureSetupWizard();
     }
 
     /**
@@ -157,6 +160,15 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['errors::*', 'errors.*'], function (): void {
             Locales::apply(Locales::forErrorPage(request()));
         });
+    }
+
+    /**
+     * §5.3.4 / RL-2: the setup gate is re-applied on every Livewire update of the wizard, which arrives on the
+     * shared update route without the wizard's route middleware.
+     */
+    protected function configureSetupWizard(): void
+    {
+        Livewire::addPersistentMiddleware([EnsureSetupAccess::class]);
     }
 
     /**

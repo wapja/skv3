@@ -48,6 +48,7 @@ Route::post('locale', LocaleController::class)->middleware('throttle:30,1')->nam
 require __DIR__.'/fortify.php';
 require __DIR__.'/settings.php';
 require __DIR__.'/admin.php';
+require __DIR__.'/setup.php';
 
 // §6.8: the optional impersonation module registers its routes only while it is on.
 if (Skv::impersonationEnabled()) {
