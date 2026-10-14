@@ -64,7 +64,9 @@ final class SetupLock
     }
 
     /**
-     * The lock file, created empty with mode 0600; a symlink is removed, never followed (RL-5).
+     * The lock file, created empty with mode 0600; a symlink is removed, never followed (RL-5). Opened close-on-exec
+     * ('e'): finish() and advance() launch the detached skv:run-step while they hold the lock, and a child that
+     * inherited the locked file description would keep the lock after a crashed parent, until the child exits.
      *
      * @return resource
      */
@@ -80,7 +82,7 @@ final class SetupLock
             unlink($path);
         }
 
-        $handle = @fopen($path, 'c');
+        $handle = @fopen($path, 'ce');
 
         if ($handle === false) {
             throw new RuntimeException(__('Could not write :file.', ['file' => basename($path)]));
