@@ -1,0 +1,160 @@
+<?php
+
+declare(strict_types=1);
+
+/** covers §5.3.3, §5.3.4, §7.2 */
+
+use App\Setup\Marker;
+use App\Setup\SetupToken;
+use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\HerdState;
+use App\Setup\Wizard\StepLauncher;
+use App\Setup\Wizard\WizardRunner;
+use App\Setup\Wizard\WizardState;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Tests\Fixtures\InlineStepLauncher;
+
+beforeEach(function (): void {
+    Process::preventStrayProcesses();
+    Process::fake([]);
+    app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
+    $this->previousConnection = config('database.default');
+});
+
+// afterEach, not beforeApplicationDestroyed: RefreshDatabase reads database.default again at teardown.
+afterEach(function (): void {
+    DB::purge('setup');
+    config(['database.default' => $this->previousConnection]);
+});
+
+it('refuses a host that does not belong to this project (A4, RL-3)', function (): void {
+    useSetupWizard();
+
+    expect(fn () => app(WizardRunner::class)->begin(['database' => 'sqlite'], 'example.com'))
+        ->toThrow(ValidationException::class);
+});
+
+it('stores the answers with the password hash only (RL-5)', function (): void {
+    $context = useSetupWizard();
+
+    app(WizardRunner::class)->begin([
+        'app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'super_admin',
+        'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery',
+        'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false,
+    ], 'localhost');
+
+    expect(WizardState::load($context->basePath)?->host)->toBe('localhost')
+        ->and((string) file_get_contents($context->path(WizardState::PATH)))->not->toContain('correct-horse-battery');
+});
+
+it('runs steps 1 to 8 one call at a time, the long ones detached (§5.3.4, RL-4)', function (): void {
+    $context = useSetupWizard();
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    Process::fake(['*' => Process::result('')]);
+
+    $keys = [];
+
+    while (($outcome = $runner->advance()) !== null) {
+        expect($outcome['state'])->not->toBe('failed');
+        $keys[] = $outcome['key'];
+    }
+
+    expect(array_values(array_unique($keys)))->toBe(WizardRunner::PAGE_STEPS)
+        ->and($launcher->started)->toContain('frontend')
+        ->and(WizardState::load($context->basePath)?->results)->toHaveKeys(WizardRunner::PAGE_STEPS);
+});
+
+it('leaves a console process without a time limit, so a test worker is never cut off after a step (RL-4)', function (): void {
+    useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+
+    expect($runner->advance()['key'] ?? null)->toBe('environment')
+        ->and(ini_get('max_execution_time'))->toBe('0');
+});
+
+it('reports a failing step without losing the earlier results, then retries it (§5.3.1)', function (): void {
+    // Arrange: begin() with pgsql while no Postgres answers here, so the database step throws.
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'pgsql', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    config(['database.connections.pgsql.port' => 1]);
+
+    expect($runner->advance()['key'] ?? null)->toBe('environment');
+
+    $failed = $runner->advance();
+
+    expect($failed['key'] ?? null)->toBe('database')
+        ->and($failed['state'] ?? null)->toBe('failed')
+        ->and(WizardState::load($context->basePath)?->results)->toHaveKey('environment')->not->toHaveKey('database');
+});
+
+it('marks a detached step that could not start as a manual command (RL-4)', function (): void {
+    useSetupWizard();
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->refuses = true;
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    Process::fake(['*' => Process::result('')]);
+
+    while (($outcome = $runner->advance()) !== null && $outcome['key'] !== 'frontend') {
+    }
+
+    expect($runner->state()?->results['frontend']->status ?? null)->toBe('manual');
+});
+
+it('finishes with the marker, a Herd state holding the secret\'s hash and the Herd step started (RL-6)', function (): void {
+    $context = useSetupWizard();
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    Process::fake(['*' => Process::result('')]);
+
+    while ($runner->advance() !== null) {
+    }
+
+    $secret = $runner->finish();
+
+    expect(Marker::exists($context))->toBeTrue()
+        ->and(new SetupToken($context->basePath)->exists())->toBeFalse()
+        ->and(WizardState::load($context->basePath))->toBeNull()
+        ->and(HerdState::load($context->basePath)?->matches($secret))->toBeTrue()
+        ->and($launcher->started)->toContain('herd-site');
+});
+
+it('refuses a second start while a setup is in progress (§5.3.4)', function (): void {
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+
+    expect(fn () => $runner->begin(['app_name' => 'Other', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => [], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost'))
+        ->toThrow(ValidationException::class)
+        ->and(WizardState::load($context->basePath)?->answers->appName)->toBe('Acme');
+});
+
+it('applies the HTTPS consequence when the Herd step cannot start (OD-2, RL-6)', function (): void {
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['passkeys', 'impersonation'], 'https' => true, 'playwright' => false, 'claude' => false], 'localhost');
+    Process::fake(['*' => Process::result('')]);
+
+    while ($runner->advance() !== null) {
+    }
+
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->refuses = true;
+    $runner->finish();
+
+    expect(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
+        ->and(HerdState::load($context->basePath)?->result?->status)->toBe('manual')
+        ->and((string) json_encode(Marker::read($context)))->toContain('herd secure '.$context->folderName());
+});
