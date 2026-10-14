@@ -117,3 +117,23 @@ it('never writes the Herd state back when the page moved on during the Herd step
     $after = HerdState::load($context->basePath);
     expect($used ? $after : $after?->result?->message)->toBe($used ? null : 'Continued without HTTPS.');
 })->with(['login used the secret' => [true], 'continued without HTTPS' => [false]]);
+
+it('leaves a Herd state that another finish replaced while Herd ran (RL-6)', function (): void {
+    $context = setupSandbox();
+    app()->instance(SetupContext::class, $context);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    Marker::write($context, []);
+    HerdState::begin($context->basePath, $context, 'localhost');
+    $replaced = null;
+    app()->instance(SetupRunner::class, new SetupRunner([
+        new CallbackSetupStep('herd-site', function () use ($context, &$replaced): void {
+            [$replaced] = HerdState::begin($context->basePath, $context, 'localhost');
+        }, StepResult::done(HerdSiteStep::SECURED.': late')),
+    ]));
+
+    expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0);
+
+    $after = HerdState::load($context->basePath);
+    expect($after?->secretHash)->toBe($replaced?->secretHash)
+        ->and($after?->result)->toBeNull();
+});

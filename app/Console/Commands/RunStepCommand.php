@@ -13,6 +13,7 @@ use App\Setup\Steps\SummaryStep;
 use App\Setup\Support\SafeMessage;
 use App\Setup\Support\StateFile;
 use App\Setup\Wizard\HerdState;
+use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Hidden;
@@ -83,24 +84,27 @@ final class RunStepCommand extends Command
         }
 
         if ($state instanceof HerdState) {
-            // The same while Herd ran: writing now would bring the secret back and overwrite the user's choice (RL-6).
-            $current = HerdState::load($basePath);
+            SetupLock::run($basePath, function () use ($state, $basePath, $context, $step, $result, $runner): void {
+                // The same while Herd ran: writing now would bring the secret back, overwrite the user's choice or
+                // replace another finish()'s state (RL-6).
+                $current = HerdState::load($basePath);
 
-            if (! $current instanceof HerdState || $current->result instanceof StepResult) {
-                return self::SUCCESS;
-            }
+                if (! $current instanceof HerdState || ! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
+                    return;
+                }
 
-            // A Herd step that threw never reached runStep()'s consequence: the site is not secured (OD-2).
-            if (! isset($context->results[$step->key()])) {
-                $context->results[$step->key()] = $result;
-                $runner->applyHttpsConsequence($context);
-            }
+                // A Herd step that threw never reached runStep()'s consequence: the site is not secured (OD-2).
+                if (! isset($context->results[$step->key()])) {
+                    $context->results[$step->key()] = $result;
+                    $runner->applyHttpsConsequence($context);
+                }
 
-            $runner->runStep($context, app(SummaryStep::class));
-            $runner->finish($context, null);
-            $state->absorb($context);
-            $state->result = $result;
-            $state->save($basePath);
+                $runner->runStep($context, app(SummaryStep::class));
+                $runner->finish($context, null);
+                $state->absorb($context);
+                $state->result = $result;
+                $state->save($basePath);
+            });
 
             return self::SUCCESS;
         }

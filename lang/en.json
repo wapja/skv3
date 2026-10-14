@@ -466,6 +466,7 @@
     "Setup changed :keys in .env.": "Setup changed :keys in .env.",
     "Setup has not finished yet": "Setup has not finished yet",
     "Setup is already running.": "Setup is already running.",
+    "Setup is busy in another tab.": "Setup is busy in another tab.",
     "Setup is done.": "Setup is done.",
     "Setup stopped": "Setup stopped",
     "Setup stopped at :step: :message": "Setup stopped at :step: :message",

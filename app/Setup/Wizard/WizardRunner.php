@@ -7,6 +7,7 @@ namespace App\Setup\Wizard;
 use App\Setup\Answers;
 use App\Setup\Detector;
 use App\Setup\InstallPreflight;
+use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupHost;
 use App\Setup\SetupRunner;
@@ -31,7 +32,8 @@ use Throwable;
 /**
  * Drives the setup steps for the browser wizard (§5.3.4, RL-4): one step per request, the long ones detached through
  * the launcher, every result kept in the wizard state, every call inside Tenant::bypass() (strict mode: the doctor
- * and the seeders read tenant models). Steps 9–11 follow in finish() and the Herd stage (RL-6).
+ * and the seeders read tenant models). Steps 9–11 follow in finish() and the Herd stage (RL-6). Every load-check-save
+ * runs under the SetupLock, so a reload or a second tab never runs a step twice (§5.3.4).
  */
 final readonly class WizardRunner
 {
@@ -68,30 +70,34 @@ final readonly class WizardRunner
      */
     public function begin(array $input, string $requestHost): WizardState
     {
+        $running = fn (): never => throw ValidationException::withMessages(['host' => __('Setup is already running.')]);
+
         // A second tab or browser never resets a running setup: its answers and results stay (§5.3.4).
-        if ($this->state() instanceof WizardState) {
-            throw ValidationException::withMessages(['host' => __('Setup is already running.')]);
-        }
+        return SetupLock::run(app(SetupContext::class)->basePath, function () use ($input, $requestHost, $running): WizardState {
+            if ($this->state() instanceof WizardState) {
+                $running();
+            }
 
-        [$host, $suggestion] = $this->host($requestHost);
+            [$host, $suggestion] = $this->host($requestHost);
 
-        if ($host === null) {
-            throw ValidationException::withMessages(['host' => __('Open the setup on :url.', ['url' => $suggestion])]);
-        }
+            if ($host === null) {
+                throw ValidationException::withMessages(['host' => __('Open the setup on :url.', ['url' => $suggestion])]);
+            }
 
-        $context = app(SetupContext::class);
-        $detection = $this->detector->detect($host);
-        $installed = $this->installed($context);
-        $answers = Answers::fromArray($input, $detection, $context->folderName(), $installed);
+            $context = app(SetupContext::class);
+            $detection = $this->detector->detect($host);
+            $installed = $this->installed($context);
+            $answers = Answers::fromArray($input, $detection, $context->folderName(), $installed);
 
-        if (Tenant::bypass(fn (): bool => new InstallPreflight($context)->refusesDemoDefault($answers, $input, $installed, $detection))) {
-            throw ValidationException::withMessages(['start_with' => __('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.')]);
-        }
+            if (Tenant::bypass(fn (): bool => new InstallPreflight($context)->refusesDemoDefault($answers, $input, $installed, $detection))) {
+                throw ValidationException::withMessages(['start_with' => __('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.')]);
+            }
 
-        $state = new WizardState($host, $answers);
-        $state->save($context->basePath);
+            $state = new WizardState($host, $answers);
+            $state->save($context->basePath);
 
-        return $state;
+            return $state;
+        }, busy: $running);
     }
 
     /** The wizard state; a file that is not a state this kit wrote is deleted and reads as none. */
@@ -112,10 +118,11 @@ final readonly class WizardRunner
     public function advance(): ?array
     {
         $this->extendTimeLimit();
+        $basePath = app(SetupContext::class)->basePath;
 
-        return Tenant::bypass(function (): ?array {
-            $state = $this->state() ?? throw new RuntimeException(__('There is no setup in progress.'));
-            $basePath = app(SetupContext::class)->basePath;
+        // While another request runs a step (a reload, a second tab), the page keeps polling: that step is running.
+        return SetupLock::run($basePath, fn (): ?array => Tenant::bypass(function () use ($basePath): ?array {
+            $state = $this->current() ?? throw new RuntimeException(__('There is no setup in progress.'));
             $context = $state->context($basePath, $this->detector->detect($state->host));
             $context->syncRuntimeConfig();
             $step = $this->nextStep($state);
@@ -138,39 +145,47 @@ final readonly class WizardRunner
             $state->save($basePath);
 
             return ['key' => $step->key(), 'state' => 'done', 'message' => $result->message];
-        });
+        }), busy: fn (): array => ['key' => $this->nextKey(), 'state' => 'running', 'message' => '']);
     }
 
     /** Forgets a step's result, so the next advance() runs it again (the page's "Re-check"). */
     public function recheck(string $key): void
     {
-        $state = $this->state();
-
-        if (! $state instanceof WizardState || ! in_array($key, self::PAGE_STEPS, true)) {
+        if (! in_array($key, self::PAGE_STEPS, true)) {
             return;
         }
 
-        unset($state->results[$key]);
         $basePath = app(SetupContext::class)->basePath;
 
-        foreach (['json', 'log', 'exit', 'started'] as $extension) {
-            @unlink($this->stepFile($basePath, $key, $extension));
-        }
+        SetupLock::run($basePath, function () use ($key, $basePath): void {
+            $state = $this->current();
 
-        $state->save($basePath);
+            if (! $state instanceof WizardState) {
+                return;
+            }
+
+            unset($state->results[$key]);
+
+            foreach (['json', 'log', 'exit', 'started'] as $extension) {
+                @unlink($this->stepFile($basePath, $key, $extension));
+            }
+
+            $state->save($basePath);
+        }, busy: $this->busy(...));
     }
 
     /** Step 9 in this request, then step 10 detached (RL-6); returns the secret the page polls with. */
     public function finish(): string
     {
-        return Tenant::bypass(function (): string {
-            $state = $this->state() ?? throw new RuntimeException(__('There is no setup in progress.'));
+        $basePath = app(SetupContext::class)->basePath;
+
+        return SetupLock::run($basePath, fn (): string => Tenant::bypass(function () use ($basePath): string {
+            $state = $this->current() ?? throw new RuntimeException(__('There is no setup in progress.'));
 
             if ($this->nextStep($state) instanceof SetupStep) {
                 throw new RuntimeException(__('Finish the earlier steps first.'));
             }
 
-            $basePath = app(SetupContext::class)->basePath;
             $context = $state->context($basePath, $this->detector->detect($state->host));
             $context->syncRuntimeConfig();
             $this->runner->runStep($context, app(MarkerStep::class));
@@ -184,12 +199,13 @@ final readonly class WizardRunner
             }
 
             return $secret;
-        });
+        }), busy: $this->busy(...));
     }
 
     /**
      * Ends the Herd stage without a secured site (OD-2, RL-6): the Herd step could not start, or the user continued
-     * without HTTPS. The HTTPS consequence applies, and the marker is rewritten with the manual `herd secure`.
+     * without HTTPS. The HTTPS consequence applies, and the marker is rewritten with the manual `herd secure`. The
+     * callers hold the SetupLock.
      */
     public function settleWithoutHttps(HerdState $herd, string $message): void
     {
@@ -209,43 +225,46 @@ final readonly class WizardRunner
      * The server-side confirmation of an overdue Herd step (§5.3.4, RL-6): its process exited without a result, or the
      * poll's 60 seconds are over. When Herd now serves (and secures) the site, the stage ends as the detached step
      * would have ended it. Returns the Herd step's result, or null while Herd confirms nothing; a state that another
-     * finish() replaced is left alone.
+     * finish() replaced or the login used up is left alone (under the SetupLock, like every Herd-state writer).
      */
     public function confirmHerd(HerdState $herd): ?StepResult
     {
         $basePath = app(SetupContext::class)->basePath;
-        $current = HerdState::load($basePath);
 
-        if (! $current instanceof HerdState || ! hash_equals($herd->secretHash, $current->secretHash)) {
-            return null;
-        }
+        return SetupLock::run($basePath, function () use ($herd, $basePath): ?StepResult {
+            $current = HerdState::load($basePath);
 
-        // The detached step may have answered since this request loaded the state: its answer stands (RL-6).
-        if ($current->result instanceof StepResult) {
-            return $current->result;
-        }
-
-        if ($this->toolchain->herd() === null) {
-            return null;
-        }
-
-        return Tenant::bypass(function () use ($current, $basePath): ?StepResult {
-            $context = $current->context($basePath, $this->detector->detect($current->host));
-            $result = app(HerdSiteStep::class)->confirm($context);
-
-            if (! $result instanceof StepResult) {
+            if (! $current instanceof HerdState || ! hash_equals($herd->secretHash, $current->secretHash)) {
                 return null;
             }
 
-            $context->results['herd-site'] = $result;
-            $this->runner->applyHttpsConsequence($context);
-            $this->runner->runStep($context, app(SummaryStep::class));
-            $this->runner->finish($context, null);
-            $current->absorb($context);
-            $current->result = $result;
-            $current->save($basePath);
+            // The detached step may have answered since this request loaded the state: its answer stands (RL-6).
+            if ($current->result instanceof StepResult) {
+                return $current->result;
+            }
 
-            return $result;
+            if ($this->toolchain->herd() === null) {
+                return null;
+            }
+
+            return Tenant::bypass(function () use ($current, $basePath): ?StepResult {
+                $context = $current->context($basePath, $this->detector->detect($current->host));
+                $result = app(HerdSiteStep::class)->confirm($context);
+
+                if (! $result instanceof StepResult) {
+                    return null;
+                }
+
+                $context->results['herd-site'] = $result;
+                $this->runner->applyHttpsConsequence($context);
+                $this->runner->runStep($context, app(SummaryStep::class));
+                $this->runner->finish($context, null);
+                $current->absorb($context);
+                $current->result = $result;
+                $current->save($basePath);
+
+                return $result;
+            });
         });
     }
 
@@ -283,6 +302,29 @@ final readonly class WizardRunner
         if (! app()->runningInConsole()) {
             set_time_limit(300);
         }
+    }
+
+    /** The state under the SetupLock; none once the marker exists, so nothing writes it again after step 9 (RL-5). */
+    private function current(): ?WizardState
+    {
+        return Marker::exists(app(SetupContext::class)) ? null : $this->state();
+    }
+
+    /** The step another request is running while it holds the lock; read only, a broken state is left to that request. */
+    private function nextKey(): string
+    {
+        try {
+            $state = WizardState::load(app(SetupContext::class)->basePath);
+        } catch (JsonException|InvalidArgumentException) {
+            return '';
+        }
+
+        return ($state instanceof WizardState ? $this->nextStep($state)?->key() : null) ?? '';
+    }
+
+    private function busy(): never
+    {
+        throw new RuntimeException(__('Setup is busy in another tab.'));
     }
 
     private function nextStep(WizardState $state): ?SetupStep

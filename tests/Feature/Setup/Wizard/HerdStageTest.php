@@ -16,6 +16,7 @@ use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\HerdStage;
 use App\Setup\Wizard\HerdState;
 use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Laravel\Boost\Middleware\InjectBoost;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -200,6 +202,21 @@ it('sends a demo install to the login page (RL-6)', function () use ($afterStepN
     $state->result = StepResult::skipped('Herd is not installed');
     $state->save($context->basePath);
 
-    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertSee('data-test="setup-summary"', false)->assertSee('password');
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertSee('data-test="setup-summary"', false)->assertSee('password')
+        ->assertSee('data-test="setup-next-steps"', false)->assertSee('composer dev');
     $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect(Hosts::url(Hosts::apex(), '/login'));
+});
+
+it('issues one handoff when two logins arrive at once (RL-6)', function () use ($afterStepNine): void {
+    // Arrange: both requests loaded the state; the first one used the secret up before the second claims it.
+    $context = useSetupWizard();
+    $afterStepNine($context, 'super_admin');
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+    app(HerdStage::class)->loginUrl($state);
+
+    expect(fn () => app(HerdStage::class)->loginUrl($state))->toThrow(HttpException::class)
+        ->and(HandoffToken::query()->count())->toBe(1);
 });

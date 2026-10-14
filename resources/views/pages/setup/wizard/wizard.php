@@ -165,7 +165,14 @@ new #[Layout('layouts::setup')] #[Title('Setup')] class extends Component
             return;
         }
 
-        $runner->recheck($key);
+        try {
+            $runner->recheck($key);
+        } catch (RuntimeException $exception) {
+            $this->failure = SafeMessage::of($exception);
+
+            return;
+        }
+
         $this->failure = null;
         $this->stage = 'running';
     }

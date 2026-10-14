@@ -62,15 +62,19 @@ final readonly class HerdStage
     /** "Continue without HTTPS": the Herd step gave no answer in time, so the HTTPS consequence applies now (OD-2). */
     public function continueWithoutHttps(HerdState $state): void
     {
-        // The detached Herd step may have finished since this request loaded the state: its answer stands (RL-6). A
-        // state with another secret belongs to another finish() and is not this browser's to settle.
-        $current = HerdState::load(app(SetupContext::class)->basePath);
+        $basePath = app(SetupContext::class)->basePath;
 
-        if (! $current instanceof HerdState || ! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
-            return;
-        }
+        SetupLock::run($basePath, function () use ($state, $basePath): void {
+            // The detached Herd step may have finished since this request loaded the state: its answer stands (RL-6).
+            // A state with another secret belongs to another finish() and is not this browser's to settle.
+            $current = HerdState::load($basePath);
 
-        $this->wizard->settleWithoutHttps($current, __('Continued without HTTPS.'));
+            if (! $current instanceof HerdState || ! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
+                return;
+            }
+
+            $this->wizard->settleWithoutHttps($current, __('Continued without HTTPS.'));
+        });
     }
 
     /** @return array<string, mixed> the marker's summary (§5.3.4: the summary is read from the marker) */
@@ -79,10 +83,20 @@ final readonly class HerdStage
         return Marker::read(app(SetupContext::class))['summary'] ?? [];
     }
 
-    /** The handoff for the installed super admin, or the login page for a demo; the secret is used up (RL-6). */
+    /**
+     * The handoff for the installed super admin, or the login page for a demo; the secret is used up (RL-6). The state
+     * is claimed under the SetupLock, so two logins never both pass and a late Herd step never writes it back.
+     */
     public function loginUrl(HerdState $state): string
     {
-        HerdState::forget(app(SetupContext::class)->basePath);
+        $basePath = app(SetupContext::class)->basePath;
+
+        SetupLock::run($basePath, function () use ($state, $basePath): void {
+            $current = HerdState::load($basePath);
+            abort_unless($current instanceof HerdState && hash_equals($state->secretHash, $current->secretHash), 404);
+            HerdState::forget($basePath);
+            SetupLock::forget($basePath);
+        });
 
         if ($state->answers->startWith !== 'super_admin' || $state->answers->superAdminEmail === null) {
             return Hosts::url(Hosts::apex(), '/login');

@@ -12,6 +12,7 @@ use App\Setup\SetupToken;
 use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
@@ -245,4 +246,21 @@ it('never stores the plaintext password (RL-5)', function () use ($open, $next, 
         ->and(WizardState::load($context->basePath)?->answers->superAdminPasswordHash)->not->toBeNull()
         ->and((string) $response->getContent())->not->toContain('correct-horse-battery')
         ->and($snapshot['data']['superAdminPassword'] ?? null)->toBe('');
+});
+
+it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)', function () use ($open, $next, $until, $answers): void {
+    $context = useSetupWizard();
+    Process::fake(['*' => Process::result('')]);
+    [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
+    [$snapshot] = $until($snapshot, $html, 'data-test="setup-manual-frontend"');
+    // Another request holds the setup lock (flock() on its own handle conflicts with this process's too).
+    $lock = fopen($context->path(SetupLock::PATH), 'c') ?: throw new LogicException('No lock file.');
+    flock($lock, LOCK_EX);
+
+    [, $html] = $next(callPageAction($snapshot, 'recheck', ['frontend'])->assertOk());
+
+    expect($html)->toContain('data-test="setup-failure"')->toContain(__('Setup is busy in another tab.'))
+        ->and(WizardState::load($context->basePath)?->results)->toHaveKey('frontend');
+
+    flock($lock, LOCK_UN);
 });

@@ -9,6 +9,7 @@ use App\Setup\SetupToken;
 use App\Setup\StepResult;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
+use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\StepLauncher;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
@@ -17,6 +18,19 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\Fixtures\InlineStepLauncher;
+
+/**
+ * Holds the setup lock as another request would (flock() on its own handle, which conflicts with any other handle,
+ * even in this process) and returns the handle to release.
+ *
+ * @return resource
+ */
+$holdLock = function (string $basePath) {
+    $handle = fopen(rtrim($basePath, '/').'/'.SetupLock::PATH, 'c') ?: throw new LogicException('No lock file.');
+    flock($handle, LOCK_EX);
+
+    return $handle;
+};
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -195,4 +209,37 @@ it('applies the HTTPS consequence when the Herd step cannot start (OD-2, RL-6)',
     expect(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
         ->and(HerdState::load($context->basePath)?->result?->status)->toBe('manual')
         ->and((string) json_encode(Marker::read($context)))->toContain('herd secure '.$context->folderName());
+});
+
+it('reports the next step as running and runs nothing while another request holds the lock (§5.3.4)', function () use ($holdLock): void {
+    // Arrange: a reload while the database step runs: the old request still holds the lock.
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $lock = $holdLock($context->basePath);
+
+    $outcome = $runner->advance();
+
+    expect($outcome)->toBe(['key' => 'environment', 'state' => 'running', 'message' => ''])
+        ->and(WizardState::load($context->basePath)?->results)->toBe([]);
+
+    flock($lock, LOCK_UN);
+
+    expect($runner->advance()['state'] ?? null)->toBe('done');
+});
+
+it('refuses a re-check and finishing while another request holds the lock (§5.3.4)', function () use ($holdLock): void {
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $state = $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $state->results = array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok'));
+    $state->save($context->basePath);
+    $lock = $holdLock($context->basePath);
+
+    expect(fn () => $runner->recheck('frontend'))->toThrow(RuntimeException::class, __('Setup is busy in another tab.'))
+        ->and(fn () => $runner->finish())->toThrow(RuntimeException::class, __('Setup is busy in another tab.'))
+        ->and(WizardState::load($context->basePath)?->results)->toHaveKey('frontend')
+        ->and(Marker::exists($context))->toBeFalse();
+
+    flock($lock, LOCK_UN);
 });
