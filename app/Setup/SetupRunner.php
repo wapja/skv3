@@ -120,7 +120,8 @@ final readonly class SetupRunner
     /**
      * §6.8, RL-7, OD-2: when HTTPS was chosen but the Herd step did not secure the site, APP_URL stays http and the
      * answers say so (the doctor then expects no certificate). Passkeys need HTTPS, so they are switched off in .env
-     * and in the answers. The summary says how to secure the site later, and an existing marker is rewritten. Without
+     * and in the answers. The summary says how to secure the site later (a re-run takes its answers from the marker,
+     * so the note passes https: true), and an existing marker is rewritten. Without
      * Herd, an APP_URL that already is https on the detected host is served over HTTPS by something else (a
      * TLS-terminating proxy), so nothing changes.
      */
@@ -139,7 +140,7 @@ final readonly class SetupRunner
             $context->answers = $context->answers->withModules(array_diff($context->answers->modules, ['passkeys']));
             $context->notes[] = __('Passkeys are off because the site has no HTTPS. To turn them on: herd secure :name, set MODULE_PASSKEYS=true, then php artisan skv:doctor --fix.', ['name' => $name]);
         } else {
-            $context->notes[] = __('The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force.', ['name' => $name]);
+            $context->notes[] = __('The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force --answers=\'{"https":true}\'.', ['name' => $name]);
         }
 
         $context->answers = $context->answers->withHttps(false);

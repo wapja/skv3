@@ -520,7 +520,7 @@
     "The session driver is :driver": "De sessiedriver is :driver",
     "The setup token is gone": "Het setup-token is verwijderd",
     "The setup token is still there": "Het setup-token staat er nog",
-    "The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force.": "De site heeft geen HTTPS. Beveilig hem zo: herd secure :name, daarna php artisan skv:install --force.",
+    "The site has no HTTPS. To secure it: herd secure :name, then php artisan skv:install --force --answers='{\"https\":true}'.": "De site heeft geen HTTPS. Beveilig hem zo: herd secure :name, daarna php artisan skv:install --force --answers='{\"https\":true}'.",
     "The super admin :email does not exist; pass super_admin_password to create it.": "De superbeheerder :email bestaat niet; geef super_admin_password mee om hem aan te maken.",
     "The super admin badges have drifted from is_super_admin": "De superbeheerder-badges wijken af van is_super_admin",
     "The super admin badges match is_super_admin": "De superbeheerder-badges komen overeen met is_super_admin",

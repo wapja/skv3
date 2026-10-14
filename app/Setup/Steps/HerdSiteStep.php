@@ -298,12 +298,15 @@ final readonly class HerdSiteStep implements SetupStep
         return array_map(trim(...), explode('|', trim(trim($match[0]), '|')));
     }
 
-    /** "{folder}.{tld}", with the tld taken from the detected host (Herd's default is "test"). */
+    /**
+     * "{folder}.{tld}" in lower case, as Herd lists it and as the detected host has it (so the Environment step's host
+     * checks still match on a re-run), with the tld taken from the detected host (Herd's default is "test").
+     */
     private function domain(SetupContext $context): string
     {
         $host = $context->detection->host;
 
-        return $context->folderName().'.'.(str_contains($host, '.') ? Str::afterLast($host, '.') : 'test');
+        return Str::lower($context->folderName()).'.'.(str_contains($host, '.') ? Str::afterLast($host, '.') : 'test');
     }
 
     /** Names a link this step created, so whoever removes the site knows to run `herd unlink`. */

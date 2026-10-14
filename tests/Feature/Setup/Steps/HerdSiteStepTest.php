@@ -96,6 +96,30 @@ it('writes the name it secured into APP_URL, not the request host (A20, RL-16)',
         ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://'.$context->folderName().'.test');
 });
 
+it('writes a mixed-case folder into APP_URL in lower case, like the detected host (A20, RL-16)', function () use ($herdLinksRow): void {
+    $context = setupSandbox($this->detection, 'MyApp-');
+    $name = $context->folderName();
+    $host = Str::lower($name).'.test';
+    $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: $host, scheme: 'http');
+    $context = new SetupContext($context->basePath, Answers::fromArray(['https' => true], $detection, $name), $detection);
+
+    Process::fake([
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else/'], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result($herdLinksRow($name, $context->basePath))),
+        "*herd' 'link'*" => Process::result('linked'),
+        "*herd' 'secured'*" => Process::sequence()->push(Process::result(''))->whenEmpty(Process::result("| Site | Expires |\n| {$host} | 2027-01-01 00:00:00 GMT |\n")),
+        "*herd' 'secure'*" => Process::result('Secured', exitCode: 0),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($name)->not->toBe(Str::lower($name))
+        ->and($result->message)->toStartWith(HerdSiteStep::SECURED)
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('https://'.$host);
+});
+
 it('does not run herd secure for a site that is already secured (§5.3.3 step 10)', function (): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());

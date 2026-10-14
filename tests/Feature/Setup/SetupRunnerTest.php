@@ -205,6 +205,24 @@ it('records an unsecured site as http even without passkeys (OD-2)', function ()
         ->and(implode(' ', $context->notes))->toContain('herd secure '.$context->folderName());
 });
 
+it('names a re-run that turns https back on over the marker answers (OD-2)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    $context->results['herd-site'] = StepResult::manual('herd secure x', 'not confirmed');
+    Marker::write($context, []);
+
+    new SetupRunner([])->applyHttpsConsequence($context);
+
+    // A re-run takes every answer it is not given from the marker, which now says https: false.
+    $installed = Marker::read($context)['answers'] ?? [];
+    $note = implode(' ', $context->notes);
+    preg_match("/skv:install --force --answers='(\{.*?\})'/", $note, $match);
+
+    expect($installed['https'] ?? null)->toBeFalse()
+        ->and($match)->toHaveKey(1)
+        ->and(Answers::fromArray(json_decode($match[1] ?? '{}', true, flags: JSON_THROW_ON_ERROR), Detection::none(), $context->folderName(), $installed)->https)->toBeTrue();
+});
+
 it('keeps https when the site was secured (OD-2)', function (): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
