@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Auth\HandoffController;
+use App\Http\Controllers\Auth\QuickLoginController;
 use App\Http\Controllers\LocaleController;
 use App\Models\User;
 use App\Setup\SetupMode;
@@ -41,6 +42,9 @@ Route::get('auth/handoff/{token}', [HandoffController::class, 'show'])
 Route::post('auth/handoff/{token}', [HandoffController::class, 'store'])
     ->middleware('throttle:handoff')
     ->name('auth.handoff.store');
+
+// §6.5: the local quick login for the demo accounts (RL-9); QuickLogin decides, so it answers 404 elsewhere.
+Route::post('quick-login', QuickLoginController::class)->middleware(['guest', 'throttle:10,1'])->name('quick-login');
 
 // §6.5: the language toggle on every host, for guests (session) and users (account).
 Route::post('locale', LocaleController::class)->middleware('throttle:30,1')->name('locale.update');

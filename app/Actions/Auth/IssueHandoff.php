@@ -21,7 +21,9 @@ use LogicException;
  * still sign in at all (active, not deleted) is decided when the link is used, by the host login rule.
  *
  * A handoff is a sign-in that skips the second factor: callers pass only the authenticated actor, never
- * a user taken from input (FU3-1).
+ * a user taken from input (FU3-1). Local-only exceptions: App\Setup\QuickLogin (a demo install, the demo password
+ * verified, no confirmed second factor) and App\Setup\Wizard\HerdStage (the installed super admin, bound to the
+ * Herd-stage secret).
  */
 final class IssueHandoff
 {

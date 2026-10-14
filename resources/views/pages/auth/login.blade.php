@@ -52,5 +52,7 @@
                 </flux:button>
             </div>
         </form>
+
+        <x-quick-login />
     </div>
 </x-layouts::auth>
