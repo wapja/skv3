@@ -159,7 +159,8 @@ boost_restored() {
 TOKEN=""
 JAR="$WORK/cookies.txt"
 token_path() { (cd "$TARGET" && php -r 'require "vendor/autoload.php"; echo App\Setup\SetupToken::PATH;'); }
-has_app_key() { grep -q '^APP_KEY=base64:' "$TARGET/.env"; }
+# Env::writeVariables quotes the key skv:bootstrap writes (composer, clone); the installer's key:generate does not.
+has_app_key() { grep -qE '^APP_KEY="?base64:' "$TARGET/.env"; }
 home_redirects() {
     local location
     location="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/")" && [ -n "$TOKEN" ] && [[ "$location" == *"/welcome-setup?token=$TOKEN" ]]
