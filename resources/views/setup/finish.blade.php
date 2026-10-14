@@ -52,6 +52,17 @@
             </ul>
         @endif
 
+        @if (($summary['next'] ?? []) !== [])
+            <div data-test="setup-next-steps" class="space-y-2">
+                <flux:heading size="lg" level="2">{{ __('Next steps') }}</flux:heading>
+                <ol class="list-decimal space-y-1 ps-5">
+                    @foreach ($summary['next'] as $step)
+                        <li><flux:text>{{ $step }}</flux:text></li>
+                    @endforeach
+                </ol>
+            </div>
+        @endif
+
         <flux:button variant="primary" :href="$loginUrl" data-test="setup-login">
             {{ $superAdminEmail !== null ? __('Log in as :email', ['email' => $superAdminEmail]) : __('Go to the login page') }}
         </flux:button>

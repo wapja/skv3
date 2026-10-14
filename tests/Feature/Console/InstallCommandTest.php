@@ -60,7 +60,7 @@ it('installs non-interactively from the e2e answers and writes the marker (§5.3
     [$exitCode, $output] = $install(['--answers' => $answers, '--no-interaction' => true]);
 
     expect($exitCode)->toBe(0)
-        ->and($output)->toContain(__('Summary'))->toContain('password')
+        ->and($output)->toContain(__('Summary'))->toContain('password')->toContain(__('Next steps'))->toContain('composer dev')
         ->and(Marker::exists($this->sandbox))->toBeTrue()
         ->and(new EnvFile($this->sandbox->path('.env'))->get('APP_NAME'))->toBe('E2E App');
 });

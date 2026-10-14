@@ -187,7 +187,7 @@ final class InstallCommand extends Command
         };
     }
 
-    /** @param  array{urls: list<string>, logins: list<array{email: string, password: ?string, url: string}>, manual: list<array{step: string, command: string, reason: string}>, notes: list<string>}  $summary */
+    /** @param  array{urls: list<string>, logins: list<array{email: string, password: ?string, url: string}>, manual: list<array{step: string, command: string, reason: string}>, notes: list<string>, next: list<string>}  $summary */
     private function printSummary(array $summary): void
     {
         $this->components->info(__('Summary'));
@@ -210,5 +210,8 @@ final class InstallCommand extends Command
             $this->newLine();
             $this->components->bulletList(array_map(OutputFormatter::escape(...), $summary['notes']));
         }
+
+        $this->components->info(__('Next steps'));
+        $this->components->bulletList(array_map(OutputFormatter::escape(...), $summary['next']));
     }
 }
