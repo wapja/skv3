@@ -2,7 +2,7 @@
 
 An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, invitations, roles and permissions, impersonation, audit logging and a Flux UI — set up from Laravel Herd in minutes.
 
-> **Status:** under construction (milestone M6a — the setup engine and its CLI). Setup runs from the terminal for now; the browser setup wizard arrives in M6b. See `docs/superpowers/specs/2026-10-10-skv3-design.md`.
+> **Status:** under construction (milestone M6b — the browser setup wizard and the local quick login). See `docs/superpowers/specs/2026-10-10-skv3-design.md`.
 
 ## Requirements
 
@@ -11,21 +11,24 @@ An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, in
 
 ## Quickstart
 
-Every route ends in the same setup: `php artisan skv:install` asks a few questions (or reads `--answers`), then writes `.env`, creates and seeds the database, writes `herd.yml` and the branding, builds the frontend, sets the git hooks, sets up Claude Code when you choose it, runs the doctor, links the Herd site (and secures it when HTTPS is on) and prints a summary with the addresses and logins. The browser wizard that does the same arrives in M6b.
+Every route ends in the same setup, in the browser or in the terminal. The setup wizard and `php artisan skv:install` run the same steps: they ask a few questions, then write `.env`, create and seed the database, write `herd.yml` and the branding, build the frontend, set the git hooks, set up Claude Code when you choose it, run the doctor, write the install marker, link the Herd site (and secure it when HTTPS is on) and show a summary with the addresses and logins.
 
-- **Laravel installer** (Herd's *New site → Custom Starter Kit* runs the same command):
+- **Herd** (no terminal needed): *New site* → *Custom Starter Kit* → `frankcornet/skv3` → *Open site*. The site's home page opens the [setup wizard](#the-setup-wizard).
+- **Laravel installer** (Herd's *Custom Starter Kit* runs the same command):
 
   ```bash
   laravel new myapp --using=frankcornet/skv3
-  cd myapp && php artisan skv:install
   ```
+
+  Then open the address it prints, or run `cd myapp && php artisan skv:install` to set up in the terminal.
 
 - **Composer:**
 
   ```bash
   composer create-project frankcornet/skv3 myapp
-  cd myapp && php artisan skv:install
   ```
+
+  Then open the address it prints, or run `cd myapp && php artisan skv:install`.
 
 - **Clone:**
 
@@ -33,16 +36,48 @@ Every route ends in the same setup: `php artisan skv:install` asks a few questio
   git clone … myapp && cd myapp && composer setup
   ```
 
-  `composer setup` runs `composer install`, copies `.env.example` when `.env` is missing, then `php artisan skv:bootstrap` and `php artisan skv:install`.
+  `composer setup` runs `composer install`, copies `.env.example` when `.env` is missing, then `php artisan skv:bootstrap` and `php artisan skv:install`, so it ends in the terminal. To use the wizard on a clone instead, run those commands up to and including `skv:bootstrap` yourself and open the site.
 
-The first two routes install the package from Packagist, so they work once it is published (M8). In every route `skv:bootstrap` runs first, from the Composer and installer hooks or from `composer setup`. It creates `.env` and `APP_KEY`, points a `localhost` `APP_URL` at the Herd site and migrates the SQLite file, so the app boots before `skv:install` runs. `skv:install` runs the same bootstrap again as its step 0, so a bare `php artisan skv:install` on a clone works too.
+The first three routes install the package from Packagist, so they work once it is published (M8). In every route `skv:bootstrap` runs first, from the Composer and installer hooks or from `composer setup`. It creates `.env` and `APP_KEY`, points a `localhost` `APP_URL` at the Herd site and migrates the SQLite file, so the app boots before setup runs. While the app is not installed it also writes the one-time setup token, and it prints "Open `<APP_URL>` to finish setting up in the browser, or run php artisan skv:install." `skv:install` runs the same bootstrap again as its step 0, so a bare `php artisan skv:install` on a clone works too.
+
+## The setup wizard
+
+The wizard lives at `/welcome-setup`, but you never type that address: open the site's home page and it sends you there with the token.
+
+- **When it opens.** Only in *setup mode*: `APP_ENV=local`, no install marker (`storage/app/skv-installed`) and a setup token. Every other request to `/welcome-setup` gets a 404, and so does a request that arrives through a proxy or a tunnel such as `herd share` (it carries an `X-Forwarded-*`, `Forwarded`, `X-Original-Host` or `X-Expose-*` header). `/` hands out the token only while no super admin exists. The wizard keeps the token in its session and removes it from the address bar.
+- **While it runs.** Every web request uses a file session, a file cache and the sync queue, so the wizard never depends on the database it is setting up, and organisation hosts are not resolved yet.
+- **The host.** Under Herd, open the setup on `myapp.test` or `admin.myapp.test`; without Herd on `localhost`, `127.0.0.1` or a name ending in `.localhost` or `.test`. On any other host the wizard names the address to use and does not start. Under Herd the app's address is pinned to `myapp.test`, whichever of the two you started on.
+- **The questions** are the [answers schema](#the-answers-schema), pre-filled with the detected defaults: the app name, the database, what to start with (demo data or your own super admin with an email and a password), the modules, HTTPS, Playwright and Claude Code. The password is hashed on entry; only the hash is stored until the super admin exists.
+- **The steps** run one at a time, each in its own request, and the page shows each one as done, skipped, manual or waiting. The long steps (the frontend build and Claude Code) run in the background as `php artisan skv:run-step <step>`, and the page checks on them every two seconds. A reload continues where the setup was. A step that fails shows *Setup stopped* with its message and *Try again*.
+- **Manual commands.** A step that cannot run by itself shows its command with *Copy* and *Re-check*: run the command in a terminal, then click *Re-check*. When a step ended this way, the wizard stops in a review after the doctor step (step 8), so *Re-check* still works; *Finish setup* goes on, and the summary lists every command that is left. Without one it goes straight on.
+- **The Herd stage.** *Finish setup* writes the install marker, which closes the wizard (from then on `/welcome-setup` answers 404), and runs the Herd step in the background: it links the site when Herd does not serve it yet and secures it when HTTPS is on. Herd may restart nginx and PHP meanwhile; the page waits up to 60 seconds and moves to `https://` by itself once the site is secured. The summary then shows the addresses and logins. *Log in as `<email>`* signs your new super admin in on the admin host with a single-use link; with demo data, *Go to the login page* takes you to the [quick login](#local-quick-login). These pages only work in the browser that ran the wizard, for at most 30 minutes, and the login works once.
+- **"Continue without HTTPS".** When Herd did not confirm HTTPS in time, the page shows `herd secure <name>`. Run it and click *Reload*, or click *Continue without HTTPS*: `APP_URL` stays `http://`, the marker records `https: false`, passkeys are switched off when they were on (they need HTTPS), and the summary says how to secure the site later. The doctor's `herd-secured` row then reports `skipped`, so the install is still green.
+
+## Local quick login
+
+After a local install with demo data, the login page lists the demo accounts under *Quick login (local only)*: one click signs you in on the account's own host. It shows only when `APP_ENV=local` and the install marker records `start_with: demo`, and it lists only demo accounts that exist, are active and have no confirmed two-factor authentication (the quick login skips the second factor). An account whose password you changed drops out of the quick login: clicking it takes you back to the login page with a message. Everywhere else `POST /quick-login` answers 404.
+
+## The setup files
+
+| File | What it holds | Deleted by |
+|---|---|---|
+| `storage/app/private/skv-setup-token` | the one-time setup token | step 9 (the marker); `php artisan skv:doctor --fix` deletes one that is left after setup |
+| `storage/app/private/skv-setup.json` | the wizard's pinned host, answers (the password only as a hash), step results and notes | step 9 |
+| `storage/app/private/skv-setup/` | per long step its result (`<step>.json`), output (`<step>.log`) and exit code (`<step>.exit`) | step 9 |
+| `storage/app/private/skv-herd.json` | the Herd stage: a hash of its secret, the host, the answers without the password, the results and, once Herd finished, its result | the summary's login button; after 30 minutes it is stale and you can delete it |
+| `storage/app/private/skv-herd.exit` | the Herd step's exit code | the summary's login button |
+| `storage/logs/skv-herd.log` | the Herd step's output | nothing: delete it yourself when you no longer need it |
+| `storage/app/skv-installed` | the install marker: kit version, answers without secrets, `start_with`, time and summary | nothing: it marks the app as installed |
+
+The state files are written atomically with mode 0600; only the token file holds a secret in plain text, the others hold hashes. Never write them by hand.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `php artisan skv:install [--answers=JSON] [--no-interaction] [--force]` | Runs the setup steps in order. Complete steps are skipped unless `--force`; a re-run keeps the answers of the earlier install and names the `.env` keys it changed. A step that cannot run prints its command to run yourself. |
-| `php artisan skv:doctor [--fix] [--json]` | Checks the installation and prints the fix for every problem. Green means no `fail`. `--fix` performs only the safe repairs (`permissions:sync`, flag and role drift, `storage:link`, `core.hooksPath`, the asset build). `--json` prints the report and exits 1 when it is not green. |
+| `php artisan skv:bootstrap` | The phase-1 bootstrap the Composer and installer hooks run: `.env`, `APP_KEY`, the Herd `APP_URL`, the SQLite migration and, while the app is not installed, the setup token. Prints where to finish setting up. |
+| `php artisan skv:doctor [--fix] [--json]` | Checks the installation and prints the fix for every problem. Green means no `fail`. `--fix` performs only the safe repairs (`permissions:sync`, flag and role drift, `storage:link`, `core.hooksPath`, the asset build, and the `setup-token` fix, which deletes a setup token left after setup). `--json` prints the report and exits 1 when it is not green. During setup, step 8 reports the `herd-site`, `herd-secured` and `setup-token` rows as `skipped` ("Checked after the Herd step"), because steps 9 and 10 have not run yet. |
 | `php artisan skv:create-super-admin` | Creates a super admin, or promotes an existing active user; a `--name` or `--password` given for an existing user replaces its own. Prompts for what is missing; with `--no-interaction` the email and `--password` are required for a new user. |
 | `php artisan skv:create-organisation` | Creates an organisation and invites its first admin. Needs an active super admin. |
 | `php artisan skv:flux-pro` | Installs Flux Pro with your own Composer credentials (see [Flux Pro](#flux-pro)). |
@@ -115,7 +150,10 @@ composer test:pgsql     # Pest on PostgreSQL (Herd Pro)
 composer test:browser   # Pest browser tests in Chromium
 composer doctor         # skv:doctor
 composer fix            # Rector + Pint
+npm run build:setup     # rebuild resources/setup/setup.css
 ```
+
+The setup pages render before `npm run build` has run, so `layouts/setup` does not use Vite: it inlines `resources/setup/setup.css`, a committed stylesheet built from `resources/css/setup.css` (Tailwind, Flux's CSS and the kit's `resources/css/theme.css`) by `vite.setup.config.js`. Run `npm run build:setup` and commit the result after you change the setup views (`resources/views/layouts/setup.blade.php`, `resources/views/pages/setup`, `resources/views/setup`) or the theme (`resources/css/theme.css`, `resources/css/setup.css`). CI fails when the committed file is not current.
 
 ## License
 

@@ -34,7 +34,7 @@
 
 ## UI
 
-- Pages render through `layouts/base` only (the app and auth layouts wrap it); never write `<html>` elsewhere. Error pages are the exception: they extend the self-contained `errors.layout`.
+- Pages render through `layouts/base` only (the app and auth layouts wrap it); never write `<html>` elsewhere. Two exceptions: error pages extend the self-contained `errors.layout`, and the setup pages use `layouts/setup`, which must never use `@vite`, `@fonts` or `public/build`, because the wizard runs before the first build (§5.3.4).
 - Navigation entries go into `App\Support\Navigation\Navigation::items()`, never into a Blade file.
 - Pro-only Flux components appear only inside `@if (Skv::hasFluxPro())`, with a complete free `@else` that binds the same `wire:model` properties. A feature without a free variant (§6.7: the ⌘K palette, the sign-in trend) has a `{{-- pro-only … --}}` comment right before its `@if` instead. `tests/Arch/FluxProLayerTest.php` checks where Pro tags sit, that the `@else` exists and renders something, and the `wire:model` names.
 - User preferences go through `App\Actions\Settings\{UpdateLocale,UpdateAppearance}`.
@@ -49,3 +49,8 @@
 - Never branch on a Herd exit code alone: parse its output or read the state back.
 - The demo seeder (`Database\Seeders\DemoSeeder`) never runs in production.
 - A new doctor check is one class per check under `App\Setup\Doctor\Checks`, implementing `App\Setup\Doctor\Check`, and is listed in `Doctor::checks()`.
+- The wizard and the CLI drive the same steps through `SetupRunner::runStep()`. A new step implements `SetupStep` and sets `isLong()` honestly: a long step runs detached in the browser (`skv:run-step`, polled by the page).
+- Wizard code that reads tenant models lives in `App\Setup` (strict mode, `Tenant::bypass()`); the wizard page (`resources/views/pages/setup/**`) and the setup controllers call those services.
+- Never write the setup state files by hand. Use `App\Setup\Support\StateFile` and the classes' constants (`SetupToken::PATH`, `WizardState::PATH`/`STEPS`, `HerdState::PATH`/`EXIT`/`LOG`, `Marker::FILE`).
+- Wizard tests start with `useSetupWizard()` and never spawn a process: it binds `Tests\Fixtures\InlineStepLauncher`, which runs detached steps inline. Test the page over HTTP (`pageSnapshot()` + `callPageAction()`), because `Livewire::test()` skips the gate and the setup runtime. `useSetupWizard()` switches to the local environment, where CSRF checks run, so forged updates send `X-CSRF-TOKEN`.
+- Run `npm run build:setup` and commit `resources/setup/setup.css` after changing `resources/views/{layouts/setup.blade.php,pages/setup,setup}` or `resources/css/{theme,setup}.css`; CI checks the file is current.
