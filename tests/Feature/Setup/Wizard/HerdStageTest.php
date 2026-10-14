@@ -77,6 +77,20 @@ it('answers 404 to a wrong or stale secret, or behind a proxy (RL-6)', function 
     $this->getJson('/welcome-setup/herd-status?secret='.$secret)->assertNotFound();
 });
 
+it('answers 404 on every Herd-stage endpoint outside the local environment, even with the secret (RL-6)', function (string $endpoint) use ($afterStepNine): void {
+    // Arrange: a finished Herd step, so each endpoint would answer locally (status, summary, login).
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+    app()->detectEnvironment(fn (): string => 'production');
+
+    $this->get('/welcome-setup/'.$endpoint.'?secret='.$secret)->assertNotFound();
+
+    expect(HerdState::load($context->basePath))->not->toBeNull();
+})->with(['herd-status', 'finish', 'login']);
+
 it('shows a finishing page while the Herd step runs, and the manual command after a timeout (RL-6)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
     $secret = $afterStepNine($context);

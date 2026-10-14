@@ -11,6 +11,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\StepResult;
 use App\Setup\Steps\HerdSiteStep;
+use App\Setup\Support\EnvFile;
 use App\Setup\Support\StateFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
@@ -136,4 +137,27 @@ it('leaves a Herd state that another finish replaced while Herd ran (RL-6)', fun
     $after = HerdState::load($context->basePath);
     expect($after?->secretHash)->toBe($replaced?->secretHash)
         ->and($after?->result)->toBeNull();
+});
+
+it('applies the HTTPS consequence when the Herd step throws (OD-2, RL-6)', function (): void {
+    // Arrange: HTTPS and passkeys chosen; `herd secure` then hangs and the detached step throws.
+    $context = setupSandbox();
+    app()->instance(SetupContext::class, $context);
+    $context->answers = Answers::fromArray(['modules' => ['passkeys', 'impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => true]);
+    Marker::write($context, []);
+    HerdState::begin($context->basePath, $context, 'localhost');
+    app()->instance(SetupRunner::class, new SetupRunner([
+        new CallbackSetupStep('herd-site', function (): void {
+            throw new RuntimeException('herd secure did not finish');
+        }, StepResult::done()),
+    ]));
+
+    expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0);
+
+    $result = HerdState::load($context->basePath)?->result;
+    expect($result?->status)->toBe('manual')
+        ->and($result?->command)->toBe('herd secure '.$context->folderName())
+        ->and(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
+        ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false');
 });

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 /** covers §5.3.1, §5.3.2, §5.3.4, §7.2 */
 
+use App\Enums\CheckStatus;
 use App\Setup\Detector;
+use App\Setup\Doctor\Doctor;
 use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
@@ -15,9 +17,11 @@ use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Tests\Fixtures\FixedStatusCheck;
 
 use function Pest\Laravel\get;
 use function Pest\Laravel\withHeader;
@@ -263,4 +267,34 @@ it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)',
         ->and(WizardState::load($context->basePath)?->results)->toHaveKey('frontend');
 
     flock($lock, LOCK_UN);
+});
+
+it('goes straight on to the Herd stage when no step ended manual (§5.3.1, §5.3.4)', function () use ($open, $next, $answers): void {
+    // Arrange: every page step ends done or skipped: the frontend is already built (the sandbox has no node) and the
+    // doctor finds nothing to fail (in the sandbox it misses node and more).
+    $context = useSetupWizard();
+    File::ensureDirectoryExists($context->path('public/build'));
+    File::put($context->path('public/build/manifest.json'), '{}');
+    app()->instance(Doctor::class, new Doctor([new FixedStatusCheck(CheckStatus::Pass, 'php')]));
+    Process::fake(['*' => Process::result('')]);
+    [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
+
+    // Only the poll's advance(), never "Finish setup".
+    for ($i = 0; $i < 20 && ! str_contains($html, 'data-test="setup-herd-stage"'); $i++) {
+        expect($html)->not->toContain('data-test="setup-review"');
+        [$snapshot, $nextHtml] = $next(callPageAction($snapshot, 'advance')->assertOk());
+        $html = $nextHtml !== '' ? $nextHtml : $html;
+    }
+
+    expect($html)->toContain('data-test="setup-herd-stage"')
+        ->and(Marker::exists($context))->toBeTrue();
+});
+
+it('resumes at the steps after a reload, never at the questions (§5.3.4)', function () use ($open, $answers): void {
+    $context = useSetupWizard();
+    callPageAction($open($context), 'start', updates: $answers)->assertOk();
+
+    $this->get('/welcome-setup')->assertOk()
+        ->assertSee('data-test="setup-step-environment"', false)
+        ->assertDontSee('data-test="setup-questions"', false);
 });

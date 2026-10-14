@@ -14,9 +14,11 @@ use App\Setup\SetupMode;
 use App\Setup\SetupToken;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
+use Illuminate\Cache\FileStore;
 use Illuminate\Session\FileSessionHandler;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -54,6 +56,17 @@ it('moves every web request onto a file session, a file cache and the sync queue
         ->and(config('session.driver'))->toBe('file')
         ->and(config('cache.default'))->toBe('file')
         ->and(config('queue.default'))->toBe('sync');
+});
+
+it('points the permission registrar at the setup cache, away from the database store it booted with (RL-1)', function (): void {
+    // Arrange: the project's database cache, as the registrar was built at boot before setup mode applies.
+    useSetupWizard();
+    config(['cache.default' => 'database']);
+    app(PermissionRegistrar::class)->initializeCache();
+
+    $this->get('/login')->assertOk();
+
+    expect(app(PermissionRegistrar::class)->getCacheStore())->toBeInstanceOf(FileStore::class);
 });
 
 it('lets every host through the tenant resolver in setup mode (§5.3.4)', function (): void {

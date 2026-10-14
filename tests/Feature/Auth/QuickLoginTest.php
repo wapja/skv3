@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §6.5 */
 
+use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Setup\Answers;
@@ -63,13 +64,26 @@ it('shows no quick login outside a local demo install (§6.5, RL-9)', function (
     $this->get(route('login'))->assertOk()->assertDontSee('data-test="quick-login"', false);
 })->with(['not local', 'no marker', 'super admin install']);
 
-it('hides an account with confirmed two-factor authentication or that is not active (RL-9)', function () use ($demoInstall): void {
+it('hides an account with confirmed two-factor authentication (RL-9)', function () use ($demoInstall): void {
     $demoInstall();
     // The query builder: User is a tenant model, and strict mode throws outside a tenant.
     DB::table('users')->where('email', 'admin@demo1.'.Hosts::apex())->update(['two_factor_confirmed_at' => now()]);
 
-    $this->get(route('login'))->assertDontSee('admin@demo1.'.Hosts::apex());
+    // The block still renders with the other account, so the missing email is the filter's doing.
+    $this->get(route('login'))->assertSee('data-test="quick-login"', false)
+        ->assertSee('admin@demo2.'.Hosts::apex())
+        ->assertDontSee('admin@demo1.'.Hosts::apex());
 });
+
+it('hides an account that is not active and answers 404 to its quick login (RL-9)', function (UserStatus $status) use ($demoInstall): void {
+    $demoInstall();
+    DB::table('users')->where('email', 'admin@demo1.'.Hosts::apex())->update(['status' => $status->value]);
+
+    $this->get(route('login'))->assertSee('data-test="quick-login"', false)
+        ->assertSee('admin@demo2.'.Hosts::apex())
+        ->assertDontSee('admin@demo1.'.Hosts::apex());
+    $this->post(route('quick-login'), ['email' => 'admin@demo1.'.Hosts::apex()])->assertNotFound();
+})->with(['disabled' => [UserStatus::Disabled], 'pending activation' => [UserStatus::PendingActivation]]);
 
 it('hands a demo account over to its own host (§6.5, RL-9)', function () use ($demoInstall): void {
     $demoInstall();

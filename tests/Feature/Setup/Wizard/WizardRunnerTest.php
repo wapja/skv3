@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §5.3.3, §5.3.4, §7.2 */
 
 use App\Setup\Marker;
+use App\Setup\SetupContext;
 use App\Setup\SetupToken;
 use App\Setup\StepResult;
 use App\Setup\Support\Toolchain;
@@ -14,6 +15,7 @@ use App\Setup\Wizard\StepLauncher;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -242,4 +244,50 @@ it('refuses a re-check and finishing while another request holds the lock (§5.3
         ->and(Marker::exists($context))->toBeFalse();
 
     flock($lock, LOCK_UN);
+});
+
+it('records a detached step that died as its manual command (§5.3.1, RL-4)', function (Closure $died): void {
+    // Arrange: steps 1–4 are done, so the frontend step comes next and its files say how its process ended.
+    $context = useSetupWizard();
+    $launcher = new InlineStepLauncher;
+    app()->instance(StepLauncher::class, $launcher);
+    $runner = app(WizardRunner::class);
+    $state = $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $state->results = array_fill_keys(['environment', 'database', 'herd-manifest', 'branding'], StepResult::done('ok'));
+    $state->save($context->basePath);
+    File::ensureDirectoryExists($context->path(WizardState::STEPS));
+    $died($context, $this);
+
+    $outcome = $runner->advance();
+
+    expect($outcome['key'] ?? null)->toBe('frontend')
+        ->and($runner->state()?->results['frontend']->toArray() ?? [])->toMatchArray(['status' => 'manual', 'command' => 'npm ci && npm run build'])
+        ->and($launcher->started)->toBe([]);
+})->with([
+    'an unreadable result' => [function (SetupContext $context): void {
+        File::put($context->path(WizardState::STEPS.'/frontend.json'), 'not json');
+    }],
+    'an exit file without a result' => [function (SetupContext $context): void {
+        File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
+        File::put($context->path(WizardState::STEPS.'/frontend.exit'), "137\n");
+    }],
+    'no activity for half an hour' => [function (SetupContext $context, $test): void {
+        File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
+        File::put($context->path(WizardState::STEPS.'/frontend.log'), 'npm ci');
+        $test->travel(31)->minutes();
+    }],
+]);
+
+it('keeps polling a detached step that shows activity within half an hour (RL-4)', function (): void {
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $state = $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $state->results = array_fill_keys(['environment', 'database', 'herd-manifest', 'branding'], StepResult::done('ok'));
+    $state->save($context->basePath);
+    File::ensureDirectoryExists($context->path(WizardState::STEPS));
+    File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
+    $this->travel(29)->minutes();
+
+    expect($runner->advance())->toBe(['key' => 'frontend', 'state' => 'running', 'message' => ''])
+        ->and($runner->state()?->results)->not->toHaveKey('frontend');
 });

@@ -13,6 +13,7 @@ use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Tests\Fixtures\FixedStatusCheck;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -30,6 +31,19 @@ it('defers the Herd and token checks to after the Herd step (A6, RL-8)', functio
         expect($results[$key]->status)->toBe(CheckStatus::Skipped)
             ->and($results[$key]->message)->toBe(__('Checked after the Herd step'));
     }
+});
+
+it('reports step 8 green on a Herd install although the deferred checks would fail now (A6, RL-8)', function (): void {
+    // Arrange: before steps 9 and 10, Herd neither serves nor secures the site and the token still exists.
+    $context = setupSandbox(new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: 'x.test', scheme: 'http'));
+    app()->instance(Doctor::class, new Doctor([
+        new FixedStatusCheck(CheckStatus::Pass, 'php'),
+        ...array_map(fn (string $key): FixedStatusCheck => new FixedStatusCheck(CheckStatus::Fail, $key), DoctorStep::DEFERRED),
+    ]));
+
+    $result = new DoctorStep()->run($context);
+
+    expect($result->status)->toBe('done');
 });
 
 it('checks the answers being installed when there is no marker yet (A6, RL-8)', function (): void {
