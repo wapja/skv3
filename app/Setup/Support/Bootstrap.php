@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Process;
  * The non-interactive first run (§5.2, RL-1): .env, APP_KEY, the Herd APP_URL and the SQLite file plus migrate.
  * Never chooses a database, never prompts, never caches config or routes. skv:install runs it as its step 0.
  */
-final readonly class Bootstrap
+final readonly class Bootstrap implements BootstrapRunner
 {
     public function __construct(private string $basePath, private Toolchain $toolchain) {}
 

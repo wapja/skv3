@@ -4,25 +4,22 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\User;
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
+use App\Setup\InstallPreflight;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Summary;
-use App\Setup\Support\Bootstrap;
-use App\Setup\Support\EnvFile;
-use App\Tenancy\Facades\Tenant;
+use App\Setup\Support\BootstrapRunner;
+use App\Setup\Support\SafeMessage;
 use Closure;
-use Database\Seeders\DemoSeeder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use JsonException;
@@ -50,9 +47,10 @@ final class InstallCommand extends Command
         $basePath = app(SetupContext::class)->basePath;
         $folder = basename($basePath);
         $detection = $detector->detect();
+        $preflight = new InstallPreflight(app(SetupContext::class));
 
         try {
-            $installed = $this->installedAnswers();
+            $installed = $preflight->installedAnswers();
         } catch (JsonException) {
             $this->components->error(__('The marker :file is not valid JSON; fix or delete it.', ['file' => Marker::FILE]));
 
@@ -76,29 +74,27 @@ final class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        // Only the built-in default, never a chosen or installed start: demo data would add a super admin whose
-        // password everyone knows next to the owner's own.
-        $demoByDefault = $answers->startWith === 'demo' && ! array_key_exists('start_with', $input) && ! array_key_exists('start_with', $installed);
-
-        if ($demoByDefault && $this->ownSuperAdminExists($detection)) {
+        if ($preflight->refusesDemoDefault($answers, $input, $installed, $detection)) {
             $this->components->error(__('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.'));
 
             return self::FAILURE;
         }
 
-        foreach (app(Bootstrap::class)->run() as $action) {
-            $this->components->twoColumnDetail($action, __('done'));
-        }
-
         $context = new SetupContext($basePath, $answers, $detection, (bool) $this->option('force'));
         $current = null;
+        $bootstrapping = true;
 
         try {
+            foreach (app(BootstrapRunner::class)->run() as $action) {
+                $this->components->twoColumnDetail($action, __('done'));
+            }
+
+            $bootstrapping = false;
             $runner->run($context, $this->around($current));
         } catch (Throwable $exception) {
             $this->components->error(__('Setup stopped at :step: :message', [
-                'step' => $current instanceof SetupStep ? $current->label() : '',
-                'message' => $this->messageOf($exception),
+                'step' => $current?->label() ?? ($bootstrapping ? __('Bootstrap') : ''),
+                'message' => OutputFormatter::escape(SafeMessage::of($exception)),
             ]));
 
             return self::FAILURE;
@@ -107,61 +103,6 @@ final class InstallCommand extends Command
         $this->printSummary(Summary::build($context));
 
         return self::SUCCESS;
-    }
-
-    /**
-     * The public answers of an earlier install, from the marker, or none on a first install. A re-run takes every
-     * answer it is not given from here instead of from the §5.3.2 defaults, which describe a first install (DEC-30).
-     * The MODULE_* keys in .env are the modules' switch (§6.8), so a flag the owner changed there wins over the
-     * marker, and over the defaults without one.
-     *
-     * @return array<string, mixed>
-     *
-     * @throws JsonException when the marker is not valid JSON
-     */
-    private function installedAnswers(): array
-    {
-        $context = app(SetupContext::class);
-        $marker = Marker::read($context);
-        $answers = is_array($marker['answers'] ?? null) ? $marker['answers'] : [];
-        $env = new EnvFile($context->path('.env'));
-        $modules = is_array($answers['modules'] ?? null) ? $answers['modules'] : Answers::MODULES;
-        $switched = false;
-
-        foreach (Answers::MODULES as $module) {
-            $flag = $env->get('MODULE_'.Str::upper($module));
-
-            if ($flag === null) {
-                continue;
-            }
-
-            $switched = true;
-            $modules = $this->isOn($flag) ? [...$modules, $module] : array_diff($modules, [$module]);
-        }
-
-        if ($switched) {
-            $answers['modules'] = array_values(array_intersect(Answers::MODULES, $modules));
-        }
-
-        return $answers;
-    }
-
-    /** A MODULE_* value as config/skv.php reads it: env() casts, then (bool). */
-    private function isOn(string $flag): bool
-    {
-        return ! in_array(Str::lower(trim($flag)), ['', '0', 'false', '(false)', 'empty', '(empty)', 'null', '(null)'], true);
-    }
-
-    /** A super admin other than the demo one, in the database the app opens now; none when it cannot be read. */
-    private function ownSuperAdminExists(Detection $detection): bool
-    {
-        $demoSuperAdmins = [DemoSeeder::accounts()[0]['email'], DemoSeeder::accounts($detection->host)[0]['email']];
-
-        try {
-            return Tenant::bypass(fn (): bool => User::query()->where('is_super_admin', true)->whereNotIn('email', $demoSuperAdmins)->exists());
-        } catch (Throwable) {
-            return false;
-        }
     }
 
     /**
@@ -244,16 +185,6 @@ final class InstallCommand extends Command
 
             return $result;
         };
-    }
-
-    /** A query error names the driver's message only: its own message carries the bindings, such as a password hash. */
-    private function messageOf(Throwable $exception): string
-    {
-        $message = $exception instanceof QueryException && $exception->getPrevious() instanceof Throwable
-            ? $exception->getPrevious()->getMessage()
-            : $exception->getMessage();
-
-        return OutputFormatter::escape($message);
     }
 
     /** @param  array{urls: list<string>, logins: list<array{email: string, password: ?string, url: string}>, manual: list<array{step: string, command: string, reason: string}>, notes: list<string>}  $summary */

@@ -12,6 +12,7 @@ use App\Setup\Detector;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\SetupContext;
 use App\Setup\Support\Bootstrap;
+use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\Toolchain;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
@@ -43,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
         AliasLoader::getInstance()->alias('Skv', Skv::class);
 
         $this->app->bind(Bootstrap::class, fn (Application $app): Bootstrap => new Bootstrap($app->basePath(), $app->make(Toolchain::class)));
+        $this->app->bind(BootstrapRunner::class, fn (Application $app): BootstrapRunner => $app->make(Bootstrap::class));
         // skv:doctor examines the running application; tests bind a sandbox context instead (§5.4).
         $this->app->bind(DoctorContext::class, fn (Application $app): DoctorContext => DoctorContext::forApplication($app->make(Toolchain::class), $app->make(Detector::class)));
         // skv:install sets up this application; tests bind a sandbox context instead (RL-2).
