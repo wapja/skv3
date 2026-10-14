@@ -140,3 +140,17 @@ it('tells the user to finish with skv:install (RL-1)', function (): void {
     expect(Artisan::call('skv:bootstrap', ['--no-interaction' => true, '--no-ansi' => true]))->toBe(0)
         ->and(Artisan::output())->toContain('php artisan skv:install');
 });
+
+it('survives a herd tld that times out (A5)', function (): void {
+    $herd = $this->context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+
+    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), '*' => Process::result('')]);
+
+    $actions = new Bootstrap($this->context->basePath, $this->toolchain)->run();
+
+    expect($actions)->not->toContain(__('Set APP_URL to the Herd address'))
+        ->and(new EnvFile($this->context->path('.env'))->get('APP_URL'))->toBe('http://localhost');
+});

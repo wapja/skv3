@@ -31,12 +31,10 @@ final readonly class Bootstrap implements BootstrapRunner
             $actions[] = __('Generated an application key');
         }
 
-        $herd = $this->toolchain->herd();
+        if (preg_match('#^http://localhost(:8000)?/?$#', (string) $env->get('APP_URL')) === 1) {
+            $tld = HerdTld::read($this->toolchain);
 
-        if ($herd !== null && preg_match('#^http://localhost(:8000)?/?$#', (string) $env->get('APP_URL')) === 1) {
-            $tld = trim(Process::env($this->toolchain->environment())->timeout(10)->run([$herd, 'tld'])->output());
-
-            if (preg_match('/^[a-z0-9.-]+$/', $tld) === 1) {
+            if ($tld !== null) {
                 $env->set(['APP_URL' => 'http://'.strtolower(basename($this->basePath)).'.'.$tld]);
                 $actions[] = __('Set APP_URL to the Herd address');
             }

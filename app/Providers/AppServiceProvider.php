@@ -43,6 +43,8 @@ class AppServiceProvider extends ServiceProvider
     {
         AliasLoader::getInstance()->alias('Skv', Skv::class);
 
+        // Child processes of setup never inherit this project's .env values (RL-12); tests bind a sandbox toolchain.
+        $this->app->bind(Toolchain::class, fn (): Toolchain => new Toolchain(basePath: base_path()));
         $this->app->bind(Bootstrap::class, fn (Application $app): Bootstrap => new Bootstrap($app->basePath(), $app->make(Toolchain::class)));
         $this->app->bind(BootstrapRunner::class, fn (Application $app): BootstrapRunner => $app->make(Bootstrap::class));
         // skv:doctor examines the running application; tests bind a sandbox context instead (§5.4).

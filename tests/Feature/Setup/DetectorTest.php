@@ -66,3 +66,27 @@ it('treats unparsable Herd output as "no Herd Pro" (§13)', function (): void {
 it('reports Postgres unreachable when nothing listens (§5.3.2)', function (): void {
     expect(new Detector(new Toolchain($this->home))->postgresReachable('127.0.0.1', 1))->toBeFalse();
 });
+
+it('treats a Herd that hangs as no Herd Pro and falls back to the APP_URL host (A5, A18)', function (): void {
+    $herd = $this->home.'/Library/Application Support/Herd/bin/herd';
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    config(['app.url' => 'http://fallback.test']);
+
+    // A handler that throws stands in for a timeout: Detector must catch every process failure.
+    Process::fake(['*' => fn () => throw new RuntimeException('timed out')]);
+
+    $detection = new Detector(new Toolchain($this->home))->detect();
+
+    expect($detection->herd)->toBeTrue()
+        ->and($detection->herdPro)->toBeFalse()
+        ->and($detection->host)->toBe('fallback.test');
+});
+
+it('uses a valid request host and ignores an invalid one (A4)', function (): void {
+    config(['app.url' => 'http://fallback.test']);
+
+    expect(new Detector(new Toolchain($this->home))->detect('My-App.test:80')->host)->toBe('my-app.test')
+        ->and(new Detector(new Toolchain($this->home))->detect('evil.com@x')->host)->toBe('fallback.test');
+});
