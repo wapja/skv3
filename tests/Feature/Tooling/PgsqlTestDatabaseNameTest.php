@@ -12,8 +12,13 @@ it('names the test database like the Database step does (A7, RL-14)', function (
     $context = setupSandbox();
     $expected = DatabaseStep::databaseName(new SetupContext(dirname($context->basePath).'/'.$folder, $context->answers, $context->detection)).'_test';
 
-    $printed = Process::path(base_path())->env(['PWD' => '/tmp/'.$folder, 'DB_TEST_DATABASE' => false])
+    // A closed port and a throwaway user: should --print-name ever stop exiting early, the script fails as
+    // "not reachable" instead of creating the database on the developer's PostgreSQL.
+    $printed = Process::path(base_path())
+        ->env(['PWD' => '/tmp/'.$folder, 'DB_TEST_DATABASE' => false, 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '1', 'DB_USERNAME' => 'nobody', 'DB_PASSWORD' => ''])
         ->run([PHP_BINARY, 'scripts/create-pgsql-test-database.php', '--print-name']);
 
-    expect(trim($printed->output()))->toBe($expected);
+    expect($printed->successful())->toBeTrue()
+        ->and($printed->output())->toBe($expected."\n")
+        ->and($printed->output())->not->toContain('Created database');
 })->with(['plain' => ['myapp3'], 'hyphen' => ['my-app'], 'case and dots' => ['My.App 2']]);
