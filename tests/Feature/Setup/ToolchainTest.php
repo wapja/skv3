@@ -64,6 +64,15 @@ it('keeps the project\'s .env values out of child processes (RL-12)', function (
         ->and($environment['HOME'])->toBeString();
 });
 
+it('resolves the toolchain from the container with this project as its base path (RL-12)', function (): void {
+    app()->forgetInstance(Toolchain::class);
+
+    $toolchain = app(Toolchain::class);
+
+    expect(new ReflectionProperty(Toolchain::class, 'basePath')->getValue($toolchain))->toBe(base_path())
+        ->and(new ReflectionProperty(Toolchain::class, 'home')->getValue($toolchain))->toBeNull();
+});
+
 it('finds the CLI php next to Herd\'s php-fpm (DEC-23)', function (): void {
     $bin = $this->home.'/Library/Application Support/Herd/bin';
     File::put($bin.'/php', "#!/bin/sh\n");
