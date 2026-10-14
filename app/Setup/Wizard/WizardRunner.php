@@ -304,8 +304,13 @@ final readonly class WizardRunner
         return ['key' => $key, 'state' => 'done', 'message' => $result->message];
     }
 
+    /** A step's file in the steps directory; a key that is not a step key (a path, say) is refused, never resolved. */
     private function stepFile(string $basePath, string $key, string $extension): string
     {
+        if (preg_match('/^[a-z][a-z-]*$/', $key) !== 1) {
+            throw new InvalidArgumentException('Setup: not a step key.');
+        }
+
         return rtrim($basePath, '/').'/'.WizardState::STEPS.'/'.$key.'.'.$extension;
     }
 

@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Setup\Marker;
 use App\Setup\SetupToken;
+use App\Setup\StepResult;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
 use App\Setup\Wizard\StepLauncher;
@@ -139,6 +140,43 @@ it('refuses a second start while a setup is in progress (§5.3.4)', function ():
         ->toThrow(ValidationException::class)
         ->and(WizardState::load($context->basePath)?->answers->appName)->toBe('Acme');
 });
+
+it('forgets a page step\'s result and its files on a re-check (§5.3.4)', function (): void {
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $state = $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $state->results = ['environment' => StepResult::done('ok'), 'frontend' => StepResult::done('built')];
+    $state->save($context->basePath);
+    @mkdir($context->path(WizardState::STEPS), 0755, true);
+    file_put_contents($context->path(WizardState::STEPS.'/frontend.json'), '{}');
+    file_put_contents($context->path(WizardState::STEPS.'/frontend.log'), 'npm ci');
+
+    $runner->recheck('frontend');
+
+    expect(WizardState::load($context->basePath)?->results)->toHaveKey('environment')->not->toHaveKey('frontend')
+        ->and($context->path(WizardState::STEPS.'/frontend.json'))->not->toBeFile()
+        ->and($context->path(WizardState::STEPS.'/frontend.log'))->not->toBeFile();
+});
+
+it('ignores a re-check of a key that is not a page step, so a client-sent path never deletes a file (§5.3.4)', function (string $key, string $victim): void {
+    // Arrange: the steps directory exists, so a traversing key would resolve to a real file outside it.
+    $context = useSetupWizard();
+    $runner = app(WizardRunner::class);
+    $state = $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
+    $state->results = ['environment' => StepResult::done('ok')];
+    $state->save($context->basePath);
+    @mkdir($context->path(WizardState::STEPS), 0755, true);
+    file_put_contents($context->path($victim), '{"keep": true}');
+    $before = (string) file_get_contents($context->path(WizardState::PATH));
+
+    $runner->recheck($key);
+
+    expect($context->path($victim))->toBeFile()
+        ->and((string) file_get_contents($context->path(WizardState::PATH)))->toBe($before);
+})->with([
+    'a path out of the steps directory' => ['../../../../victim', 'victim.json'],
+    'a step outside the page' => ['marker', WizardState::STEPS.'/marker.json'],
+]);
 
 it('applies the HTTPS consequence when the Herd step cannot start (OD-2, RL-6)', function (): void {
     $context = useSetupWizard();
