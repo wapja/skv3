@@ -7,6 +7,7 @@ namespace App\Setup\Steps;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupStep;
+use App\Setup\SetupToken;
 use App\Setup\StepResult;
 use App\Setup\Summary;
 use Illuminate\Support\Facades\File;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\File;
 final readonly class MarkerStep implements SetupStep
 {
     /** The setup state that goes once the marker exists. */
-    private const array STATE_FILES = ['storage/app/private/skv-setup-token', 'storage/app/private/skv-setup.json'];
+    private const array STATE_FILES = [SetupToken::PATH, 'storage/app/private/skv-setup.json'];
 
     private const string STATE_DIRECTORY = 'storage/app/private/skv-setup';
 

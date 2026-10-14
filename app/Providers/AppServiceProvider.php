@@ -11,6 +11,8 @@ use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\SetupContext;
+use App\Setup\SetupMode;
+use App\Setup\SetupToken;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\Toolchain;
@@ -53,6 +55,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SetupContext::class, fn (Application $app): SetupContext => SetupContext::forApplication(
             Answers::defaults(Detection::none(), basename($app->basePath())), Detection::none(),
         ));
+        // Setup mode and its token belong to this application; tests bind a sandbox instead (RL-1).
+        $this->app->bind(SetupMode::class, fn (): SetupMode => new SetupMode(base_path()));
+        $this->app->bind(SetupToken::class, fn (): SetupToken => new SetupToken(base_path()));
 
         $this->configureModules();
     }

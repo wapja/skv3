@@ -26,7 +26,8 @@ final readonly class QueueCheck implements Check
 
     public function run(DoctorContext $context): CheckResult
     {
-        $name = (string) config('queue.default');
+        // In setup mode the request runs on the sync queue; the doctor checks the project's own connection (§5.3.4).
+        $name = (string) (config('setup.replaced.queue') ?? config('queue.default'));
 
         try {
             Queue::connection($name);

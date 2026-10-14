@@ -23,7 +23,8 @@ final readonly class SessionDriverCheck implements Check
 
     public function run(DoctorContext $context): CheckResult
     {
-        $driver = (string) config('session.driver');
+        // In setup mode the request runs on a file session; the doctor checks the project's own driver (§5.3.4).
+        $driver = (string) (config('setup.replaced.session') ?? config('session.driver'));
 
         if ($driver === 'database') {
             return CheckResult::pass(__('Sessions are stored in the database'));

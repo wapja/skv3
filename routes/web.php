@@ -5,14 +5,21 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\LocaleController;
 use App\Models\User;
+use App\Setup\SetupMode;
 use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
 // §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
-// everyone else (and super admins on a tenant host) lands on the dashboard.
+// everyone else (and super admins on a tenant host) lands on the dashboard. In setup mode a direct visitor goes
+// to the wizard, with the token, until a super admin exists (§5.3.4).
 Route::get('/', function (): RedirectResponse {
+    // §5.3.4: before setup, `/` leads to the wizard.
+    if (($wizard = app(SetupMode::class)->homeRedirect(request())) !== null) {
+        return redirect($wizard);
+    }
+
     $user = auth()->user();
 
     if (! $user instanceof User) {
