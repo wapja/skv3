@@ -17,6 +17,8 @@ use App\Setup\SetupToken;
 use App\Setup\Support\Bootstrap;
 use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\DetachedStepLauncher;
+use App\Setup\Wizard\StepLauncher;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
@@ -60,6 +62,8 @@ class AppServiceProvider extends ServiceProvider
         // Setup mode and its token belong to this application; tests bind a sandbox instead (RL-1).
         $this->app->bind(SetupMode::class, fn (): SetupMode => new SetupMode(base_path()));
         $this->app->bind(SetupToken::class, fn (): SetupToken => new SetupToken(base_path()));
+        // The wizard's long steps and the Herd step run detached (RL-4); tests bind an inline launcher.
+        $this->app->bind(StepLauncher::class, DetachedStepLauncher::class);
 
         $this->configureModules();
     }

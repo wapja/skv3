@@ -20,6 +20,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupMode;
 use App\Setup\SetupToken;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\StepLauncher;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Events\TenantForgotten;
 use App\Tenancy\Events\TenantResolved;
@@ -48,6 +49,7 @@ use Pest\Support\Reflection;
 use Pest\TestSuite;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Fixtures\InlineStepLauncher;
 use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
@@ -454,8 +456,8 @@ function setupSandbox(?Detection $detection = null, string $prefix = ''): SetupC
 /**
  * Puts the app into setup mode on a sandbox (M6b, RL-1): the local environment, a setup token in the sandbox, and the
  * setup services bound to it. Processes are faked, so the wizard's Herd and database probes never reach the
- * developer's machine. The session and cache files go into the sandbox too. Task 8 adds the inline step launcher
- * here. Returns the sandbox context.
+ * developer's machine. The session and cache files go into the sandbox too, and the wizard's detached steps run
+ * in-process through the inline step launcher (RL-4). Returns the sandbox context.
  */
 function useSetupWizard(?SetupContext $context = null): SetupContext
 {
@@ -468,6 +470,7 @@ function useSetupWizard(?SetupContext $context = null): SetupContext
     app()->instance(SetupContext::class, $context);
     app()->instance(SetupMode::class, new SetupMode($context->basePath));
     app()->instance(SetupToken::class, new SetupToken($context->basePath));
+    app()->instance(StepLauncher::class, new InlineStepLauncher);
     config([
         'session.files' => $context->path('storage/framework/sessions'),
         'cache.stores.file.path' => $context->path('storage/framework/cache'),
