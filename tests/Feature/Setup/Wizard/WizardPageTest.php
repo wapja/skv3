@@ -118,6 +118,9 @@ it('shows the validation errors of the answers (A15)', function () use ($open, $
 it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', function () use ($open, $next): void {
     $context = useSetupWizard();
     new EnvFile($context->path('.env'))->set(['QUEUE_CONNECTION' => 'database']);
+    // The process boots as the project's .env makes it (.env.example), not with phpunit's sync queue and array
+    // session: setup mode must replace them for the run, and the doctor must check the project's database queue.
+    config(['queue.default' => 'database', 'session.driver' => 'database']);
     Process::fake(['*' => Process::result('')]);
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: [
@@ -134,7 +137,8 @@ it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', f
 
     expect($html)->toContain('data-test="setup-herd-stage"')
         ->and(Marker::exists($context))->toBeTrue()
-        ->and(config('queue.default'))->toBe('sync');
+        ->and(config('queue.default'))->toBe('sync')
+        ->and(config('setup.replaced.queue'))->toBe('database');
 });
 
 it('keeps the session across the environment step, so a new APP_NAME causes no 419 (§7.2)', function () use ($open, $next, $answers): void {
