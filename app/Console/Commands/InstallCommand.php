@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStandardInput;
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
@@ -22,6 +23,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use JsonException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
@@ -39,11 +41,21 @@ use function Laravel\Prompts\text;
  * the start; the built-in demo default is refused next to an existing super admin (DEC-30).
  */
 #[Description('Set up the kit: environment, database, Herd, frontend, Claude and the summary (§5.3)')]
-#[Signature('skv:install {--answers= : JSON answers (§5.3.2)} {--force : Re-run complete steps}')]
+#[Signature('skv:install {--answers= : The answers (§5.3.2): JSON, @file or - for standard input} {--force : Re-run complete steps}')]
 final class InstallCommand extends Command
 {
+    use ReadsStandardInput;
+
     public function handle(Detector $detector, SetupRunner $runner): int
     {
+        // CD-9: setup writes .env, the database and the marker of a development install; production follows the
+        // README's checklist. A fresh server still runs it, because .env.example ships APP_ENV=local.
+        if (app()->isProduction()) {
+            $this->components->error(__('skv:install sets up a development install and does not run in production. Follow the production checklist in the README.'));
+
+            return self::FAILURE;
+        }
+
         $basePath = app(SetupContext::class)->basePath;
         $folder = basename($basePath);
         $detection = $detector->detect();
@@ -64,12 +76,24 @@ final class InstallCommand extends Command
             $this->components->error(__('The --answers value is not valid JSON.'));
 
             return self::FAILURE;
+        } catch (InvalidArgumentException $exception) {
+            $this->components->error(OutputFormatter::escape($exception->getMessage()));
+
+            return self::FAILURE;
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $messages) {
                 foreach ($messages as $message) {
                     $this->components->error($message);
                 }
             }
+
+            return self::FAILURE;
+        }
+
+        // CD-9: the demo seeder refuses outside local and testing, so a staging install would stop half-way in the
+        // database step. Refuse here, before anything is written. The wizard runs only in local setup mode.
+        if ($answers->startWith === 'demo' && ! app()->environment(['local', 'testing'])) {
+            $this->components->error(__('Demo data runs only in local development. Pass "start_with": "super_admin" with your own login.'));
 
             return self::FAILURE;
         }
@@ -106,22 +130,35 @@ final class InstallCommand extends Command
     }
 
     /**
-     * The raw answers: --answers, else the interactive form, else none (the installed answers, then the defaults apply).
+     * The raw answers: --answers (inline JSON, @file or - for standard input, RL-11), else the interactive form, else
+     * none (the installed answers, then the defaults apply).
      *
      * @param  array<string, mixed>  $installed
      * @return array<string, mixed>
      *
      * @throws JsonException
+     * @throws InvalidArgumentException
      */
     private function rawAnswers(Detection $detection, string $folder, array $installed): array
     {
-        $json = $this->option('answers');
+        $value = $this->option('answers');
 
-        if (is_string($json)) {
+        if (is_string($value)) {
+            $inline = $value !== '-' && ! str_starts_with($value, '@');
+            $json = match (true) {
+                $value === '-' => $this->allOfStandardInput() ?? '',
+                ! $inline => $this->answersFile(substr($value, 1)),
+                default => $value,
+            };
             $input = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
             if (! is_array($input)) {
                 throw new JsonException('The answers are not a JSON object.');
+            }
+
+            // CD-8, RL-11: a password on the command line ends up in the process list and the shell history.
+            if ($inline && is_string($input['super_admin_password'] ?? null) && $input['super_admin_password'] !== '') {
+                throw new InvalidArgumentException(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'));
             }
 
             /** @var array<string, mixed> $input */
@@ -129,6 +166,18 @@ final class InstallCommand extends Command
         }
 
         return $this->input->isInteractive() ? $this->askQuestions(Answers::fromArray([], $detection, $folder, $installed)) : [];
+    }
+
+    /** @throws InvalidArgumentException when the file cannot be read */
+    private function answersFile(string $path): string
+    {
+        $contents = is_file($path) && is_readable($path) ? file_get_contents($path) : false;
+
+        if (! is_string($contents)) {
+            throw new InvalidArgumentException(__('The answers file :path cannot be read.', ['path' => $path]));
+        }
+
+        return $contents;
     }
 
     /**

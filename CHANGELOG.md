@@ -43,14 +43,29 @@ All notable changes to this project are documented here. The format follows [Kee
 - `npm run build:setup`, which rebuilds the committed `resources/setup/setup.css`, so the wizard renders without `public/build`; CI checks the file is current.
 - A local quick login: after a local install with demo data, the login page signs you into a demo account with one click. Accounts that are not active, have confirmed two-factor authentication or no longer use the demo password are not let in.
 - A phase-1 CI job and `scripts/e2e-local.sh --entry=…` check the wizard after each of the four entry points (`laravel new` with and without `--database`, `composer create-project`, and a clone with the commands of `composer setup`).
+- The doctor's `marker` row fails when the install marker is not valid JSON, instead of the doctor crashing; a repair that throws is reported.
+- `/health-check`: a JSON report of the database, the queue, failed jobs, mail and the last backup, authorised by the `X-Health-Check-Key` header, cached for 30 seconds and throttled; 200 when healthy, 503 when a check fails.
+- The backups module on spatie/laravel-backup (`MODULE_BACKUPS`, off on SQLite): the database only, an encrypted zip on its own `backups` disk, failure-only mails to `BACKUP_NOTIFY_EMAIL`, a daily monitor, and `pg_dump` found on PATH or in Herd (`PG_DUMP_BINARY_PATH`). Setup writes `BACKUP_ARCHIVE_PASSWORD`.
+- The ops schedule (`activitylog:clean --force`, `backup:clean`, `backup:run --only-db`, `backup:monitor`, `queue:prune-failed`, `model:prune`, `auth:clear-resets`), each on one server and never twice at once, with a heartbeat every minute.
+- A System page (*System status*, `/system` on the central hosts, super admins only) with the health report, the backups, the schedule and its heartbeat, and the doctor checks that start no process.
+- The doctor's `failed-jobs` row (warns while failed jobs are stored) and `backup-password` row (fails while the backups module is on and `BACKUP_ARCHIVE_PASSWORD` is blank; `--fix` writes one); the health check's `last-backup` row fails while backups would be unencrypted, and `backup:run` then refuses to start, also by hand. The `backup-password` row also fails while `.env` has a password that the running configuration lacks (a stale config cache).
+- Audit entries written by an Artisan command are tagged with the command, and the audit log shows them as *Command line*, or as the causer's name followed by *via the command line* when they have one.
+- `skv:create-organisation --as=<email>` picks the acting super admin.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
 - `permissions:sync` also reports the permissions it strips from the super admin badge.
 - When you chose HTTPS and the Herd step could not secure the site, `APP_URL` stays http and the install records `https: false` whether or not passkeys are on (passkeys are switched off when they were on); the summary says how to secure the site later, and the doctor no longer fails on the missing certificate.
 - After securing the site, the Herd step writes `APP_URL=https://<folder>.<tld>`, the name it secured (lower-cased), instead of the address setup was started on.
-- The doctor step of setup checks the Herd site, HTTPS and the setup token after the Herd step instead of before it.
+- The doctor step of setup reports the Herd site, HTTPS and the setup token as skipped, because the Herd step runs after it; `php artisan skv:doctor` checks them once setup is done.
 - The install marker is written atomically with mode 0600.
+- `skv:create-super-admin --password-stdin` reads the password from standard input and replaces `--password=`, so a password never travels in argv.
+- `skv:install --answers` also takes `@file` and `-` (standard input), and refuses inline JSON that holds a `super_admin_password`.
+- `skv:install` refuses to run in production.
+- `skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets (`HEALTH_CHECK_KEY`, `BACKUP_ARCHIVE_PASSWORD`) for a production `.env`.
+- Demo data runs only in the `local` and `testing` environments; elsewhere `skv:install` refuses `start_with=demo` before anything is written.
+- The demo accounts use the app's default language.
+- `skv:create-organisation --locale` defaults to the app's default language instead of `nl`.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.

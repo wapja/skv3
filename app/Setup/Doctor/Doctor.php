@@ -9,8 +9,10 @@ use App\Setup\Doctor\Checks\ApexCheck;
 use App\Setup\Doctor\Checks\AppKeyCheck;
 use App\Setup\Doctor\Checks\AssetsCheck;
 use App\Setup\Doctor\Checks\AuthenticateSessionCheck;
+use App\Setup\Doctor\Checks\BackupPasswordCheck;
 use App\Setup\Doctor\Checks\ClaudeFilesCheck;
 use App\Setup\Doctor\Checks\DatabaseCheck;
+use App\Setup\Doctor\Checks\FailedJobsCheck;
 use App\Setup\Doctor\Checks\FluxProCredentialsCheck;
 use App\Setup\Doctor\Checks\GdCheck;
 use App\Setup\Doctor\Checks\GitHooksCheck;
@@ -20,6 +22,7 @@ use App\Setup\Doctor\Checks\HerdProCheck;
 use App\Setup\Doctor\Checks\HerdSecuredCheck;
 use App\Setup\Doctor\Checks\HerdSiteCheck;
 use App\Setup\Doctor\Checks\MailCheck;
+use App\Setup\Doctor\Checks\MarkerCheck;
 use App\Setup\Doctor\Checks\McpCheck;
 use App\Setup\Doctor\Checks\MigrationsCheck;
 use App\Setup\Doctor\Checks\NodeCheck;
@@ -63,6 +66,7 @@ final readonly class Doctor
             new PhpCheck,
             new GdCheck,
             new AppKeyCheck,
+            new MarkerCheck,
             new HerdCheck,
             new HerdProCheck,
             new HerdSiteCheck,
@@ -80,12 +84,14 @@ final readonly class Doctor
             new SessionDriverCheck,
             new AuthenticateSessionCheck,
             new HealthCheckKeyCheck,
+            new BackupPasswordCheck,
             new NodeCheck,
             new AssetsCheck,
             new MailCheck,
             new PgDumpCheck,
             new FluxProCredentialsCheck,
             new QueueCheck,
+            new FailedJobsCheck,
             new GitHooksCheck,
             new PlaywrightCheck,
             new ClaudeFilesCheck,
@@ -121,8 +127,10 @@ final readonly class Doctor
             if ($fix && in_array($result->status, [CheckStatus::Warn, CheckStatus::Fail], true)) {
                 try {
                     $fixed = $check->fix($context);
-                } catch (Throwable) {
-                    // A repair that throws leaves the first result, with its fix command, in the report.
+                } catch (Throwable $exception) {
+                    // A repair that throws leaves the first result, with its fix command, in the report, and is
+                    // reported, so a crashed repair can be told from one never tried (A9).
+                    report($exception);
                     $fixed = null;
                 }
 

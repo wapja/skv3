@@ -35,4 +35,22 @@ return [
         'backups' => Skv::backupsAvailable((string) env('DB_CONNECTION', 'sqlite'), (bool) env('MODULE_BACKUPS', true)),
     ],
 
+    /*
+    | /health-check (§4.9, RL-5): authorised only by the X-Health-Check-Key header, compared with hash_equals();
+    | a blank key always answers 403. Results are cached for cache_seconds (CD-5). last-backup allows the newest
+    | backup backup_grace_minutes beyond the monitor's maximum age, because an archive is named after the time its
+    | job starts and tonight's lands only after the dump: without it every nightly run would answer 503 (CD-4).
+    */
+    'health_check' => [
+        'key' => env('HEALTH_CHECK_KEY'),
+        'cache_seconds' => 30,
+        'backup_grace_minutes' => 120,
+    ],
+
+    /*
+    | The cache store of the ops layer (CD-5): the health report, the health-check throttle and the scheduler
+    | heartbeat. Not the default database store, so /health-check still answers while the database is down.
+    */
+    'ops_cache_store' => env('OPS_CACHE_STORE', 'file'),
+
 ];

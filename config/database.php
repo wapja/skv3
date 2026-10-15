@@ -99,6 +99,10 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // §4.9, RL-4: the directory holding pg_dump for the backups module; empty lets ConfigurePgDump find it.
+            'dump' => [
+                'dump_binary_path' => env('PG_DUMP_BINARY_PATH', ''),
+            ],
         ],
 
         'sqlsrv' => [

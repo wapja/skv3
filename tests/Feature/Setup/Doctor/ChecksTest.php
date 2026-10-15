@@ -17,6 +17,7 @@ use App\Setup\Doctor\Checks\ApexCheck;
 use App\Setup\Doctor\Checks\AppKeyCheck;
 use App\Setup\Doctor\Checks\AssetsCheck;
 use App\Setup\Doctor\Checks\AuthenticateSessionCheck;
+use App\Setup\Doctor\Checks\BackupPasswordCheck;
 use App\Setup\Doctor\Checks\ClaudeFilesCheck;
 use App\Setup\Doctor\Checks\DatabaseCheck;
 use App\Setup\Doctor\Checks\FluxProCredentialsCheck;
@@ -28,6 +29,7 @@ use App\Setup\Doctor\Checks\HerdProCheck;
 use App\Setup\Doctor\Checks\HerdSecuredCheck;
 use App\Setup\Doctor\Checks\HerdSiteCheck;
 use App\Setup\Doctor\Checks\MailCheck;
+use App\Setup\Doctor\Checks\MarkerCheck;
 use App\Setup\Doctor\Checks\McpCheck;
 use App\Setup\Doctor\Checks\MigrationsCheck;
 use App\Setup\Doctor\Checks\NodeCheck;
@@ -48,6 +50,7 @@ use App\Setup\Doctor\Checks\SuperpowersCheck;
 use App\Setup\Doctor\Checks\TestDatabaseCheck;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\Marker;
 use App\Setup\SetupToken;
 use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
@@ -130,6 +133,27 @@ it('fails without an APP_KEY and names the command (§5.4)', function (): void {
     new EnvFile($this->sandbox->path('.env'))->set(['APP_KEY' => 'base64:'.base64_encode(random_bytes(32))]);
 
     expect(new AppKeyCheck()->run($this->context)->status)->toBe(CheckStatus::Pass);
+});
+
+it('reports the install marker: skipped before setup, failed when unreadable (A8)', function (): void {
+    $file = $this->sandbox->path(Marker::FILE);
+
+    $before = new MarkerCheck()->run($this->context);
+
+    File::put($file, '{"answers":');
+    $broken = new MarkerCheck()->run($this->context);
+
+    File::put($file, 'null');
+    $notAnObject = new MarkerCheck()->run($this->context);
+
+    Marker::write($this->sandbox, ['urls' => [], 'logins' => [], 'manual' => [], 'notes' => []]);
+    $installed = new MarkerCheck()->run($this->context);
+
+    expect($before->status)->toBe(CheckStatus::Skipped)
+        ->and($broken->status)->toBe(CheckStatus::Fail)
+        ->and($broken->message)->toContain(Marker::FILE)
+        ->and($notAnObject->status)->toBe(CheckStatus::Fail)
+        ->and($installed->status)->toBe(CheckStatus::Pass);
 });
 
 it('only warns without Herd (§5.4)', function (): void {
@@ -396,6 +420,61 @@ it('writes a health-check key with --fix (§5.4)', function (): void {
         ->and($result->status)->toBe(CheckStatus::Pass)
         ->and($result->message)->not->toContain((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))
         ->and(strlen((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+});
+
+it('needs an archive password while the backups module is on, and writes one with --fix (CD-10)', function (): void {
+    useBackupsModule(false);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    $off = new BackupPasswordCheck()->run($this->context);
+
+    useBackupsModule(true);
+    $missing = new BackupPasswordCheck()->run($this->context);
+    $result = new BackupPasswordCheck()->fix($this->context);
+    $written = (string) new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD');
+
+    expect($off->status)->toBe(CheckStatus::Skipped)
+        ->and($missing->status)->toBe(CheckStatus::Fail)
+        ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
+        ->and($result->status)->toBe(CheckStatus::Pass)
+        ->and(strlen($written))->toBe(32)
+        ->and($result->message)->not->toContain($written);
+});
+
+it('fails while .env has an archive password that the running configuration lacks (CD-10)', function (): void {
+    // A config:cache taken before the password existed: backup:run reads the configuration, not .env.
+    useBackupsModule(true);
+    config(['backup.backup.password' => '']);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+
+    $stale = new BackupPasswordCheck()->run($this->context);
+    $fixed = new BackupPasswordCheck()->fix($this->context);
+
+    expect($stale->status)->toBe(CheckStatus::Fail)
+        ->and($stale->message)->toBe(__('BACKUP_ARCHIVE_PASSWORD is in .env, but the running configuration has none: a stale config cache or a blank environment variable'))
+        ->and($stale->fix)->toBe('php artisan config:cache')
+        ->and($fixed->status)->toBe(CheckStatus::Fail);
+});
+
+it('points the running configuration at the archive password --fix writes, as the next process boots (CD-10)', function (): void {
+    useBackupsModule(true);
+    config(['backup.backup.password' => null]);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    $result = new BackupPasswordCheck()->fix($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(config('backup.backup.password'))->toBe(new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD'));
+});
+
+it('never replaces an archive password that exists (CD-10)', function (): void {
+    useBackupsModule(true);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+
+    $result = new BackupPasswordCheck()->fix($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD'))->toBe(str_repeat('p', 32));
 });
 
 it('warns about a missing or unsupported Node (§5.4)', function (string $version, CheckStatus $status) use ($stub): void {

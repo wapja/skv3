@@ -15,6 +15,7 @@ use App\Setup\Support\Toolchain;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
+use JsonException;
 use Throwable;
 
 /**
@@ -42,15 +43,25 @@ final class DoctorContext
         $detection = $detector->detect();
         $setup = SetupContext::forApplication(Answers::defaults($detection, basename(base_path())), $detection);
 
-        return new self(base_path(), $toolchain, $detection, Marker::read($setup));
+        return new self(base_path(), $toolchain, $detection, self::readableMarker($setup));
     }
 
     /** The setup's context; before the marker exists, the marker-gated checks read the answers being installed (RL-8). */
     public static function fromSetup(SetupContext $context, Toolchain $toolchain): self
     {
-        $marker = Marker::read($context) ?? ['answers' => $context->answers->toPublicArray(), 'start_with' => $context->answers->startWith];
+        $marker = self::readableMarker($context) ?? ['answers' => $context->answers->toPublicArray(), 'start_with' => $context->answers->startWith];
 
         return new self($context->basePath, $toolchain, $context->detection, $marker);
+    }
+
+    /**
+     * The running application without a detection and without a marker (RL-2): for web requests and console
+     * listeners, because forApplication() starts herd processes and probes PostgreSQL. The checks that read the
+     * detection or the marker are not run through it.
+     */
+    public static function withoutDetection(?string $basePath = null): self
+    {
+        return new self($basePath ?? base_path(), app(Toolchain::class), Detection::none(), null);
     }
 
     public function path(string $relative = ''): string
@@ -113,5 +124,19 @@ final class DoctorContext
     public function process(int $timeout = 30): PendingProcess
     {
         return Process::path($this->basePath)->env($this->toolchain->environment())->timeout($timeout);
+    }
+
+    /**
+     * The marker, or null when it is absent or unreadable; the `marker` check reports an unreadable one (A8).
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function readableMarker(SetupContext $context): ?array
+    {
+        try {
+            return Marker::read($context);
+        } catch (JsonException) {
+            return null;
+        }
     }
 }

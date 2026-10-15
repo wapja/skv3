@@ -2,7 +2,7 @@
 
 An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, invitations, roles and permissions, impersonation, audit logging and a Flux UI — set up from Laravel Herd in minutes.
 
-> **Status:** under construction (milestone M6b — the browser setup wizard and the local quick login). See `docs/superpowers/specs/2026-10-10-skv3-design.md`.
+> **Status:** under construction (milestone M7a — the operations layer: the health check, backups, the scheduler and the System page). See `docs/superpowers/specs/2026-10-10-skv3-design.md`.
 
 ## Requirements
 
@@ -76,24 +76,86 @@ The state files are written atomically with mode 0600; only the token file holds
 
 | Command | What it does |
 |---|---|
-| `php artisan skv:install [--answers=JSON] [--no-interaction] [--force]` | Runs the setup steps in order. Complete steps are skipped unless `--force`; a re-run keeps the answers of the earlier install and names the `.env` keys it changed. A step that cannot run prints its command to run yourself. |
-| `php artisan skv:bootstrap` | The phase-1 bootstrap the Composer and installer hooks run: `.env`, `APP_KEY`, the Herd `APP_URL`, the SQLite migration and, while the app is not installed, the setup token. Prints where to finish setting up. |
-| `php artisan skv:doctor [--fix] [--json]` | Checks the installation and prints the fix for every problem. Green means no `fail`. `--fix` performs only the safe repairs (`permissions:sync`, flag and role drift, `storage:link`, `core.hooksPath`, the asset build, and the `setup-token` fix, which deletes a setup token left after setup). `--json` prints the report and exits 1 when it is not green. During setup, step 8 reports the `herd-site`, `herd-secured` and `setup-token` rows as `skipped` ("Checked after the Herd step"), because steps 9 and 10 have not run yet. |
-| `php artisan skv:create-super-admin` | Creates a super admin, or promotes an existing active user; a `--name` or `--password` given for an existing user replaces its own. Prompts for what is missing; with `--no-interaction` the email and `--password` are required for a new user. |
-| `php artisan skv:create-organisation` | Creates an organisation and invites its first admin. Needs an active super admin. |
+| `php artisan skv:install [--answers=JSON\|@file\|-] [--no-interaction] [--force]` | Runs the setup steps in order. Complete steps are skipped unless `--force`; a re-run keeps the answers of the earlier install and names the `.env` keys it changed. A step that cannot run prints its command to run yourself. `--answers` takes inline JSON, `@path` (a file, relative to the working directory) or `-` (standard input); inline JSON with a `super_admin_password` is refused before anything runs, so a password never shows in the process list or the shell history. It refuses to run in production (`APP_ENV=production`), and outside local development (`local`, `testing`) it refuses `start_with=demo` before anything is written. |
+| `php artisan skv:bootstrap` | The phase-1 bootstrap the Composer and installer hooks run: `.env`, `APP_KEY`, the Herd `APP_URL`, the SQLite migration and, while the app is not installed, the setup token. Prints where to finish setting up. In production (the `.env` says `APP_ENV=production`) it only prepares `.env`, `APP_KEY` and the blank generated secrets (`HEALTH_CHECK_KEY`, `BACKUP_ARCHIVE_PASSWORD`; it names the keys, never their values) and points you at the [production checklist](#production-checklist). |
+| `php artisan skv:doctor [--fix] [--json]` | Checks the installation and prints the fix for every problem. Green means no `fail`. `--fix` performs only the safe repairs (`permissions:sync`, flag and role drift, `storage:link`, `core.hooksPath`, the asset build, a missing `HEALTH_CHECK_KEY`, a missing `BACKUP_ARCHIVE_PASSWORD` while the backups module is on, and the `setup-token` fix, which deletes a setup token left after setup). The `marker` row fails when `storage/app/skv-installed` is not valid JSON, the `failed-jobs` row warns while failed jobs are stored, and the `backup-password` row fails while the backups module is on and `BACKUP_ARCHIVE_PASSWORD` is blank. `--json` prints the report and exits 1 when it is not green. During setup, step 8 reports the `herd-site`, `herd-secured` and `setup-token` rows as `skipped` ("Checked after the Herd step"), because steps 9 and 10 have not run yet. |
+| `php artisan skv:create-super-admin [email] [--name=] [--password-stdin]` | Creates a super admin, or promotes an existing active user; a `--name`, or a password given with `--password-stdin`, replaces an existing user's own. `--password-stdin` reads the password from the first line of standard input: `printf '%s\n' "$PASSWORD" \| php artisan skv:create-super-admin you@example.com --password-stdin --no-interaction`. Prompts for what is missing; with `--no-interaction` the email and `--password-stdin` are required for a new user. `--password=` is gone: a password in argv shows in the process list and the shell history. |
+| `php artisan skv:create-organisation [name] [slug] [admin-email] [--description=] [--locale=] [--as=]` | Creates an organisation and invites its first admin. It acts as an active super admin: `--as=<email>` picks which one, the default is the oldest active one. `--locale` is the first admin's language and defaults to the app's default language (`APP_LOCALE`). |
 | `php artisan skv:flux-pro` | Installs Flux Pro with your own Composer credentials (see [Flux Pro](#flux-pro)). |
 | `php artisan permissions:sync` | Syncs the permission catalogue and the system roles, and prints every change it made. |
 | `composer doctor` | Runs `php artisan skv:doctor`. |
 
+Audit entries written while an Artisan command runs are tagged with it (`via: console` and the command name in their properties), and the audit log shows them as *Command line*, or as the causer's name followed by *via the command line* when they have one.
+
+## Health check
+
+- **`/up`** is liveness only: the framework answers 200 while the app boots.
+- **`/health-check`** needs the header `X-Health-Check-Key` with the value of `HEALTH_CHECK_KEY`. Setup and the production `skv:bootstrap` generate the key, and `skv:doctor --fix` writes one when it is missing. A missing or wrong header, and a blank `HEALTH_CHECK_KEY`, always get 403.
+- It answers 200 when every check passes and 503 when one fails, with a JSON body listing `database`, `queue`, `failed-jobs`, `mail` and `last-backup` (each with a label, a status and a message). Results are cached for 30 seconds, and the endpoint is throttled to 60 requests a minute per address. It runs outside the `web` group: no session, cookies, organisation or language.
+- A stored failed job makes `failed-jobs` warn, but the endpoint stays 200; `queue:prune-failed` clears old ones every night. `last-backup` is skipped while the backups module is off.
+- With the module on, `last-backup` fails while a backup disk holds no backup yet, so a new deploy, or a module switched on later, answers 503 until the first backup: run `php artisan backup:run --only-db` once after deploying. The newest backup may be up to a day and two hours old (`skv.health_check.backup_grace_minutes`, 120), because an archive is named after the time its job starts: the nightly run at 02:00 never turns the endpoint into a 503 while it works.
+
+```bash
+curl -fsS -H "X-Health-Check-Key: $HEALTH_CHECK_KEY" https://example.com/health-check
+```
+
+## Backups
+
+- **The module.** `MODULE_BACKUPS` (default `true`) switches it; it is always off on SQLite. Switch it in `.env`, then run `php artisan skv:doctor --fix`.
+- **What is backed up:** the database only, as an encrypted zip on the `backups` disk (`storage/app/backups/<name>/`, where `<name>` is `APP_NAME` as a slug). No files are backed up.
+- **`BACKUP_ARCHIVE_PASSWORD`** encrypts the archives (AES-256). Setup's environment step, the production `skv:bootstrap` and `skv:doctor --fix` each write a random one when it is blank. The package would write unencrypted backups for a blank password, so while the running configuration has none, `backup:run` refuses to start (also by hand: it exits 1 before anything is dumped), the schedule does not start the nightly one, and the doctor's `backup-password` row and the health check's `last-backup` row fail. `backup:run` reads the configuration, not `.env`: on a server with a config cache, run `php artisan config:cache` after `skv:doctor --fix` has written a password. **Keep a copy outside the server**: without it no archive can be opened.
+- **`BACKUP_NOTIFY_EMAIL`** receives the failure mails only (a failed backup, an unhealthy backup, a failed clean-up). Blank means `MAIL_FROM_ADDRESS`.
+- **`PG_DUMP_BINARY_PATH`** is the directory that holds `pg_dump`. Blank finds `pg_dump` on PATH or in Herd's PostgreSQL services, also under cron, which has no Herd PATH.
+- **Commands:** `php artisan backup:run --only-db` (a backup now; it refuses to start while the archive would not be encrypted), `backup:list` (the backups and their health), `backup:monitor` (mails when the newest backup is older than a day or the backups use more than 5000 MB) and `backup:clean` (applies the retention of `config/backup.php`'s `cleanup`: every backup for 7 days, then daily for 16 days, weekly for 8 weeks, monthly for 4 months and yearly for 2 years).
+- **Restoring:** unzip the archive with the password, using a tool that reads AES-256 zips (for example `7z x <archive>.zip`), then load `db-dumps/postgresql-<database>.sql` into an empty database: `psql -d <empty-database> < db-dumps/postgresql-<database>.sql`.
+- **Off the server:** point the `backups` disk at S3 (or another remote disk) in `config/filesystems.php`; the backup, the monitor and the System page all read that disk.
+
+## Scheduler
+
+The kit schedules the ops jobs in `routes/console.php`. Every job runs on one server (`onOneServer()`), and every job but the heartbeat never twice at once (`withoutOverlapping()`). The times are in `config('app.timezone')` (UTC by default).
+
+| Job | When | Runs |
+|---|---|---|
+| `activitylog:clean --force` | 01:00 | always (removes audit entries older than `ACTIVITYLOG_RETENTION_DAYS`) |
+| `backup:clean` | 01:30 | while the backups module is on |
+| `backup:run --only-db` | 02:00 | while the backups module is on and the archive would be encrypted |
+| `backup:monitor` | 03:00 | while the backups module is on |
+| `queue:prune-failed` | 03:30 | always |
+| `model:prune` | 04:00 | always (removes expired cross-host sign-in links) |
+| `auth:clear-resets` | every 15 minutes | always |
+| `scheduler-heartbeat` | every minute | always |
+
+The backup jobs stay registered while the module is off; `php artisan schedule:list` and the System page show them as off, so switching the module on in `.env` needs no deploy. Run the scheduler with one cron line per server:
+
+```
+* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1
+```
+
+The heartbeat stores the time of its last run, and the System page shows it, so a missing cron line shows there.
+
+## System page
+
+`/system` (*System status*, in the *Systeem* group of the sidebar) works on the admin host and the apex, for super admins only; on an organisation's host it answers 404. It shows:
+
+- **Health:** the same cached report as `/health-check`, with the time it was checked and *Refresh*.
+- **Backups:** per backup disk whether it is reachable, the number of backups, the newest one and the storage used, or why the module is off.
+- **Schedule:** every scheduled job with its cron expression, its next run and whether it is currently on, and the scheduler's last heartbeat.
+- **Doctor:** *Run checks* runs the doctor checks that start no process: `php`, `gd`, `app-key`, `marker`, `database`, `migrations`, `permissions`, `organisation-admin-role`, `super-admin`, `super-admin-badges`, `session-driver`, `authenticate-session`, `health-check-key`, `backup-password`, `assets`, `mail`, `pg-dump`, `queue`, `failed-jobs` and `storage-link`. Their repairs are not offered there: run `php artisan skv:doctor --fix`.
+
 ## The answers schema
 
-`skv:install --answers='{"database":"sqlite"}'` takes a JSON object with these keys; `skv:install --no-interaction` uses the defaults as-is. `tests/Fixtures/e2e-answers.json` uses every key.
+`skv:install --answers='{"database":"sqlite"}'` takes a JSON object with these keys; `skv:install --no-interaction` uses the defaults as-is. `tests/Fixtures/e2e-answers.json` uses every key. `super_admin_password` goes in a file or on standard input, never inline on the command line:
+
+```bash
+php artisan skv:install --no-interaction --answers=@answers.json
+php artisan skv:install --no-interaction --answers=- < answers.json
+```
 
 | Key | Type | Default |
 |---|---|---|
 | `app_name` | string | `Str::headline(basename(base_path()))` |
 | `database` | `pgsql` \| `sqlite` | `pgsql` if a reachable Postgres was detected, else `sqlite` |
-| `start_with` | `demo` \| `super_admin` | `demo`. With `super_admin`, `super_admin_email` + `super_admin_password` are required; with `--no-interaction` and either missing, the command fails before any step runs |
+| `start_with` | `demo` \| `super_admin` | `demo`; outside local development (`local`, `testing`) `demo` is refused. With `super_admin`, `super_admin_email` + `super_admin_password` are required; with `--no-interaction` and either missing, the command fails before any step runs |
 | `modules` | subset of `passkeys`, `backups`, `impersonation` | all three; `backups` removed on sqlite |
 | `https` | bool | true; forced true while `passkeys` is on |
 | `playwright` | bool | false |
@@ -103,9 +165,9 @@ After an install, the answers of that install take the place of these defaults o
 
 ## Demo accounts
 
-With `start_with: demo` (the default), the demo seeder creates a super admin and the organisations `demo1` and `demo2`, each with an admin, a user and one pending invitation. The emails are derived from the apex, for example `superadmin@myapp.test`, `admin@demo1.myapp.test` and `user@demo1.myapp.test`. Every demo account has the password `password`, and the setup summary prints them.
+With `start_with: demo` (the default), the demo seeder creates a super admin and the organisations `demo1` and `demo2`, each with an admin, a user and one pending invitation. The emails are derived from the apex, for example `superadmin@myapp.test`, `admin@demo1.myapp.test` and `user@demo1.myapp.test`. Every demo account has the password `password`, and the setup summary prints them. The demo accounts and invitations use the app's default language (`APP_LOCALE`).
 
-The demo seeder refuses to run in production, and `DatabaseSeeder` skips it there. Never publish the demo accounts or their password (skv2 finding R2): do not put them in a public page, a shared manual or a deployed environment.
+The demo data runs only in the `local` and `testing` environments: the demo seeder refuses everywhere else, `DatabaseSeeder` skips it there, and `skv:install` refuses `start_with=demo` there before anything is written. Never publish the demo accounts or their password (skv2 finding R2): do not put them in a public page, a shared manual or a deployed environment.
 
 ## Flux Pro
 
@@ -128,12 +190,14 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 
 ## Production checklist
 
+- Never run `php artisan skv:install` there (it refuses in production); `php artisan skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets. Demo data never runs outside local and testing.
 - Run `php artisan permissions:sync` on every deploy.
-- Set a non-empty `HEALTH_CHECK_KEY` (setup generates one).
+- Set a non-empty `HEALTH_CHECK_KEY` (setup and the production `skv:bootstrap` generate one), and point an uptime monitor at `/health-check` with the `X-Health-Check-Key` header; expect 200 (see [Health check](#health-check)). With backups on, run `php artisan backup:run --only-db` once after the first deploy: until the first backup exists, `last-backup` fails and the endpoint answers 503.
+- Set a non-empty `BACKUP_ARCHIVE_PASSWORD`: without one `backup:run` refuses to start, because the backups would be unencrypted (`php artisan skv:doctor --fix` writes one; then run `php artisan config:cache` again). Keep a copy off the server, and set `BACKUP_NOTIFY_EMAIL`.
+- On several servers, set `OPS_CACHE_STORE` to a shared store (`redis`), so the heartbeat and the health report are the same on every server.
 - Keep `SESSION_DRIVER=database`.
-- Never run the demo seeder.
-- Run a queue worker (`php artisan queue:work`), because invitation mails are queued.
-- Add a cron entry that runs `php artisan schedule:run` every minute.
+- Run a queue worker (`php artisan queue:work`), because invitation mails are queued. The queue can use Redis: `QUEUE_CONNECTION=redis` with the `REDIS_*` keys and phpredis or predis.
+- Add the cron line from [Scheduler](#scheduler): `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1`.
 
 ## AI
 

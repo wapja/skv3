@@ -252,7 +252,7 @@ if [ "$ENTRY" = herd ] && [ "$PHASE1_ONLY" = false ]; then
     echo
     echo "Phase 2: skv:install (https=$HTTPS)"
     INSTALLED=true
-    (cd "$TARGET" && php artisan skv:install --no-interaction --answers="$(cat "$ANSWERS")") || INSTALLED=false
+    (cd "$TARGET" && php artisan skv:install --no-interaction --answers=@"$ANSWERS") || INSTALLED=false
     check "skv:install finished" "$INSTALLED"
     check "require-dev laravel/boost is ^2.10 (DEC-22 rule 5)" boost_restored
 

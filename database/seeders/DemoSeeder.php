@@ -25,7 +25,7 @@ use RuntimeException;
 /**
  * Optional demo data (§4.12, RL-8): a super admin and the organisations demo1 and demo2, each with an admin, a user
  * and a pending invitation, built through the real actions so the audit log has entries (DEC-28). Emails derive
- * from the apex; every demo account shares the password "password". Never in production. Idempotent.
+ * from the apex; every demo account shares the password "password". Only in local and testing. Idempotent.
  */
 final class DemoSeeder extends Seeder
 {
@@ -56,8 +56,8 @@ final class DemoSeeder extends Seeder
 
     public function run(SetSuperAdmin $setSuperAdmin, CreateOrganisation $createOrganisation, CreateRole $createRole, InviteUser $inviteUser, AcceptInvitation $acceptInvitation): void
     {
-        if (app()->isProduction()) {
-            throw new RuntimeException('The demo seeder never runs in production.');
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException('The demo seeder runs only in the local and testing environments.');
         }
 
         // Invitations are accepted at once: send their mails now, while the token still exists.
@@ -73,13 +73,13 @@ final class DemoSeeder extends Seeder
                     continue;
                 }
 
-                $organisation = $createOrganisation->handle($superAdmin, 'Demo '.($index + 1), $slug, null, "admin@{$slug}.{$apex}", Locale::Dutch);
+                $organisation = $createOrganisation->handle($superAdmin, 'Demo '.($index + 1), $slug, null, "admin@{$slug}.{$apex}", Locale::default());
                 $memberRole = [(int) $createRole->handle($superAdmin, $organisation, self::MEMBER_ROLE, [Permission::UsersView])->getKey()];
 
                 Tenant::run($organisation, function () use ($organisation, $superAdmin, $inviteUser, $acceptInvitation, $memberRole, $slug, $apex): void {
                     $acceptInvitation->handle($this->openInvitationFor("admin@{$slug}.{$apex}"), 'Demo admin', self::PASSWORD);
-                    $acceptInvitation->handle($inviteUser->handle($superAdmin, $organisation, "user@{$slug}.{$apex}", $memberRole, Locale::Dutch), 'Demo user', self::PASSWORD);
-                    $inviteUser->handle($superAdmin, $organisation, "invited@{$slug}.{$apex}", $memberRole, Locale::Dutch);
+                    $acceptInvitation->handle($inviteUser->handle($superAdmin, $organisation, "user@{$slug}.{$apex}", $memberRole, Locale::default()), 'Demo user', self::PASSWORD);
+                    $inviteUser->handle($superAdmin, $organisation, "invited@{$slug}.{$apex}", $memberRole, Locale::default());
                 });
             }
         } finally {

@@ -14,11 +14,14 @@ use App\Setup\Support\Bootstrap;
 use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Fixtures\FailingBootstrap;
 use Tests\Fixtures\QueryFailingSetupStep;
@@ -52,6 +55,35 @@ $install = function (array $parameters): array {
     $exitCode = Artisan::call('skv:install', $parameters, $output);
 
     return [$exitCode, $output->fetch()];
+};
+
+/**
+ * Writes the answers to a sandbox file and returns the --answers value for it (RL-11: a password never goes inline).
+ *
+ * @param  array<string, mixed>  $answers
+ */
+$answersFile = function (SetupContext $sandbox, array $answers): string {
+    $file = $sandbox->path('answers-'.Str::uuid().'.json');
+    file_put_contents($file, json_encode($answers, JSON_THROW_ON_ERROR));
+
+    return '@'.$file;
+};
+
+/**
+ * Runs a command with $stdin on its input stream, as `printf … | php artisan …` would.
+ *
+ * @param  array<string, mixed>  $parameters
+ * @return array{0: int, 1: string}
+ */
+$withStdin = function (string $command, array $parameters, string $stdin): array {
+    $stream = fopen('php://memory', 'r+') ?: throw new LogicException('Could not open a memory stream.');
+    fwrite($stream, $stdin);
+    rewind($stream);
+    $input = new ArrayInput(['command' => $command, ...$parameters]);
+    $input->setStream($stream);
+    $output = new BufferedOutput;
+
+    return [app(Kernel::class)->handle($input, $output), $output->fetch()];
 };
 
 it('installs non-interactively from the e2e answers and writes the marker (§5.3.3, §7.2)', function () use ($install): void {
@@ -93,11 +125,11 @@ it('rejects answers that are not JSON (§5.3.2)', function () use ($install): vo
         ->and($output)->toContain(__('The --answers value is not valid JSON.'));
 });
 
-it('never prints the super admin password (RL-5)', function () use ($install): void {
-    [$exitCode, $output] = $install(['--answers' => json_encode([
+it('never prints the super admin password (RL-5)', function () use ($install, $answersFile): void {
+    [$exitCode, $output] = $install(['--answers' => $answersFile($this->sandbox, [
         'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
         'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
-    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+    ]), '--no-interaction' => true]);
 
     // RL-14: the marker holds the public answers only, never the password or its hash.
     $marker = (string) file_get_contents($this->sandbox->path(Marker::FILE));
@@ -136,11 +168,11 @@ it('names only the driver message of a failed query, never its bindings (RL-6)',
         ->not->toContain('secret-hash');
 });
 
-it('keeps the earlier install\'s answers on a re-run that leaves them out (§5.3.2, RL-6, DEC-30)', function () use ($install): void {
-    [$exitCode] = $install(['--answers' => json_encode([
+it('keeps the earlier install\'s answers on a re-run that leaves them out (§5.3.2, RL-6, DEC-30)', function () use ($install, $answersFile): void {
+    [$exitCode] = $install(['--answers' => $answersFile($this->sandbox, [
         'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
         'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
-    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+    ]), '--no-interaction' => true]);
 
     [$rerunExitCode, $output] = $install(['--answers' => json_encode(['database' => 'sqlite'], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
 
@@ -212,13 +244,13 @@ it('installs on a clone whose boot config has no key and another apex than the d
         ->and(collect($emails)->filter(fn (string $email): bool => str_ends_with($email, '@localhost') || str_ends_with($email, '.localhost'))->all())->toBe([]);
 });
 
-it('applies a super admin password given for the installed account (§5.3.3 step 2)', function (bool $force) use ($install): void {
-    [$exitCode] = $install(['--answers' => json_encode([
+it('applies a super admin password given for the installed account (§5.3.3 step 2)', function (bool $force) use ($install, $answersFile): void {
+    [$exitCode] = $install(['--answers' => $answersFile($this->sandbox, [
         'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
         'super_admin_password' => 'old-password-123', 'modules' => [], 'https' => false, 'claude' => false,
-    ], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+    ]), '--no-interaction' => true]);
 
-    [$rerunExitCode, $output] = $install(['--answers' => json_encode(['super_admin_password' => 'new-password-456'], JSON_THROW_ON_ERROR), '--no-interaction' => true, '--force' => $force]);
+    [$rerunExitCode, $output] = $install(['--answers' => $answersFile($this->sandbox, ['super_admin_password' => 'new-password-456']), '--no-interaction' => true, '--force' => $force]);
 
     $owner = DB::connection(DatabaseStep::CONNECTION)->table('users')->where('email', 'owner@example.com')->sole();
 
@@ -237,4 +269,38 @@ it('reports a failing bootstrap as a setup stop without the process output (RL-1
         ->and($output)->toContain(__('Setup stopped at :step: :message', ['step' => __('Bootstrap'), 'message' => 'The command "php artisan migrate" failed.']))
         ->not->toContain('migrate failed')
         ->not->toContain('secret output');
+});
+
+it('refuses a password inside an inline --answers before anything runs (CD-8, RL-11)', function () use ($install): void {
+    $before = (string) file_get_contents($this->sandbox->path('.env'));
+
+    [$exit, $output] = $install(['--answers' => json_encode(['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery']), '--no-interaction' => true]);
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain('--answers=@')
+        ->and($output)->not->toContain('correct-horse-battery')
+        ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+});
+
+it('reads the answers from a file with --answers=@path (RL-11)', function () use ($install): void {
+    $file = $this->sandbox->path('answers.json');
+    file_put_contents($file, json_encode(['database' => 'oracle']));
+
+    [$exit, $output] = $install(['--answers' => '@'.$file, '--no-interaction' => true]);
+
+    // The file was read: its value reaches validation.
+    expect($exit)->toBe(1)->and($output)->toContain('database');
+});
+
+it('reads the answers from standard input with --answers=- (RL-11)', function () use ($withStdin): void {
+    [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], (string) json_encode(['database' => 'oracle']));
+
+    expect($exit)->toBe(1)->and($output)->toContain('database');
+});
+
+it('names an unreadable answers file (RL-11)', function () use ($install): void {
+    [$exit, $output] = $install(['--answers' => '@'.$this->sandbox->path('missing.json'), '--no-interaction' => true]);
+
+    // The console components print paths inside the project relative to it (EnsureRelativePaths).
+    expect($exit)->toBe(1)->and($output)->toContain(__('The answers file :path cannot be read.', ['path' => Str::after($this->sandbox->path('missing.json'), base_path().'/')]));
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Actions\Audit\ConsoleOrigin;
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
 use App\Setup\Answers;
@@ -19,11 +20,15 @@ use App\Setup\Support\BootstrapRunner;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
 use App\Setup\Wizard\StepLauncher;
+use App\Support\Backups\ConfigurePgDump;
+use App\Support\Backups\RefuseUnencryptedBackups;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
 use Carbon\CarbonImmutable;
 use Composer\InstalledVersions;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\AliasLoader;
@@ -32,6 +37,7 @@ use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -79,6 +85,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureErrorPages();
         $this->configureFluxProBranches();
         $this->configureSetupWizard();
+        $this->configureOperations();
     }
 
     /**
@@ -187,5 +194,16 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Blade::prepareStringsForCompilationUsing(FluxProBranches::strip(...));
+    }
+
+    /** §4.9: the console side of the ops layer. */
+    protected function configureOperations(): void
+    {
+        // CD-10: backup:run never writes an unencrypted archive, also when it is started by hand.
+        Event::listen(CommandStarting::class, RefuseUnencryptedBackups::class);
+        Event::listen(CommandStarting::class, ConfigurePgDump::class);
+        // CD-7, RL-9: audit entries written during a command are tagged with it.
+        Event::listen(CommandStarting::class, fn (CommandStarting $event) => ConsoleOrigin::enter($event->command));
+        Event::listen(CommandFinished::class, fn (CommandFinished $event) => ConsoleOrigin::leave($event->command));
     }
 }

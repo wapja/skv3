@@ -11,11 +11,15 @@ use App\Setup\Support\EnvFile;
 use Illuminate\Support\Str;
 
 /**
- * §5.3.3 step 1: the app name, address and apex, the health-check key, the faker locale, the module flags and,
- * when Herd Pro mail is active and the installer left mail alone, Herd's SMTP server. Never writes APP_KEY or DB_*.
+ * §5.3.3 step 1: the app name, address and apex, the generated secrets (GENERATED), the faker locale, the module
+ * flags and, when Herd Pro mail is active and the installer left mail alone, Herd's SMTP server. Never writes APP_KEY
+ * or DB_*.
  */
 final class EnvironmentStep implements SetupStep
 {
+    /** The secrets setup generates once when blank, with their lengths (§4.9): never overwritten, never printed. */
+    public const array GENERATED = ['HEALTH_CHECK_KEY' => 40, 'BACKUP_ARCHIVE_PASSWORD' => 32];
+
     public function key(): string
     {
         return 'environment';
@@ -30,8 +34,14 @@ final class EnvironmentStep implements SetupStep
     {
         $env = new EnvFile($context->path('.env'));
 
-        if (! $env->exists() || ($env->get('HEALTH_CHECK_KEY') ?? '') === '') {
+        if (! $env->exists()) {
             return false;
+        }
+
+        foreach (array_keys(self::GENERATED) as $key) {
+            if (($env->get($key) ?? '') === '') {
+                return false;
+            }
         }
 
         foreach ($this->variables($context, $env) as $key => $value) {
@@ -61,8 +71,10 @@ final class EnvironmentStep implements SetupStep
         $env = new EnvFile($context->path('.env'));
         $variables = $this->variables($context, $env);
 
-        if (($env->get('HEALTH_CHECK_KEY') ?? '') === '') {
-            $variables['HEALTH_CHECK_KEY'] = Str::random(40);
+        foreach (self::GENERATED as $key => $length) {
+            if (($env->get($key) ?? '') === '') {
+                $variables[$key] = Str::random($length);
+            }
         }
 
         $note = $this->installerSetMail($env) || array_key_exists('MAIL_MAILER', $variables)
@@ -75,7 +87,7 @@ final class EnvironmentStep implements SetupStep
     }
 
     /**
-     * The values this step writes, except the generated HEALTH_CHECK_KEY.
+     * The values this step writes, except the generated secrets (GENERATED).
      *
      * @return array<string, string|bool|int>
      */

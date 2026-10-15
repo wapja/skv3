@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.12 */
 
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Invitation;
 use App\Models\Organisation;
@@ -12,6 +13,7 @@ use App\Models\User;
 use App\Tenancy\CurrentTenant;
 use App\Tenancy\Facades\Tenant;
 use Database\Seeders\DemoSeeder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
@@ -56,12 +58,18 @@ it('is idempotent (§4.12)', function (): void {
         ->and(recordedActivity(ActivityEvent::SuperAdminGranted))->toHaveCount(1);
 });
 
-it('refuses to run in production (§4.12)', function (): void {
-    app()->detectEnvironment(fn (): string => 'production');
+it('refuses outside local and testing (CD-9)', function (string $environment): void {
+    $previous = app()->environment();
+    app()['env'] = $environment;
 
-    // --force: without it db:seed asks to confirm in production and cancels before the seeder runs.
-    $this->artisan('db:seed', ['--class' => DemoSeeder::class, '--force' => true]);
-})->throws(RuntimeException::class, 'never runs in production');
+    try {
+        // --force: without it db:seed asks to confirm in production and cancels before the seeder runs.
+        expect(fn (): int => Artisan::call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]))
+            ->toThrow(RuntimeException::class, 'The demo seeder runs only in the local and testing environments.');
+    } finally {
+        app()['env'] = $previous;
+    }
+})->with(['production', 'staging']);
 
 it('gives the demo user the Member role and sends the invitation mails right away (RL-8)', function (): void {
     config(['queue.default' => 'database']);
@@ -107,4 +115,16 @@ it('runs the demo actions with their model events through the database seeder (D
     $this->seed();
 
     expect($created)->toBe(2);
+});
+
+it('creates the demo accounts in the app\'s default language (A64)', function (): void {
+    config(['skv.locale.default' => 'en']);
+
+    $this->seed(DemoSeeder::class);
+
+    $apex = config('tenancy.apex_domain');
+    $locale = fn (string $email): ?Locale => Tenant::bypass(fn (): ?Locale => User::query()->where('email', $email)->first()?->locale);
+
+    expect($locale("admin@demo1.{$apex}"))->toBe(Locale::English)
+        ->and($locale("user@demo1.{$apex}"))->toBe(Locale::English);
 });

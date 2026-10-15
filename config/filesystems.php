@@ -49,6 +49,15 @@ return [
             'report' => false,
         ],
 
+        // §4.9, CD-6: the backups module's archives; point it at S3 or another remote disk in production.
+        'backups' => [
+            'driver' => 'local',
+            'root' => storage_path('app/backups'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
