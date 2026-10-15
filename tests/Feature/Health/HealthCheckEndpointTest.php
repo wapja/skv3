@@ -9,6 +9,7 @@ use App\Http\Middleware\ThrottleHealthChecks;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthReport;
 use App\Tenancy\Hosts;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Route;
 use Tests\Fixtures\FixedStatusCheck;
@@ -82,4 +83,26 @@ it('throttles to 60 requests a minute per address on the ops store (CD-5)', func
     }
 
     $this->withHeaders($headers)->getJson('/health-check')->assertStatus(429);
+});
+
+it('answers 503 with JSON, never a 500, while the ops cache store is broken (CD-5)', function (): void {
+    Exceptions::fake();
+    config(['skv.ops_cache_store' => 'no-such-store']);
+
+    // No Accept: application/json, as a plain uptime monitor sends it.
+    $response = $this->withHeaders(['X-Health-Check-Key' => 'a-long-random-health-check-key'])->get('/health-check');
+
+    $response->assertStatus(503)->assertExactJson(['healthy' => false, 'message' => 'The health report is unavailable.']);
+    expect($response->headers->get('Content-Type'))->toContain('application/json')
+        ->and($response->headers->get('Cache-Control'))->toContain('no-store');
+    Exceptions::assertReported(InvalidArgumentException::class);
+});
+
+it('still answers 403 to a wrong key while the ops cache store is broken (CD-5)', function (): void {
+    Exceptions::fake();
+    config(['skv.ops_cache_store' => 'no-such-store']);
+
+    $this->withHeaders(['X-Health-Check-Key' => 'not-the-key'])->get('/health-check')
+        ->assertForbidden()
+        ->assertExactJson(['message' => 'Forbidden.']);
 });
