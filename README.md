@@ -93,6 +93,7 @@ Audit entries written while an Artisan command runs are tagged with it (`via: co
 - **`/health-check`** needs the header `X-Health-Check-Key` with the value of `HEALTH_CHECK_KEY`. Setup and the production `skv:bootstrap` generate the key, and `skv:doctor --fix` writes one when it is missing. A missing or wrong header, and a blank `HEALTH_CHECK_KEY`, always get 403.
 - It answers 200 when every check passes and 503 when one fails, with a JSON body listing `database`, `queue`, `failed-jobs`, `mail` and `last-backup` (each with a label, a status and a message). Results are cached for 30 seconds, and the endpoint is throttled to 60 requests a minute per address. It runs outside the `web` group: no session, cookies, organisation or language.
 - A stored failed job makes `failed-jobs` warn, but the endpoint stays 200; `queue:prune-failed` clears old ones every night. `last-backup` is skipped while the backups module is off.
+- With the module on, `last-backup` fails while a backup disk holds no backup yet, so a new deploy, or a module switched on later, answers 503 until the first backup: run `php artisan backup:run --only-db` once after deploying. The newest backup may be up to a day and two hours old (`skv.health_check.backup_grace_minutes`, 120), because an archive is named after the time its job starts: the nightly run at 02:00 never turns the endpoint into a 503 while it works.
 
 ```bash
 curl -fsS -H "X-Health-Check-Key: $HEALTH_CHECK_KEY" https://example.com/health-check
@@ -191,7 +192,7 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 
 - Never run `php artisan skv:install` there (it refuses in production); `php artisan skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets. Demo data never runs outside local and testing.
 - Run `php artisan permissions:sync` on every deploy.
-- Set a non-empty `HEALTH_CHECK_KEY` (setup and the production `skv:bootstrap` generate one), and point an uptime monitor at `/health-check` with the `X-Health-Check-Key` header; expect 200 (see [Health check](#health-check)).
+- Set a non-empty `HEALTH_CHECK_KEY` (setup and the production `skv:bootstrap` generate one), and point an uptime monitor at `/health-check` with the `X-Health-Check-Key` header; expect 200 (see [Health check](#health-check)). With backups on, run `php artisan backup:run --only-db` once after the first deploy: until the first backup exists, `last-backup` fails and the endpoint answers 503.
 - Set a non-empty `BACKUP_ARCHIVE_PASSWORD`: a blank one makes unencrypted backups (`php artisan skv:doctor --fix` writes one). Keep a copy off the server, and set `BACKUP_NOTIFY_EMAIL`.
 - On several servers, set `OPS_CACHE_STORE` to a shared store (`redis`), so the heartbeat and the health report are the same on every server.
 - Keep `SESSION_DRIVER=database`.

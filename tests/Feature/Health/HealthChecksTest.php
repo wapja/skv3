@@ -105,3 +105,18 @@ it('fails without a backup or with one older than a day, and passes with a fresh
         // diffForHumans() follows the app locale, so the expectation is computed the same way.
         ->and($fresh->message)->toContain(Carbon::parse('2026-10-15 02:00:00')->diffForHumans());
 });
+
+it('passes while tonight\'s backup is still running, and fails once its two-hour grace has passed (CD-4)', function (): void {
+    useBackupsModule(true);
+    Storage::fake('backups');
+    // The package names an archive after the time its job started, so last night's is just over a day old at 02:00:30.
+    Storage::disk('backups')->put(config('backup.backup.name').'/2026-10-14-02-00-01.zip', 'last night');
+
+    $this->travelTo(Carbon::parse('2026-10-15 02:00:30'));
+    $running = new LastBackupCheck()->run($this->context);
+    $this->travelTo(Carbon::parse('2026-10-15 04:00:30'));
+    $missed = new LastBackupCheck()->run($this->context);
+
+    expect($running->status)->toBe(CheckStatus::Pass)
+        ->and($missed->status)->toBe(CheckStatus::Fail);
+});

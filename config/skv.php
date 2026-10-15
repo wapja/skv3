@@ -37,11 +37,14 @@ return [
 
     /*
     | /health-check (§4.9, RL-5): authorised only by the X-Health-Check-Key header, compared with hash_equals();
-    | a blank key always answers 403. Results are cached for cache_seconds (CD-5).
+    | a blank key always answers 403. Results are cached for cache_seconds (CD-5). last-backup allows the newest
+    | backup backup_grace_minutes beyond the monitor's maximum age, because an archive is named after the time its
+    | job starts and tonight's lands only after the dump: without it every nightly run would answer 503 (CD-4).
     */
     'health_check' => [
         'key' => env('HEALTH_CHECK_KEY'),
         'cache_seconds' => 30,
+        'backup_grace_minutes' => 120,
     ],
 
     /*
