@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Enums\ActivityEvent;
 use App\Enums\Locale;
+use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Setup\Support\Toolchain;
@@ -59,6 +60,25 @@ it('acts as the super admin --as names, and refuses another address (CD-7)', fun
         ->and($exit)->toBe(0)
         ->and(recordedActivity(ActivityEvent::OrganisationCreated)->sole()->causer_id)->toBe($chosen->id)
         ->and($member->exists)->toBeTrue();
+});
+
+it('never acts as a switched-off super admin (CD-7)', function (): void {
+    User::factory()->superAdmin()->create(['email' => 'off@example.com', 'status' => UserStatus::Disabled]);
+    User::factory()->superAdmin()->create(['email' => 'waiting@example.com', 'status' => UserStatus::PendingActivation]);
+    $active = User::factory()->superAdmin()->create(['email' => 'on@example.com']);
+
+    $refused = Artisan::call('skv:create-organisation', ['name' => 'Beta', 'slug' => 'beta', 'admin-email' => 'b@example.com', '--as' => 'off@example.com', '--no-interaction' => true]);
+    $refusedOutput = Artisan::output();
+    $pending = Artisan::call('skv:create-organisation', ['name' => 'Gamma', 'slug' => 'gamma', 'admin-email' => 'g@example.com', '--as' => 'waiting@example.com', '--no-interaction' => true]);
+    $exit = Artisan::call('skv:create-organisation', ['name' => 'Acme', 'slug' => 'acme', 'admin-email' => 'boss@example.com', '--no-interaction' => true]);
+
+    expect($refused)->toBe(1)
+        ->and($refusedOutput)->toContain(__('No active super admin has the address :email.', ['email' => 'off@example.com']))
+        ->and($pending)->toBe(1)
+        ->and(Organisation::query()->whereIn('slug', ['beta', 'gamma'])->exists())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::InvitationSent))->toHaveCount(1)
+        ->and($exit)->toBe(0)
+        ->and(recordedActivity(ActivityEvent::OrganisationCreated)->sole()->causer_id)->toBe($active->id);
 });
 
 it('invites the first admin in the app\'s default language unless --locale says otherwise (A64)', function (): void {

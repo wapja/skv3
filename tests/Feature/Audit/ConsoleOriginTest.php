@@ -10,9 +10,11 @@ use App\Enums\ActivityEvent;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Setup\Support\Toolchain;
+use App\Tenancy\Hosts;
 use Illuminate\Foundation\Testing\WithConsoleEvents;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -45,6 +47,30 @@ it('leaves entries outside a command untagged (CD-7)', function (): void {
     $entry = app(RecordActivity::class)->handle(ActivityEvent::OrganisationCreated, Organisation::factory()->create());
 
     expect($entry->fresh()?->getProperty('via'))->toBeNull();
+});
+
+it('leaves entries a web request writes during Artisan::call untagged (CD-7)', function (): void {
+    // The setup wizard runs db:seed inline in its Livewire request: ConsoleOrigin holds the command, but the
+    // entry belongs to the web request.
+    Route::middleware('web')->group(function (): void {
+        Route::central(function (): void {
+            Route::get('/_console-origin-probe', function (): string {
+                ConsoleOrigin::enter('db:seed');
+                app(RecordActivity::class)->handle(ActivityEvent::OrganisationCreated, Organisation::factory()->create());
+                ConsoleOrigin::leave('db:seed');
+
+                return 'ok';
+            });
+        });
+    });
+
+    $this->get(Hosts::url(Hosts::apex(), '/_console-origin-probe'))->assertOk();
+
+    $entry = recordedActivity(ActivityEvent::OrganisationCreated)->sole();
+
+    expect($entry->ip_address)->not->toBeNull()
+        ->and($entry->getProperty('via'))->toBeNull()
+        ->and($entry->getProperty('command'))->toBeNull();
 });
 
 it('never tags the queue workers or the scheduler itself (RL-9)', function (string $worker): void {
