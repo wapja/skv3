@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ReadsStandardInput;
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Detector;
@@ -22,6 +23,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use JsonException;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
@@ -39,9 +41,11 @@ use function Laravel\Prompts\text;
  * the start; the built-in demo default is refused next to an existing super admin (DEC-30).
  */
 #[Description('Set up the kit: environment, database, Herd, frontend, Claude and the summary (§5.3)')]
-#[Signature('skv:install {--answers= : JSON answers (§5.3.2)} {--force : Re-run complete steps}')]
+#[Signature('skv:install {--answers= : The answers (§5.3.2): JSON, @file or - for standard input} {--force : Re-run complete steps}')]
 final class InstallCommand extends Command
 {
+    use ReadsStandardInput;
+
     public function handle(Detector $detector, SetupRunner $runner): int
     {
         $basePath = app(SetupContext::class)->basePath;
@@ -62,6 +66,10 @@ final class InstallCommand extends Command
             $answers = Answers::fromArray($input, $detection, $folder, $installed);
         } catch (JsonException) {
             $this->components->error(__('The --answers value is not valid JSON.'));
+
+            return self::FAILURE;
+        } catch (InvalidArgumentException $exception) {
+            $this->components->error(OutputFormatter::escape($exception->getMessage()));
 
             return self::FAILURE;
         } catch (ValidationException $exception) {
@@ -106,22 +114,35 @@ final class InstallCommand extends Command
     }
 
     /**
-     * The raw answers: --answers, else the interactive form, else none (the installed answers, then the defaults apply).
+     * The raw answers: --answers (inline JSON, @file or - for standard input, RL-11), else the interactive form, else
+     * none (the installed answers, then the defaults apply).
      *
      * @param  array<string, mixed>  $installed
      * @return array<string, mixed>
      *
      * @throws JsonException
+     * @throws InvalidArgumentException
      */
     private function rawAnswers(Detection $detection, string $folder, array $installed): array
     {
-        $json = $this->option('answers');
+        $value = $this->option('answers');
 
-        if (is_string($json)) {
+        if (is_string($value)) {
+            $inline = $value !== '-' && ! str_starts_with($value, '@');
+            $json = match (true) {
+                $value === '-' => $this->allOfStandardInput() ?? '',
+                ! $inline => $this->answersFile(substr($value, 1)),
+                default => $value,
+            };
             $input = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
             if (! is_array($input)) {
                 throw new JsonException('The answers are not a JSON object.');
+            }
+
+            // CD-8, RL-11: a password on the command line ends up in the process list and the shell history.
+            if ($inline && is_string($input['super_admin_password'] ?? null) && $input['super_admin_password'] !== '') {
+                throw new InvalidArgumentException(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'));
             }
 
             /** @var array<string, mixed> $input */
@@ -129,6 +150,18 @@ final class InstallCommand extends Command
         }
 
         return $this->input->isInteractive() ? $this->askQuestions(Answers::fromArray([], $detection, $folder, $installed)) : [];
+    }
+
+    /** @throws InvalidArgumentException when the file cannot be read */
+    private function answersFile(string $path): string
+    {
+        $contents = is_file($path) && is_readable($path) ? file_get_contents($path) : false;
+
+        if (! is_string($contents)) {
+            throw new InvalidArgumentException(__('The answers file :path cannot be read.', ['path' => $path]));
+        }
+
+        return $contents;
     }
 
     /**

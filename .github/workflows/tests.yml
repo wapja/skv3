@@ -460,7 +460,7 @@ jobs:
         working-directory: ${{ runner.temp }}/tmp
         run: |
           sed -i 's#^APP_URL=.*#APP_URL=http://localhost#' .env
-          php artisan skv:install --no-interaction --answers="$(cat "$RUNNER_TEMP/e2e-answers.json")"
+          php artisan skv:install --no-interaction --answers=@"$RUNNER_TEMP/e2e-answers.json"
 
       # DEC-22 rule 5: skv:install restores the Boost constraint the installer lowered to ^2.2.
       - name: Boost constraint

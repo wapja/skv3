@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
 use App\Concerns\ProfileValidationRules;
+use App\Console\Concerns\ReadsStandardInput;
 use App\Enums\ActivityEvent;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
@@ -26,21 +27,37 @@ use function Laravel\Prompts\text;
 
 /**
  * Creates a super admin, or promotes an existing user (§4.12, RL-9). A new address becomes an active user without an
- * organisation (W8); an existing one is promoted through SetSuperAdmin, whose guards apply, and a --name or
- * --password given for it replaces its own, as skv:install does with a given password. The password is never echoed.
+ * organisation (W8); an existing one is promoted through SetSuperAdmin, whose guards apply, and a --name, or a
+ * password given with --password-stdin, replaces an existing user's own, as skv:install does with a given password.
+ * The password never travels in argv (CD-8) and is never echoed.
  */
 #[Description('Create a super admin, or promote an existing user (§4.12)')]
-#[Signature('skv:create-super-admin {email? : The email address} {--name= : The name (replaces an existing user\'s)} {--password= : The password (replaces an existing user\'s)}')]
+#[Signature('skv:create-super-admin {email? : The email address} {--name= : The name (replaces an existing user\'s)} {--password-stdin : Read the password from the first line of standard input (replaces an existing user\'s)}')]
 final class CreateSuperAdminCommand extends Command
 {
     use ProfileValidationRules;
+    use ReadsStandardInput;
+
+    private ?string $password = null;
+
+    private bool $passwordRead = false;
 
     public function handle(SetSuperAdmin $setSuperAdmin): int
     {
+        // Artisan keeps one instance of the command per process: a second run must read its own standard input.
+        $this->password = null;
+        $this->passwordRead = false;
+
         $email = $this->argument('email') ?? ($this->input->isInteractive() ? text(__('Email address'), required: true) : null);
 
         if (! is_string($email) || trim($email) === '') {
             $this->components->error(__('Pass the email address: php artisan skv:create-super-admin you@example.com'));
+
+            return self::FAILURE;
+        }
+
+        if ($this->option('password-stdin') && $this->givenPassword() === null) {
+            $this->components->error(__('No password on standard input.'));
 
             return self::FAILURE;
         }
@@ -87,7 +104,7 @@ final class CreateSuperAdminCommand extends Command
         $name = $this->option('name');
 
         /** @var array{name?: string, password?: string} $changes */
-        $changes = Validator::make(array_filter(['name' => is_string($name) ? trim($name) : null, 'password' => $this->option('password')], fn (mixed $value): bool => $value !== null), [
+        $changes = Validator::make(array_filter(['name' => is_string($name) ? trim($name) : null, 'password' => $this->givenPassword()], fn (mixed $value): bool => $value !== null), [
             'name' => ['sometimes', ...$this->nameRules()],
             'password' => ['sometimes', 'required', 'string', Password::default()],
         ])->validate();
@@ -120,7 +137,7 @@ final class CreateSuperAdminCommand extends Command
     private function createUser(string $email): User
     {
         $name = $this->option('name') ?? ($this->input->isInteractive() ? text(__('Name'), required: true) : 'Super admin');
-        $password = $this->option('password') ?? ($this->input->isInteractive() ? password(__('Password'), required: true) : null);
+        $password = $this->givenPassword() ?? ($this->input->isInteractive() ? password(__('Password'), required: true) : null);
 
         /** @var array{email: string, name: string, password: string} $valid */
         $valid = Validator::make(['email' => $email, 'name' => trim($name), 'password' => $password], [
@@ -141,5 +158,20 @@ final class CreateSuperAdminCommand extends Command
         ])->save();
 
         return $user;
+    }
+
+    /** The password given on standard input with --password-stdin (CD-8), read once; null without the flag. */
+    private function givenPassword(): ?string
+    {
+        if (! $this->option('password-stdin')) {
+            return null;
+        }
+
+        if (! $this->passwordRead) {
+            $this->password = $this->firstLineOfStandardInput();
+            $this->passwordRead = true;
+        }
+
+        return $this->password;
     }
 }

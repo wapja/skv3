@@ -174,6 +174,7 @@ it('runs the installer end to end in an e2e job (§8)', function (): void {
         ->toContain("--using={$package}:dev-ci")
         ->toContain('--no-interaction --no-ansi --database=sqlite --npm')
         ->toContain('skv:install --no-interaction --answers=')
+        ->toContain('--answers=@"$RUNNER_TEMP/e2e-answers.json"')
         ->toContain('skv:doctor --json')
         ->toContain("flags: '--pest --git --boost'")
         ->toContain("flags: '--phpunit --git --no-boost'");
@@ -202,6 +203,7 @@ it('ships a local e2e script that never touches global Composer config (OD-3)', 
     expect(is_executable(base_path('scripts/e2e-local.sh')))->toBeTrue()
         ->and($script)->toContain('COMPOSER_HOME=')
         ->and($script)->toContain('skv:install --no-interaction --answers=')
+        ->and($script)->toContain('--answers=@"$ANSWERS"')
         ->and($script)->not->toContain('composer config --global --list');
 });
 
