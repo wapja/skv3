@@ -450,8 +450,9 @@ new #[Title('Activity log')] class extends Component
     }
 
     /**
-     * The causer's name, "as :name" while impersonating; the impersonator of a stop that was
-     * logged without a causer; "System" for entries without one.
+     * The causer's name, "as :name" while impersonating; the impersonator of a stop that was logged without a
+     * causer; "Command line" or ":name via the command line" for entries a command wrote (CD-7); "System" for the
+     * rest without one.
      *
      * @param  array<int, string>  $names
      */
@@ -459,12 +460,18 @@ new #[Title('Activity log')] class extends Component
     {
         $causerId = $this->isUserType($activity->causer_type) ? $activity->causer_id : null;
         $impersonatorId = $this->userId($activity->getProperty('impersonator_id'));
+        $console = $activity->getProperty('via') === 'console';
 
         $label = match (true) {
             $causerId !== null => $names[$causerId] ?? __('Deleted user'),
             $impersonatorId !== null => $names[$impersonatorId] ?? __('Deleted user'),
+            $console => __('Command line'),
             default => __('System'),
         };
+
+        if ($console && ($causerId !== null || $impersonatorId !== null)) {
+            $label = __(':name via the command line', ['name' => $label]);
+        }
 
         $impersonatedId = $this->userId($activity->getProperty('impersonated_as'));
 

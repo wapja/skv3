@@ -73,13 +73,13 @@ final class DemoSeeder extends Seeder
                     continue;
                 }
 
-                $organisation = $createOrganisation->handle($superAdmin, 'Demo '.($index + 1), $slug, null, "admin@{$slug}.{$apex}", Locale::Dutch);
+                $organisation = $createOrganisation->handle($superAdmin, 'Demo '.($index + 1), $slug, null, "admin@{$slug}.{$apex}", Locale::default());
                 $memberRole = [(int) $createRole->handle($superAdmin, $organisation, self::MEMBER_ROLE, [Permission::UsersView])->getKey()];
 
                 Tenant::run($organisation, function () use ($organisation, $superAdmin, $inviteUser, $acceptInvitation, $memberRole, $slug, $apex): void {
                     $acceptInvitation->handle($this->openInvitationFor("admin@{$slug}.{$apex}"), 'Demo admin', self::PASSWORD);
-                    $acceptInvitation->handle($inviteUser->handle($superAdmin, $organisation, "user@{$slug}.{$apex}", $memberRole, Locale::Dutch), 'Demo user', self::PASSWORD);
-                    $inviteUser->handle($superAdmin, $organisation, "invited@{$slug}.{$apex}", $memberRole, Locale::Dutch);
+                    $acceptInvitation->handle($inviteUser->handle($superAdmin, $organisation, "user@{$slug}.{$apex}", $memberRole, Locale::default()), 'Demo user', self::PASSWORD);
+                    $inviteUser->handle($superAdmin, $organisation, "invited@{$slug}.{$apex}", $memberRole, Locale::default());
                 });
             }
         } finally {

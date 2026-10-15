@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Actions\LogActivityAction;
 
 /**
- * Enriches every entry before it is saved (§4.8): the organisation tag (RL-5) and, for a routed web
- * request only, the IP address and user agent. Registered as activitylog.actions.log_activity.
+ * Enriches every entry before it is saved (§4.8): the organisation tag (RL-5); for a routed web request only,
+ * the IP address and user agent; outside one, while an Artisan command runs, properties.via = console and the
+ * command's name (CD-7, ConsoleOrigin). Registered as activitylog.actions.log_activity.
  *
  * Host mode (authentication, security, impersonation): the bound tenant, else central. Subject mode
  * (everything else): the explicit organisation, then the subject's, then the bound tenant, else central.
@@ -35,6 +36,13 @@ final class LogActivity extends LogActivityAction
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
             ]);
+        }
+
+        // CD-7: an entry written while an Artisan command runs names that command; a web request never does.
+        $command = ConsoleOrigin::command();
+
+        if ($command !== null && $request->route() === null && $activity instanceof Activity) {
+            $activity->properties = collect([...($activity->properties?->all() ?? []), 'via' => 'console', 'command' => $command]);
         }
 
         $this->rewriteImpersonatedCauser($activity);

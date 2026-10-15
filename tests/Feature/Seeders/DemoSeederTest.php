@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.12 */
 
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Invitation;
 use App\Models\Organisation;
@@ -107,4 +108,16 @@ it('runs the demo actions with their model events through the database seeder (D
     $this->seed();
 
     expect($created)->toBe(2);
+});
+
+it('creates the demo accounts in the app\'s default language (A64)', function (): void {
+    config(['skv.locale.default' => 'en']);
+
+    $this->seed(DemoSeeder::class);
+
+    $apex = config('tenancy.apex_domain');
+    $locale = fn (string $email): ?Locale => Tenant::bypass(fn (): ?Locale => User::query()->where('email', $email)->first()?->locale);
+
+    expect($locale("admin@demo1.{$apex}"))->toBe(Locale::English)
+        ->and($locale("user@demo1.{$apex}"))->toBe(Locale::English);
 });

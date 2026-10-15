@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Actions\Audit\ConsoleOrigin;
 use App\Authorization\SuperAdminGate;
 use App\Policies\RolePolicy;
 use App\Setup\Answers;
@@ -25,6 +26,7 @@ use App\Support\Locales;
 use App\Support\Skv;
 use Carbon\CarbonImmutable;
 use Composer\InstalledVersions;
+use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
@@ -197,5 +199,8 @@ class AppServiceProvider extends ServiceProvider
     protected function configureOperations(): void
     {
         Event::listen(CommandStarting::class, ConfigurePgDump::class);
+        // CD-7, RL-9: audit entries written during a command are tagged with it.
+        Event::listen(CommandStarting::class, fn (CommandStarting $event) => ConsoleOrigin::enter($event->command));
+        Event::listen(CommandFinished::class, fn (CommandFinished $event) => ConsoleOrigin::leave($event->command));
     }
 }
