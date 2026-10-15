@@ -53,6 +53,16 @@ final class DoctorContext
         return new self($context->basePath, $toolchain, $context->detection, $marker);
     }
 
+    /**
+     * The running application without a detection and without a marker (RL-2): for web requests and console
+     * listeners, because forApplication() starts herd processes and probes PostgreSQL. The checks that read the
+     * detection or the marker are not run through it.
+     */
+    public static function withoutDetection(?string $basePath = null): self
+    {
+        return new self($basePath ?? base_path(), app(Toolchain::class), Detection::none(), null);
+    }
+
     public function path(string $relative = ''): string
     {
         return rtrim($this->basePath, '/').($relative === '' ? '' : '/'.ltrim($relative, '/'));

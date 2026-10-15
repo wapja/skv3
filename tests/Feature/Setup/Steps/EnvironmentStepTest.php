@@ -32,6 +32,7 @@ it('writes the app name, address, apex, health key, faker locale and module flag
         ->and($env->get('APP_URL'))->toBe('http://my-app.test')
         ->and($env->get('TENANCY_APEX_DOMAIN'))->toBe('my-app.test')
         ->and(strlen((string) $env->get('HEALTH_CHECK_KEY')))->toBe(40)
+        ->and(strlen((string) $env->get('BACKUP_ARCHIVE_PASSWORD')))->toBe(32)
         ->and($env->get('APP_FAKER_LOCALE'))->toBe('nl_NL')
         ->and($env->get('MODULE_IMPERSONATION'))->toBe('true')
         ->and($env->get('MODULE_PASSKEYS'))->toBe('false')
@@ -48,6 +49,21 @@ it('keeps the health key and APP_KEY it finds (§5.3.3 step 1)', function (): vo
     new EnvironmentStep()->run($context);
 
     expect($env->get('HEALTH_CHECK_KEY'))->toBe(str_repeat('k', 40))->and($env->get('APP_KEY'))->toBe('base64:existing');
+});
+
+it('keeps an existing archive password and is incomplete while it is blank (§4.9)', function (): void {
+    $context = setupSandbox();
+    $env = new EnvFile($context->path('.env'));
+    $env->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+
+    new EnvironmentStep()->run($context);
+
+    expect($env->get('BACKUP_ARCHIVE_PASSWORD'))->toBe(str_repeat('p', 32))
+        ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
+
+    $env->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    expect(new EnvironmentStep()->isComplete($context))->toBeFalse();
 });
 
 it('uses Herd Pro mail unless the installer already set mail (§5.3.3 step 1)', function (bool $installerSetMail, string $expected): void {

@@ -374,6 +374,23 @@ function usePasskeysModule(bool $enabled): void
 }
 
 /**
+ * Switches the backups module for this test (§6.8). config/skv.php turns it off on SQLite, so a test that needs
+ * the module on (the suite runs on SQLite and PostgreSQL) sets the flag itself. With the module on it also sets an
+ * archive password, because LastBackupCheck fails closed without one (CD-10).
+ *
+ * A test that renders the System page or runs LastBackupCheck with the module on fakes the backups disk first
+ * (Storage::fake('backups')), so it never lists or creates the repository's storage/app/backups.
+ */
+function useBackupsModule(bool $enabled): void
+{
+    config(['skv.modules.backups' => $enabled]);
+
+    if ($enabled) {
+        config(['backup.backup.password' => 'test-archive-password']);
+    }
+}
+
+/**
  * Signs $impersonator in through the login route on the current (tenant) host and starts impersonating
  * $target in a real web request, so the swap runs the whole web middleware stack (§4.7). The guard's
  * cached user is dropped before and after each request, as a new request in production would (RK-I9).
