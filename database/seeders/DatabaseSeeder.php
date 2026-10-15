@@ -15,8 +15,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(EssentialsSeeder::class);
 
-        // Demo data never runs in production (§4.12); setup's database step decides for installs.
-        if (! app()->isProduction()) {
+        // Demo data only in local development and the test suite (§4.12, CD-9); setup's database step decides for installs.
+        if (app()->environment(['local', 'testing'])) {
             $this->call(DemoSeeder::class);
         }
     }

@@ -48,6 +48,14 @@ final class InstallCommand extends Command
 
     public function handle(Detector $detector, SetupRunner $runner): int
     {
+        // CD-9: setup writes .env, the database and the marker of a development install; production follows the
+        // README's checklist. A fresh server still runs it, because .env.example ships APP_ENV=local.
+        if (app()->isProduction()) {
+            $this->components->error(__('skv:install sets up a development install and does not run in production. Follow the production checklist in the README.'));
+
+            return self::FAILURE;
+        }
+
         $basePath = app(SetupContext::class)->basePath;
         $folder = basename($basePath);
         $detection = $detector->detect();
@@ -78,6 +86,14 @@ final class InstallCommand extends Command
                     $this->components->error($message);
                 }
             }
+
+            return self::FAILURE;
+        }
+
+        // CD-9: the demo seeder refuses outside local and testing, so a staging install would stop half-way in the
+        // database step. Refuse here, before anything is written. The wizard runs only in local setup mode.
+        if ($answers->startWith === 'demo' && ! app()->environment(['local', 'testing'])) {
+            $this->components->error(__('Demo data runs only in local development. Pass "start_with": "super_admin" with your own login.'));
 
             return self::FAILURE;
         }

@@ -25,7 +25,7 @@ use RuntimeException;
 /**
  * Optional demo data (§4.12, RL-8): a super admin and the organisations demo1 and demo2, each with an admin, a user
  * and a pending invitation, built through the real actions so the audit log has entries (DEC-28). Emails derive
- * from the apex; every demo account shares the password "password". Never in production. Idempotent.
+ * from the apex; every demo account shares the password "password". Only in local and testing. Idempotent.
  */
 final class DemoSeeder extends Seeder
 {
@@ -56,8 +56,8 @@ final class DemoSeeder extends Seeder
 
     public function run(SetSuperAdmin $setSuperAdmin, CreateOrganisation $createOrganisation, CreateRole $createRole, InviteUser $inviteUser, AcceptInvitation $acceptInvitation): void
     {
-        if (app()->isProduction()) {
-            throw new RuntimeException('The demo seeder never runs in production.');
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException('The demo seeder runs only in the local and testing environments.');
         }
 
         // Invitations are accepted at once: send their mails now, while the token still exists.
