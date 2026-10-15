@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Enums\CheckStatus;
 use App\Http\Middleware\ThrottleHealthChecks;
+use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthReport;
 use App\Tenancy\Hosts;
@@ -19,6 +20,10 @@ beforeEach(function (): void {
     Process::fake([]);
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
+    // RL-2: forApplication() starts herd processes and reads this repository's .env; web code never resolves it.
+    app()->bind(DoctorContext::class, function (): never {
+        throw new LogicException('Web code builds its doctor context with DoctorContext::withoutDetection().');
+    });
     app()->instance(HealthReport::class, new HealthReport([new FixedStatusCheck(CheckStatus::Pass, 'database')], $this->sandbox->basePath));
     config(['skv.health_check.key' => 'a-long-random-health-check-key']);
 });

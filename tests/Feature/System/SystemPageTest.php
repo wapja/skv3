@@ -8,6 +8,8 @@ use App\Enums\CheckStatus;
 use App\Models\Organisation;
 use App\Setup\Doctor\Check;
 use App\Setup\Doctor\Doctor;
+use App\Setup\Doctor\DoctorContext;
+use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthReport;
 use App\Support\Health\SystemChecks;
@@ -23,6 +25,10 @@ beforeEach(function (): void {
     Process::fake([]);
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
+    // RL-2: forApplication() starts herd processes and reads this repository's .env; web code never resolves it.
+    app()->bind(DoctorContext::class, function (): never {
+        throw new LogicException('Web code builds its doctor context with DoctorContext::withoutDetection().');
+    });
     app()->instance(HealthReport::class, new HealthReport(basePath: $this->sandbox->basePath));
     app()->instance(SystemChecks::class, new SystemChecks($this->sandbox->basePath));
     // On PostgreSQL the module is on by default: never list or create the repository's storage/app/backups.
@@ -92,7 +98,8 @@ it('lists the schedule and the scheduler heartbeat (RL-8)', function (): void {
     Livewire::test('pages::system.index')->assertDontSee(__('The scheduler has not run yet'));
 });
 
-it('runs only the web-safe doctor checks, starting no process (RL-7)', function (): void {
+it('runs only the web-safe doctor checks on the sandbox, starting no process (RL-2, RL-7)', function (): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => '']);
     asSuperAdmin();
     onAdminHost();
 
@@ -101,11 +108,21 @@ it('runs only the web-safe doctor checks, starting no process (RL-7)', function 
     $rows = $page->get('doctorRows');
     $crashed = Str::before(__('The check could not run (:exception).'), '(');
 
-    expect(array_column($rows, 'key'))->toBe(array_values(array_intersect(
-        array_map(fn (Check $check): string => $check->key(), new Doctor()->checks()),
-        SystemChecks::KEYS,
-    )))
-        ->and(array_filter($rows, fn (array $row): bool => str_starts_with($row['message'], $crashed)))->toBe([]);
+    expect(array_column($rows, 'key'))->toBe([
+        'php', 'gd', 'app-key', 'marker', 'database', 'migrations', 'permissions', 'organisation-admin-role',
+        'super-admin', 'super-admin-badges', 'session-driver', 'authenticate-session', 'health-check-key',
+        'backup-password', 'assets', 'mail', 'pg-dump', 'queue', 'failed-jobs', 'storage-link',
+    ])
+        ->and(array_filter($rows, fn (array $row): bool => str_starts_with($row['message'], $crashed)))->toBe([])
+        // The rows read the sandbox's .env, not the repository's.
+        ->and(array_column($rows, 'status', 'key')['health-check-key'])->toBe(CheckStatus::Fail->value);
+    expect(array_diff(SystemChecks::KEYS, array_map(fn (Check $check): string => $check->key(), new Doctor()->checks())))->toBe([]);
+
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => 'a-long-random-health-check-key']);
+    /** @var list<array{key: string, label: string, status: string, message: string}> $again */
+    $again = $page->call('runDoctor')->get('doctorRows');
+
+    expect(array_column($again, 'status', 'key')['health-check-key'])->toBe(CheckStatus::Pass->value);
     Process::assertNothingRan();
 });
 
