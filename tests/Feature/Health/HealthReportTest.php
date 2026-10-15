@@ -20,7 +20,7 @@ beforeEach(function (): void {
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     // RL-2: forApplication() starts herd processes and reads this repository's .env; web code never resolves it.
-    app()->bind(DoctorContext::class, function (): never {
+    app()->bind(function (): DoctorContext {
         throw new LogicException('Web code builds its doctor context with DoctorContext::withoutDetection().');
     });
 });
