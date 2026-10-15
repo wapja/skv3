@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Exceptions\InvitationNotFoundException;
+use App\Http\Controllers\HealthCheckController;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\ThrottleHealthChecks;
 use App\Setup\Http\EnterSetupMode;
 use App\Tenancy\Exceptions\TenantNotFoundException;
 use App\Tenancy\Http\Middleware\EnforceImpersonation;
@@ -19,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
+use Illuminate\Support\Facades\Route;
 use Webauthn\Exception\WebauthnException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -26,6 +29,12 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        // §4.9, RL-5: outside every middleware group, so no session, cookies, tenancy, setup mode or locale.
+        then: function (): void {
+            Route::middleware(ThrottleHealthChecks::class)
+                ->get('health-check', HealthCheckController::class)
+                ->name('health-check');
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(

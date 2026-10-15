@@ -111,6 +111,8 @@ it('lists every named GET route in the matrix or the exclusions', function (): v
         'auth.handoff', 'invitations.accept',
         // §5.3.4: local-only setup routes, covered by tests/Feature/Setup/Wizard
         'setup.wizard', 'setup.herd-status', 'setup.finish', 'setup.login',
+        // §4.9: the monitoring endpoint, outside the web group, covered by tests/Feature/Health
+        'health-check',
     ];
 
     $named = collect(Route::getRoutes()->getRoutes())
