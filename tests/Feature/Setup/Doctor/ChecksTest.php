@@ -28,6 +28,7 @@ use App\Setup\Doctor\Checks\HerdProCheck;
 use App\Setup\Doctor\Checks\HerdSecuredCheck;
 use App\Setup\Doctor\Checks\HerdSiteCheck;
 use App\Setup\Doctor\Checks\MailCheck;
+use App\Setup\Doctor\Checks\MarkerCheck;
 use App\Setup\Doctor\Checks\McpCheck;
 use App\Setup\Doctor\Checks\MigrationsCheck;
 use App\Setup\Doctor\Checks\NodeCheck;
@@ -48,6 +49,7 @@ use App\Setup\Doctor\Checks\SuperpowersCheck;
 use App\Setup\Doctor\Checks\TestDatabaseCheck;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\Marker;
 use App\Setup\SetupToken;
 use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
@@ -130,6 +132,27 @@ it('fails without an APP_KEY and names the command (§5.4)', function (): void {
     new EnvFile($this->sandbox->path('.env'))->set(['APP_KEY' => 'base64:'.base64_encode(random_bytes(32))]);
 
     expect(new AppKeyCheck()->run($this->context)->status)->toBe(CheckStatus::Pass);
+});
+
+it('reports the install marker: skipped before setup, failed when unreadable (A8)', function (): void {
+    $file = $this->sandbox->path(Marker::FILE);
+
+    $before = new MarkerCheck()->run($this->context);
+
+    File::put($file, '{"answers":');
+    $broken = new MarkerCheck()->run($this->context);
+
+    File::put($file, 'null');
+    $notAnObject = new MarkerCheck()->run($this->context);
+
+    Marker::write($this->sandbox, ['urls' => [], 'logins' => [], 'manual' => [], 'notes' => []]);
+    $installed = new MarkerCheck()->run($this->context);
+
+    expect($before->status)->toBe(CheckStatus::Skipped)
+        ->and($broken->status)->toBe(CheckStatus::Fail)
+        ->and($broken->message)->toContain(Marker::FILE)
+        ->and($notAnObject->status)->toBe(CheckStatus::Fail)
+        ->and($installed->status)->toBe(CheckStatus::Pass);
 });
 
 it('only warns without Herd (§5.4)', function (): void {

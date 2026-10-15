@@ -11,4 +11,25 @@ enum CheckStatus: string
     case Warn = 'warn';
     case Fail = 'fail';
     case Skipped = 'skipped';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Pass => __('passed'),
+            self::Warn => __('warning'),
+            self::Fail => __('failed'),
+            self::Skipped => __('skipped'),
+        };
+    }
+
+    /** The Flux badge colour (§6.5), like UserStatus::color(). */
+    public function color(): string
+    {
+        return match ($this) {
+            self::Pass => 'lime',
+            self::Warn => 'amber',
+            self::Fail => 'red',
+            self::Skipped => 'zinc',
+        };
+    }
 }

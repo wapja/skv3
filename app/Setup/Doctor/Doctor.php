@@ -20,6 +20,7 @@ use App\Setup\Doctor\Checks\HerdProCheck;
 use App\Setup\Doctor\Checks\HerdSecuredCheck;
 use App\Setup\Doctor\Checks\HerdSiteCheck;
 use App\Setup\Doctor\Checks\MailCheck;
+use App\Setup\Doctor\Checks\MarkerCheck;
 use App\Setup\Doctor\Checks\McpCheck;
 use App\Setup\Doctor\Checks\MigrationsCheck;
 use App\Setup\Doctor\Checks\NodeCheck;
@@ -63,6 +64,7 @@ final readonly class Doctor
             new PhpCheck,
             new GdCheck,
             new AppKeyCheck,
+            new MarkerCheck,
             new HerdCheck,
             new HerdProCheck,
             new HerdSiteCheck,
@@ -121,8 +123,10 @@ final readonly class Doctor
             if ($fix && in_array($result->status, [CheckStatus::Warn, CheckStatus::Fail], true)) {
                 try {
                     $fixed = $check->fix($context);
-                } catch (Throwable) {
-                    // A repair that throws leaves the first result, with its fix command, in the report.
+                } catch (Throwable $exception) {
+                    // A repair that throws leaves the first result, with its fix command, in the report, and is
+                    // reported, so a crashed repair can be told from one never tried (A9).
+                    report($exception);
                     $fixed = null;
                 }
 

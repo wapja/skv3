@@ -11,7 +11,10 @@ use App\Enums\CheckStatus;
 use App\Setup\Detection;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
+use App\Setup\Marker;
 use App\Setup\Support\Toolchain;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Spatie\Permission\Models\Role as RoleModel;
 use Tests\Fixtures\ThrowingCheck;
@@ -27,7 +30,7 @@ beforeEach(function (): void {
 
 it('runs every check in the documented order (§5.4)', function (): void {
     expect(array_keys(app(Doctor::class)->run($this->context)))->toBe([
-        'php', 'gd', 'app-key', 'herd', 'herd-pro', 'herd-site', 'herd-secured', 'subdomains', 'apex', 'database', 'migrations',
+        'php', 'gd', 'app-key', 'marker', 'herd', 'herd-pro', 'herd-site', 'herd-secured', 'subdomains', 'apex', 'database', 'migrations',
         'test-database', 'schema-tools', 'permissions', 'organisation-admin-role', 'super-admin', 'super-admin-badges',
         'session-driver', 'authenticate-session', 'health-check-key', 'node', 'assets', 'mail', 'pg-dump', 'flux-pro-credentials',
         'queue', 'git-hooks', 'playwright', 'claude-files', 'mcp', 'superpowers', 'setup-token', 'storage-link',
@@ -70,3 +73,23 @@ it('names only the exception class of a check or a fix that throws, never its me
         ->and($result->message)->toContain('RuntimeException')
         ->and($result->message.$result->fix)->not->toContain('secret-binding');
 })->with(['without fix' => false, 'with fix' => true]);
+
+it('reports a repair that throws, and keeps the first result (A9)', function (): void {
+    Exceptions::fake();
+
+    $result = new Doctor([new ThrowingCheck])->run($this->context, fix: true)['throwing'];
+
+    expect($result->status)->toBe(CheckStatus::Fail);
+    Exceptions::assertReported(RuntimeException::class);
+});
+
+it('treats an unreadable marker as no marker while setup builds its context (A8)', function (): void {
+    File::put($this->sandbox->path(Marker::FILE), 'null');
+
+    $context = DoctorContext::fromSetup($this->sandbox, new Toolchain($this->sandbox->path('home')));
+
+    expect($context->marker)->toBe([
+        'answers' => $this->sandbox->answers->toPublicArray(),
+        'start_with' => $this->sandbox->answers->startWith,
+    ]);
+});

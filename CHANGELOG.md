@@ -43,13 +43,14 @@ All notable changes to this project are documented here. The format follows [Kee
 - `npm run build:setup`, which rebuilds the committed `resources/setup/setup.css`, so the wizard renders without `public/build`; CI checks the file is current.
 - A local quick login: after a local install with demo data, the login page signs you into a demo account with one click. Accounts that are not active, have confirmed two-factor authentication or no longer use the demo password are not let in.
 - A phase-1 CI job and `scripts/e2e-local.sh --entry=…` check the wizard after each of the four entry points (`laravel new` with and without `--database`, `composer create-project`, and a clone with the commands of `composer setup`).
+- The doctor's `marker` row fails when the install marker is not valid JSON, instead of the doctor crashing; a repair that throws is reported.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
 - `permissions:sync` also reports the permissions it strips from the super admin badge.
 - When you chose HTTPS and the Herd step could not secure the site, `APP_URL` stays http and the install records `https: false` whether or not passkeys are on (passkeys are switched off when they were on); the summary says how to secure the site later, and the doctor no longer fails on the missing certificate.
 - After securing the site, the Herd step writes `APP_URL=https://<folder>.<tld>`, the name it secured (lower-cased), instead of the address setup was started on.
-- The doctor step of setup checks the Herd site, HTTPS and the setup token after the Herd step instead of before it.
+- The doctor step of setup reports the Herd site, HTTPS and the setup token as skipped, because the Herd step runs after it; `php artisan skv:doctor` checks them once setup is done.
 - The install marker is written atomically with mode 0600.
 
 ### Fixed
