@@ -441,6 +441,32 @@ it('needs an archive password while the backups module is on, and writes one wit
         ->and($result->message)->not->toContain($written);
 });
 
+it('fails while .env has an archive password that the running configuration lacks (CD-10)', function (): void {
+    // A config:cache taken before the password existed: backup:run reads the configuration, not .env.
+    useBackupsModule(true);
+    config(['backup.backup.password' => '']);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+
+    $stale = new BackupPasswordCheck()->run($this->context);
+    $fixed = new BackupPasswordCheck()->fix($this->context);
+
+    expect($stale->status)->toBe(CheckStatus::Fail)
+        ->and($stale->message)->toBe(__('BACKUP_ARCHIVE_PASSWORD is in .env, but the running configuration has none: a stale config cache or a blank environment variable'))
+        ->and($stale->fix)->toBe('php artisan config:cache')
+        ->and($fixed->status)->toBe(CheckStatus::Fail);
+});
+
+it('points the running configuration at the archive password --fix writes, as the next process boots (CD-10)', function (): void {
+    useBackupsModule(true);
+    config(['backup.backup.password' => null]);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    $result = new BackupPasswordCheck()->fix($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(config('backup.backup.password'))->toBe(new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD'));
+});
+
 it('never replaces an archive password that exists (CD-10)', function (): void {
     useBackupsModule(true);
     new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);

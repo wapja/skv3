@@ -40,9 +40,10 @@ final class SetupContext
 
     /**
      * Points the running process at what setup wrote to .env, as the next process will boot: the application key
-     * (step 0 writes it after boot, and the demo invitations are encrypted with it) and the address, apex and admin
-     * subdomain (step 1 writes the detected host, from which the demo seeder derives its emails). An empty key is
-     * never applied. Mirrors config/app.php and config/tenancy.php.
+     * (step 0 writes it after boot, and the demo invitations are encrypted with it), the address, apex and admin
+     * subdomain (step 1 writes the detected host, from which the demo seeder derives its emails) and the archive
+     * password (step 1 generates it, and the doctor step compares it with the configuration, CD-10). An empty key or
+     * password is never applied. Mirrors config/app.php, config/tenancy.php and config/backup.php.
      */
     public function syncRuntimeConfig(): void
     {
@@ -68,5 +69,11 @@ final class SetupContext
             'tenancy.apex_domain' => $env->get('TENANCY_APEX_DOMAIN') ?: (is_string($urlHost) && $urlHost !== '' ? $urlHost : 'localhost'),
             'tenancy.admin_subdomain' => $env->get('TENANCY_ADMIN_SUBDOMAIN') ?: 'admin',
         ]);
+
+        $password = (string) $env->get('BACKUP_ARCHIVE_PASSWORD');
+
+        if ($password !== '') {
+            config(['backup.backup.password' => $password]);
+        }
     }
 }

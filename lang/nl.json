@@ -73,6 +73,7 @@
     "Authenticating...": "Bezig met verifiëren...",
     "Authentication code": "Verificatiecode",
     "BACKUP_ARCHIVE_PASSWORD is empty: backups are not encrypted": "BACKUP_ARCHIVE_PASSWORD is leeg: back-ups worden niet versleuteld",
+    "BACKUP_ARCHIVE_PASSWORD is in .env, but the running configuration has none: a stale config cache or a blank environment variable": "BACKUP_ARCHIVE_PASSWORD staat in .env, maar de draaiende configuratie heeft er geen: een verouderde configuratiecache of een lege omgevingsvariabele",
     "BACKUP_ARCHIVE_PASSWORD is set": "BACKUP_ARCHIVE_PASSWORD is ingesteld",
     "Back": "Terug",
     "Back soon": "Zo terug",

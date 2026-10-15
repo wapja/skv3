@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 /** covers §5.3.3 */
 
+use App\Enums\CheckStatus;
 use App\Setup\Answers;
 use App\Setup\Detection;
+use App\Setup\Doctor\Checks\BackupPasswordCheck;
+use App\Setup\Doctor\DoctorContext;
 use App\Setup\Marker;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
@@ -162,6 +165,18 @@ it('runs one step at a time with the same rules as a full run (A12)', function (
         ->and($done->status)->toBe('done')
         ->and($ran->getArrayCopy())->toBe(['b'])
         ->and(array_keys($context->results))->toBe(['a', 'b']);
+});
+
+it('points the running configuration at the archive password the environment step writes (CD-10)', function (): void {
+    // skv:install runs every step in one process: its doctor step must see the password as the next process will.
+    useBackupsModule(true);
+    config(['backup.backup.password' => null]);
+    $context = setupSandbox();
+
+    new SetupRunner([])->runStep($context, new EnvironmentStep);
+
+    expect(config('backup.backup.password'))->toBe(new EnvFile($context->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD'))
+        ->and(new BackupPasswordCheck()->run(DoctorContext::fromSetup($context, app(Toolchain::class)))->status)->toBe(CheckStatus::Pass);
 });
 
 it('hands the step to the wrapper before it checks completeness, so a throwing check is named (A12)', function (): void {

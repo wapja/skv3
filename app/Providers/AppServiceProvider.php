@@ -21,6 +21,7 @@ use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
 use App\Setup\Wizard\StepLauncher;
 use App\Support\Backups\ConfigurePgDump;
+use App\Support\Backups\RefuseUnencryptedBackups;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
 use App\Support\Skv;
@@ -198,6 +199,8 @@ class AppServiceProvider extends ServiceProvider
     /** §4.9: the console side of the ops layer. */
     protected function configureOperations(): void
     {
+        // CD-10: backup:run never writes an unencrypted archive, also when it is started by hand.
+        Event::listen(CommandStarting::class, RefuseUnencryptedBackups::class);
         Event::listen(CommandStarting::class, ConfigurePgDump::class);
         // CD-7, RL-9: audit entries written during a command are tagged with it.
         Event::listen(CommandStarting::class, fn (CommandStarting $event) => ConsoleOrigin::enter($event->command));

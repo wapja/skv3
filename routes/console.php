@@ -16,9 +16,10 @@ Artisan::command('inspire', function (): void {
 /*
 | §4.9: the ops schedule, each job on one server and never twice at once. The backup jobs run only while the backups
 | module is on (§6.8; always off on SQLite), and backup:run only while it would encrypt the archive (CD-10): the
-| package writes a plaintext dump for a blank password and still exits 0. backup:monitor keeps running, so a missing
-| backup is still reported, and last-backup fails on /health-check. activitylog:clean asks for confirmation in
-| production, hence --force. model:prune removes expired handoff tokens (HandoffToken is the only prunable model).
+| package writes a plaintext dump for a blank password and still exits 0 (RefuseUnencryptedBackups also stops a
+| backup:run started by hand). backup:monitor keeps running, so a missing backup is still reported, and last-backup
+| fails on /health-check. activitylog:clean asks for confirmation in production, hence --force. model:prune removes
+| expired handoff tokens (HandoffToken is the only prunable model).
 */
 $backupsEnabled = fn (): bool => Skv::moduleEnabled('backups');
 $encryptedBackupsEnabled = fn (): bool => Skv::moduleEnabled('backups') && BackupEncryption::available();

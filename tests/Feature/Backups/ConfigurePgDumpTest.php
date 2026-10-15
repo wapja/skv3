@@ -62,6 +62,8 @@ it('keeps a configured path and leaves other commands alone (RL-4)', function (s
 ]);
 
 it('runs as a CommandStarting listener (RL-4)', function () use ($starting): void {
+    // RefuseUnencryptedBackups listens first and stops a backup:run without a password (CD-10).
+    config(['backup.backup.password' => 'correct-horse-battery']);
     new EnvFile($this->sandbox->path('.env'))->set(['PG_DUMP_BINARY_PATH' => $this->bin]);
     app()->instance(ConfigurePgDump::class, new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath));
 

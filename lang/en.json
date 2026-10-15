@@ -73,6 +73,7 @@
     "Authenticating...": "Authenticating...",
     "Authentication code": "Authentication code",
     "BACKUP_ARCHIVE_PASSWORD is empty: backups are not encrypted": "BACKUP_ARCHIVE_PASSWORD is empty: backups are not encrypted",
+    "BACKUP_ARCHIVE_PASSWORD is in .env, but the running configuration has none: a stale config cache or a blank environment variable": "BACKUP_ARCHIVE_PASSWORD is in .env, but the running configuration has none: a stale config cache or a blank environment variable",
     "BACKUP_ARCHIVE_PASSWORD is set": "BACKUP_ARCHIVE_PASSWORD is set",
     "Back": "Back",
     "Back soon": "Back soon",
