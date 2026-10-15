@@ -8,15 +8,15 @@ use App\Setup\Doctor\Check;
 use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
 use App\Support\Backups\BackupDestinations;
+use App\Support\Backups\BackupEncryption;
 use App\Support\Skv;
 use Illuminate\Support\Facades\Date;
-use ZipArchive;
 
 /**
  * §4.9, CD-4: every backup destination is reachable and holds a backup newer than the monitor's maximum age.
  * Skipped while the backups module is off (§6.8, never a 503). A health check, not a doctor check: a fresh install
  * has no backup until the first night. Fails while the backups would be written unencrypted (CD-10): the package
- * silently skips encryption for a blank password or a zip without AES-256.
+ * silently skips encryption for a blank password, encryption 'none' or a zip without AES-256 (BackupEncryption).
  */
 final readonly class LastBackupCheck implements Check
 {
@@ -36,7 +36,7 @@ final readonly class LastBackupCheck implements Check
             return CheckResult::skipped(__('The backups module is off'));
         }
 
-        if ((string) config('backup.backup.password', '') === '' || ! defined(ZipArchive::class.'::EM_AES_256')) {
+        if (! BackupEncryption::available()) {
             return CheckResult::fail(__('Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty or this PHP zip has no AES-256'), 'php artisan skv:doctor --fix');
         }
 

@@ -58,6 +58,21 @@ it('runs the backup jobs only while the backups module is on (§6.8)', function 
     expect($all['activitylog:clean --force']->filtersPass(app()))->toBeTrue();
 })->with(['module on' => true, 'module off' => false]);
 
+it('never runs an unencrypted backup, but keeps cleaning and monitoring (CD-10)', function (array $config) use ($events): void {
+    useBackupsModule(true);
+    config($config);
+    $all = $events();
+
+    expect($all['backup:run --only-db']->filtersPass(app()))->toBeFalse()
+        ->and($all['backup:clean']->filtersPass(app()))->toBeTrue()
+        ->and($all['backup:monitor']->filtersPass(app()))->toBeTrue();
+})->with([
+    'blank password' => [['backup.backup.password' => '']],
+    'no password' => [['backup.backup.password' => null]],
+    'encryption off' => [['backup.backup.encryption' => 'none']],
+    'unknown encryption' => [['backup.backup.encryption' => 'aes-256']],
+]);
+
 it('records a heartbeat every minute (RL-8)', function () use ($events): void {
     $this->travelTo(Carbon::parse('2026-10-15 12:34:00'));
 

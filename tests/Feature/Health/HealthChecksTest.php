@@ -75,6 +75,15 @@ it('fails while the backups would not be encrypted, even with a fresh backup (CD
         ->and($result->fix)->toBe('php artisan skv:doctor --fix');
 });
 
+it('fails while the encryption setting turns encryption off (CD-10)', function (): void {
+    useBackupsModule(true);
+    config(['backup.backup.encryption' => 'none']);
+    Storage::fake('backups');
+    Storage::disk('backups')->put(config('backup.backup.name').'/'.now()->format('Y-m-d-H-i-s').'.zip', 'fresh');
+
+    expect(new LastBackupCheck()->run($this->context)->status)->toBe(CheckStatus::Fail);
+});
+
 it('fails without a backup or with one older than a day, and passes with a fresh one (CD-4)', function (): void {
     useBackupsModule(true);
     Storage::fake('backups');
