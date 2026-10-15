@@ -60,18 +60,37 @@ it('builds the package configuration, so a blank BACKUP_NOTIFY_EMAIL falls back 
         ->and(filter_var(config('backup.notifications.mail.to'), FILTER_VALIDATE_EMAIL))->not->toBeFalse();
 });
 
-it('lets only a valid notify address through, so a typo never breaks every artisan command (§4.9)', function (): void {
+it('lets only a valid notify and sender address through, so a typo never breaks every artisan command (§4.9)', function (): void {
     // The package's commands are built whenever Artisan boots, and their Config throws on an invalid address.
+    $original = [
+        'getenv' => getenv('MAIL_FROM_ADDRESS'),
+        'server' => $_SERVER['MAIL_FROM_ADDRESS'] ?? null,
+        'env' => $_ENV['MAIL_FROM_ADDRESS'] ?? null,
+    ];
     putenv('BACKUP_NOTIFY_EMAIL=not-an-address');
+    putenv('MAIL_FROM_ADDRESS=not-an-address');
+    $_SERVER['MAIL_FROM_ADDRESS'] = $_ENV['MAIL_FROM_ADDRESS'] = 'not-an-address';
 
     try {
         /** @var array<string, mixed> $array */
         $array = require config_path('backup.php');
 
         expect(fn (): Config => Config::fromArray($array))->not->toThrow(InvalidConfig::class)
-            ->and(filter_var(data_get($array, 'notifications.mail.to'), FILTER_VALIDATE_EMAIL))->not->toBeFalse();
+            ->and(filter_var(data_get($array, 'notifications.mail.to'), FILTER_VALIDATE_EMAIL))->not->toBeFalse()
+            ->and(filter_var(data_get($array, 'notifications.mail.from.address'), FILTER_VALIDATE_EMAIL))->not->toBeFalse();
     } finally {
         putenv('BACKUP_NOTIFY_EMAIL');
+        putenv($original['getenv'] === false ? 'MAIL_FROM_ADDRESS' : 'MAIL_FROM_ADDRESS='.$original['getenv']);
+
+        unset($_SERVER['MAIL_FROM_ADDRESS'], $_ENV['MAIL_FROM_ADDRESS']);
+
+        if ($original['server'] !== null) {
+            $_SERVER['MAIL_FROM_ADDRESS'] = $original['server'];
+        }
+
+        if ($original['env'] !== null) {
+            $_ENV['MAIL_FROM_ADDRESS'] = $original['env'];
+        }
     }
 });
 

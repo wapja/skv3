@@ -21,12 +21,12 @@ use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
  */
 $name = Str::slug((string) env('APP_NAME', 'app')) ?: 'app';
 
-// The package throws on an invalid address while Artisan boots (every command), so only a valid one gets through:
-// BACKUP_NOTIFY_EMAIL, else MAIL_FROM_ADDRESS, else a placeholder.
-$notify = (string) env('BACKUP_NOTIFY_EMAIL', '');
+// The package throws on an invalid recipient or sender while Artisan boots (every command), so only valid ones get
+// through: the sender is MAIL_FROM_ADDRESS, else a placeholder; the recipient BACKUP_NOTIFY_EMAIL, else that sender.
 $sender = (string) env('MAIL_FROM_ADDRESS', 'hello@example.com');
-$notifyTo = filter_var($notify, FILTER_VALIDATE_EMAIL) !== false ? $notify
-    : (filter_var($sender, FILTER_VALIDATE_EMAIL) !== false ? $sender : 'hello@example.com');
+$sender = filter_var($sender, FILTER_VALIDATE_EMAIL) !== false ? $sender : 'hello@example.com';
+$notify = (string) env('BACKUP_NOTIFY_EMAIL', '');
+$notifyTo = filter_var($notify, FILTER_VALIDATE_EMAIL) !== false ? $notify : $sender;
 
 return [
     'backup' => [
@@ -74,7 +74,7 @@ return [
             // A blank or invalid BACKUP_NOTIFY_EMAIL falls back to the sender (see $notifyTo above).
             'to' => $notifyTo,
             'from' => [
-                'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
+                'address' => $sender,
                 'name' => env('MAIL_FROM_NAME', 'Laravel'),
             ],
         ],
