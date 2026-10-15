@@ -47,10 +47,20 @@
 - Setup steps (`App\Setup\Steps\*`) resolve every file through `SetupContext::path()`, never `base_path()`, so tests run them against a `setupSandbox()`.
 - External commands (`herd`, `npm`, `npx`, `git`, `claude`, `composer`) run through `Process` with `App\Setup\Support\Toolchain::environment()`, and `herd` by its absolute path (`Toolchain::herd()`); under php-fpm there is no PATH. Tests fake every command (`Process::preventStrayProcesses()` + `Process::fake([])` + a sandbox `Toolchain`).
 - Never branch on a Herd exit code alone: parse its output or read the state back.
-- The demo seeder (`Database\Seeders\DemoSeeder`) never runs in production.
+- The demo seeder (`Database\Seeders\DemoSeeder`) runs only in the `local` and `testing` environments; `skv:install` refuses `start_with=demo` elsewhere.
 - A new doctor check is one class per check under `App\Setup\Doctor\Checks`, implementing `App\Setup\Doctor\Check`, and is listed in `Doctor::checks()`.
 - The wizard and the CLI drive the same steps through `SetupRunner::runStep()`. A new step implements `SetupStep` and sets `isLong()` honestly: a long step runs detached in the browser (`skv:run-step`, polled by the page).
 - Wizard code that reads tenant models lives in `App\Setup` (strict mode, `Tenant::bypass()`); the wizard page (`resources/views/pages/setup/**`) and the setup controllers call those services.
 - Never write the setup state files by hand. Use `App\Setup\Support\StateFile` and the classes' constants (`SetupToken::PATH`, `WizardState::PATH`/`STEPS`, `HerdState::PATH`/`EXIT`/`LOG`, `Marker::FILE`).
 - Wizard tests start with `useSetupWizard()` and never spawn a process: it binds `Tests\Fixtures\InlineStepLauncher`, which runs detached steps inline. Test the page over HTTP (`pageSnapshot()` + `callPageAction()`), because `Livewire::test()` skips the gate and the setup runtime. `useSetupWizard()` switches to the local environment, where CSRF checks run, so forged updates send `X-CSRF-TOKEN`.
 - Run `npm run build:setup` and commit `resources/setup/setup.css` after changing `resources/views/{layouts/setup.blade.php,pages/setup,setup}` or `resources/css/{theme,setup}.css`; CI checks the file is current.
+
+## Ops
+
+- A health check is a doctor check (`App\Setup\Doctor\Check`): list it in `App\Support\Health\HealthReport::checks()`, and in `Doctor::checks()` only when a fresh install passes it. `HealthReport` and the System page run checks through `DoctorContext::withoutDetection()`, never `forApplication()`, in web code: detection starts `herd` processes and a PostgreSQL probe. A doctor check the System page runs is listed in `App\Support\Health\SystemChecks::KEYS` and starts no process.
+- Ops caches (the health report, the health-check throttle, the scheduler heartbeat) use `Cache::store(config('skv.ops_cache_store'))`, never the default store, so `/health-check` still answers while the database is down.
+- Audit entries written by Artisan commands are tagged automatically (`App\Actions\Audit\ConsoleOrigin`). Never fake a causer for a command.
+- Secrets never travel in argv: use `--password-stdin` or `--answers=@file|-`. A new command that takes a secret reads it with `App\Console\Concerns\ReadsStandardInput`.
+- Backup tests use `Storage::fake('backups')` and a sandbox `backup.backup.temporary_directory`; only `BackupRunTest` runs a real `pg_dump`. A test that renders the System page binds a sandboxed `HealthReport` and fakes the `backups` disk.
+- Tests that depend on the backups module call `useBackupsModule(true)` or `useBackupsModule(false)` first (`true` also sets a test archive password), because the suite runs on SQLite, where the module is off, and on PostgreSQL, where it is on.
+- Tests that assert what a command's `CommandStarting` / `CommandFinished` listeners do use `Illuminate\Foundation\Testing\WithConsoleEvents`: without it the console kernel fires no command events under Pest.

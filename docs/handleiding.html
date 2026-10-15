@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>m6b-setup-wizard</span><span>M0–M6a klaar, M6b op branch</span><span>bijgewerkt 14-10-2026</span></div>
+    <div class="eyebrow"><span>m7a-ops</span><span>M0–M6b klaar, M7a op branch</span><span>bijgewerkt 15-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M6b (branch <code>m6b-setup-wizard</code>).</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M7a (branch <code>m7a-ops</code>).</p>
   </header>
 
   <div class="page">
@@ -506,6 +506,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
             <li><a href="#rechten">Rollen en rechten</a></li>
             <li><a href="#inloggen-als">Inloggen als</a></li>
             <li><a href="#activiteitenlog">Activiteitenlog</a></li>
+            <li><a href="#systeemstatus">Systeemstatus</a></li>
           </ol>
         </li>
         <li><a href="#dev"><span class="num">6</span>Voor ontwikkelaars</a>
@@ -718,7 +719,7 @@ php artisan skv:bootstrap</code></pre>
     </table>
   </div>
   <ul>
-    <li><strong>Zonder vragen.</strong> <code>php artisan skv:install --no-interaction</code> neemt de standaardantwoorden. Met <code>--answers='{"database":"sqlite","start_with":"super_admin","super_admin_email":"jij@example.com","super_admin_password":"…"}'</code> geef je ze als JSON; de sleutels staan in de README.</li>
+    <li><strong>Zonder vragen.</strong> <code>php artisan skv:install --no-interaction</code> neemt de standaardantwoorden. Met <code>--answers='{"database":"sqlite"}'</code> geef je ze als JSON; de sleutels staan in de README. Een wachtwoord (<code>super_admin_password</code>) zet je in een bestand (<code>--answers=@answers.json</code>) of geef je op standaardinvoer (<code>--answers=-</code>), nooit op de opdrachtregel: daar weigert <code>skv:install</code> het. In productie draait <code>skv:install</code> niet, en demodata kies je alleen lokaal.</li>
     <li><strong>Opnieuw draaien kan altijd.</strong> Stappen die al klaar zijn worden overgeslagen; <code>--force</code> draait ze opnieuw. Een tweede keer houdt de antwoorden van de eerste installatie aan, en stopt een stap met een fout, dan ga je de volgende keer verder waar het stopte.</li>
     <li><strong>Wat de setup niet zelf kan</strong> (geen Herd, <code>npm</code> lukt niet, Herd bevestigt iets niet), slaat hij niet stil over: de samenvatting zet het commando onder <span class="ui">Draai deze commando&rsquo;s zelf:</span>.</li>
     <li><strong>Geen HTTPS, geen passkeys.</strong> Koos je HTTPS maar kan de setup de site niet beveiligen, dan blijft <code>APP_URL</code> op <code>http://</code> en noteert de installatie dat er geen HTTPS is, zodat de controle niet faalt op het ontbrekende certificaat. Stonden passkeys aan, dan zet hij <code>MODULE_PASSKEYS=false</code>, en de samenvatting zegt hoe je ze terugzet: <code>herd secure &lt;naam&gt;</code>, <code>MODULE_PASSKEYS=true</code> in <code>.env</code>, en dan <code>php artisan skv:doctor --fix</code>. Zonder passkeys zegt de samenvatting: <code>herd secure &lt;naam&gt;</code>, daarna <code>php artisan skv:install --force --answers='{"https":true}'</code>.</li>
@@ -745,10 +746,10 @@ php artisan skv:bootstrap</code></pre>
       </tbody>
     </table>
   </div>
-  <p>Alle demo-accounts delen één wachtwoord; het wachtwoord staat in de setup-samenvatting. Gebruik ze alleen lokaal en zet ze nooit op een openbare pagina of in een gedeelde handleiding. De demoseeder weigert in productie, en <code>php artisan db:seed</code> slaat hem daar over.</p>
+  <p>Alle demo-accounts delen één wachtwoord; het wachtwoord staat in de setup-samenvatting. Gebruik ze alleen lokaal en zet ze nooit op een openbare pagina of in een gedeelde handleiding. De demoseeder draait alleen lokaal (<code>local</code>) en in de tests (<code>testing</code>); elders weigert hij, en <code>php artisan db:seed</code> slaat hem daar over.</p>
   <h4 id="snel-inloggen">Snel inloggen (alleen lokaal)</h4>
   <p>Na een lokale installatie met demodata toont de inlogpagina onder <span class="ui">Snel inloggen (alleen lokaal)</span> de demo-accounts, bijvoorbeeld <code>superadmin@&lt;apex&gt;</code> en <code>admin@demo1.&lt;apex&gt;</code>. Eén klik logt je in op de eigen host van het account. Het blok verschijnt alleen als <code>APP_ENV=local</code> is en de installatie met demodata begon, en het toont alleen accounts die bestaan, actief zijn en geen ingestelde tweestapsverificatie hebben. Heb je het wachtwoord van een demo-account veranderd, dan werkt snel inloggen er niet meer voor: je komt terug op de inlogpagina met <span class="ui">Dit demo-account gebruikt het demowachtwoord niet meer.</span> Overal elders antwoordt snel inloggen met 404.</p>
-  <p>Begin je met je eigen superbeheerder, dan log je met dat e-mailadres in op <code>http://admin.&lt;apex&gt;/login</code>. Later voeg je er een toe met <code>php artisan skv:create-super-admin</code>, en een organisatie met <code>php artisan skv:create-organisation</code>; dat stuurt de eerste beheerder een uitnodiging, maar drukt de link nooit af.</p>
+  <p>Begin je met je eigen superbeheerder, dan log je met dat e-mailadres in op <code>http://admin.&lt;apex&gt;/login</code>. Later voeg je er een toe met <code>php artisan skv:create-super-admin</code> (zonder vragen geef je het wachtwoord op standaardinvoer met <code>--password-stdin</code>), en een organisatie met <code>php artisan skv:create-organisation</code>; dat stuurt de eerste beheerder een uitnodiging, maar drukt de link nooit af.</p>
   <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>, met bovenaan de lijst <span class="ui">Aan de slag</span> (zie <a href="#dashboard">Dashboard</a>). Open als superbeheerder in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>.</p>
   <p class="src">app/Console/Commands/{InstallCommand,DoctorCommand,CreateSuperAdminCommand,CreateOrganisationCommand}.php; app/Setup/SetupRunner.php; app/Setup/Steps/*.php; app/Setup/Answers.php; app/Setup/Summary.php; app/Setup/Doctor/Doctor.php; database/seeders/{DatabaseSeeder,DemoSeeder}.php; app/Setup/QuickLogin.php; app/Http/Controllers/Auth/QuickLoginController.php; resources/views/components/quick-login.blade.php; spec §4.12, §5.3, §5.4, §6.5; docs/decisions.md (DEC-30, DEC-31)</p>
 
@@ -790,7 +791,7 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>BRANDING_ACCENT</code></td><td>leeg (<code>neutral</code>)</td><td>Accentkleur van knoppen en links: een van de Flux-presets <code>red</code>, <code>orange</code>, <code>amber</code>, <code>yellow</code>, <code>lime</code>, <code>green</code>, <code>emerald</code>, <code>teal</code>, <code>cyan</code>, <code>sky</code>, <code>blue</code>, <code>indigo</code>, <code>violet</code>, <code>purple</code>, <code>fuchsia</code>, <code>pink</code> of <code>rose</code>. Een onbekende waarde wordt <code>neutral</code></td></tr>
         <tr><td><code>BRANDING_LOGO</code></td><td>leeg</td><td>Pad onder <code>public/</code> naar je logo, bijvoorbeeld <code>images/logo.svg</code>. Leeg betekent het standaardmerkteken</td></tr>
         <tr><td><code>APP_KEY</code></td><td>leeg</td><td>Wordt door <code>skv:bootstrap</code> alleen gemaakt als hij leeg is. Tweestapsgeheimen en passkeys hangen ervan af</td></tr>
-        <tr><td><code>HEALTH_CHECK_KEY</code></td><td>leeg</td><td>Sleutel voor de health check (M7). De setup vult een willekeurige sleutel van 40 tekens in als hij leeg is</td></tr>
+        <tr><td><code>HEALTH_CHECK_KEY</code></td><td>leeg</td><td>Sleutel voor <code>/health-check</code> (header <code>X-Health-Check-Key</code>); leeg geeft altijd 403. De setup en <code>php artisan skv:doctor --fix</code> vullen een willekeurige sleutel van 40 tekens in als hij leeg is</td></tr>
         <tr><td><code>APP_URL</code></td><td><code>http://localhost</code></td><td>Basisadres. De host wordt het apex als <code>TENANCY_APEX_DOMAIN</code> leeg is; het schema geldt voor links uit de queue</td></tr>
         <tr><td><code>APP_LOCALE</code> / <code>APP_FALLBACK_LOCALE</code></td><td><code>nl</code> / <code>en</code></td><td>Standaardtaal Nederlands, terugval Engels. De standaardtaal geldt als account, eigen keuze en browser niets bepalen</td></tr>
         <tr><td><code>TENANCY_APEX_DOMAIN</code></td><td>leeg</td><td>Apex overschrijven; leeg betekent de host van <code>APP_URL</code></td></tr>
@@ -799,7 +800,11 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>INVITATION_EXPIRES_IN_DAYS</code></td><td class="tabnum"><code>7</code></td><td>Geldigheid van een uitnodiging; een herinnering verlengt hem</td></tr>
         <tr><td><code>MODULE_IMPERSONATION</code></td><td><code>true</code></td><td>Module &lsquo;Inloggen als gebruiker&rsquo;. Met <code>false</code> bestaan de routes niet</td></tr>
         <tr><td><code>MODULE_PASSKEYS</code></td><td><code>true</code></td><td>Module Passkeys. Met <code>false</code> bestaan de passkeyroutes en <code>.well-known/passkey-endpoints</code> niet, en verdwijnen de passkeyknop en het onderdeel Passkeys. De setup zet hem op <code>false</code> als de site geen HTTPS krijgt</td></tr>
-        <tr><td><code>MODULE_BACKUPS</code></td><td><code>true</code></td><td>Module Back-ups (komt in M7). Staat altijd uit op SQLite</td></tr>
+        <tr><td><code>MODULE_BACKUPS</code></td><td><code>true</code></td><td>Module Back-ups: elke nacht een versleutelde back-up van de database (<a href="#systeemstatus">Systeemstatus</a>). Staat altijd uit op SQLite</td></tr>
+        <tr><td><code>BACKUP_ARCHIVE_PASSWORD</code></td><td>leeg</td><td>Wachtwoord van de back-ups. De setup vult een willekeurig wachtwoord in; bewaar een kopie buiten de server. Leeg betekent: geen back-up</td></tr>
+        <tr><td><code>BACKUP_NOTIFY_EMAIL</code></td><td>leeg</td><td>Krijgt een mail als een back-up mislukt; leeg betekent <code>MAIL_FROM_ADDRESS</code></td></tr>
+        <tr><td><code>PG_DUMP_BINARY_PATH</code></td><td>leeg</td><td>Map met <code>pg_dump</code>; leeg zoekt hem op het PATH en in Herd</td></tr>
+        <tr><td><code>OPS_CACHE_STORE</code></td><td><code>file</code></td><td>Cache van de gezondheidsuitslag en de hartslag van de planner; met meer servers een gedeelde store zoals <code>redis</code></td></tr>
         <tr><td><code>PASSKEYS_RELYING_PARTY_ID</code></td><td>leeg</td><td>Passkeys gebruiken het apex als relying party id; alleen invullen als dat anders moet</td></tr>
         <tr><td><code>TRUSTED_PROXIES</code></td><td>leeg</td><td>Achter een load balancer of CDN: hun adressen (komma&rsquo;s) of <code>*</code>, zodat rate limits het IP van de bezoeker zien</td></tr>
         <tr><td><code>BCRYPT_ROUNDS</code></td><td class="tabnum"><code>12</code></td><td>Kosten van de wachtwoordhash</td></tr>
@@ -900,7 +905,7 @@ php artisan skv:bootstrap</code></pre>
     <li>Een sessie geldt alleen op de host waar je inlogde en duurt standaard 120 minuten.</li>
     <li>Wijzig je je wachtwoord, dan worden je sessies op andere apparaten afgemeld.</li>
     <li>Wordt een account uitgeschakeld of verwijderd, of de organisatie gearchiveerd of verwijderd, dan is die persoon direct overal uitgelogd.</li>
-    <li>Een overzicht van je sessies met &lsquo;andere apparaten uitloggen&rsquo; komt in M7.</li>
+    <li>Een overzicht van je sessies met &lsquo;andere apparaten uitloggen&rsquo; komt in M7c.</li>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127</p></details>
 
@@ -1017,11 +1022,12 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Organisaties</span></td><td><code>/organisations</code></td><td>Organisaties bekijken <code>organisations.view</code></td></tr>
         <tr><td><span class="ui">Beheer</span></td><td><span class="ui">Rollen</span></td><td><code>/roles</code></td><td>Rollen bekijken <code>roles.view</code></td></tr>
         <tr><td><span class="ui">Systeem</span></td><td><span class="ui">Activiteitenlog</span></td><td><code>/activity</code></td><td>Activiteitenlog bekijken <code>activity_log.view</code></td></tr>
+        <tr><td><span class="ui">Systeem</span></td><td><span class="ui">Systeemstatus</span></td><td><code>/system</code></td><td>Systeemstatus bekijken <code>system.health</code> (alleen superbeheerders)</td></tr>
       </tbody>
     </table>
   </div>
-  <p>Deze pagina&rsquo;s werken op elke host. Op een organisatiehost zie je alleen je eigen organisatie. Op een centrale host komen alleen superbeheerders binnen, en zien die alles. Twee uitzonderingen: de wizard <span class="ui">Nieuwe organisatie</span> werkt alleen centraal, en &lsquo;inloggen als&rsquo; alleen op een organisatiehost.</p>
-  <p>In M7 krijgt <span class="ui">Systeem</span> ook de Systeempagina. Met Flux Pro staat bovenaan de zijbalk een zoekveld (<code>⌘K</code>) dat naar dezelfde pagina&rsquo;s springt.</p>
+  <p>Deze pagina&rsquo;s werken op elke host. Op een organisatiehost zie je alleen je eigen organisatie. Op een centrale host komen alleen superbeheerders binnen, en zien die alles. Drie uitzonderingen: de wizard <span class="ui">Nieuwe organisatie</span> en <span class="ui">Systeemstatus</span> werken alleen centraal, en &lsquo;inloggen als&rsquo; alleen op een organisatiehost.</p>
+  <p>Met Flux Pro staat bovenaan de zijbalk een zoekveld (<code>⌘K</code>) dat naar dezelfde pagina&rsquo;s springt.</p>
   <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/Navigation/Navigation.php; app/Enums/NavigationGroup.php; resources/views/components/app-sidebar.blade.php; routes/admin.php; app/Authorization/Permission.php; tests/Feature/Navigation/NavigationTest.php; docs/decisions.md (DEC-29 (6))</p></details>
 
   <h3 id="dashboard">Dashboard</h3>
@@ -1189,7 +1195,7 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>organisations.update</code></td><td>Organisaties bewerken</td><td>Naam en instellingen van een organisatie wijzigen</td><td class="yes">ja</td><td class="yes">ja</td></tr>
         <tr><td><code>organisations.delete</code></td><td>Organisaties verwijderen</td><td>Organisaties archiveren, herstellen en definitief verwijderen</td><td class="no">nee</td><td class="no">nee</td></tr>
         <tr><td><code>activity_log.view</code></td><td>Activiteitenlog bekijken</td><td>Zien wie wat wanneer heeft gedaan</td><td class="yes">ja</td><td class="yes">ja</td></tr>
-        <tr><td><code>system.health</code></td><td>Systeemstatus bekijken</td><td>Gezondheidscontroles, back-ups en de planner bekijken (nog geen pagina, M7)</td><td class="no">nee</td><td class="no">nee</td></tr>
+        <tr><td><code>system.health</code></td><td>Systeemstatus bekijken</td><td>Gezondheidscontroles, back-ups en de planner bekijken (<a href="#systeemstatus">Systeemstatus</a>)</td><td class="no">nee</td><td class="no">nee</td></tr>
       </tbody>
     </table>
   </div>
@@ -1222,7 +1228,7 @@ php artisan skv:bootstrap</code></pre>
     <li>Op een organisatiehost zie je alleen de eigen organisatie. Centraal ziet een superbeheerder alles, ook gearchiveerde organisaties en platformregels.</li>
     <li>Gaat een regel over iemand die geen gewoon lid van je organisatie is (bijvoorbeeld een superbeheerder die hielp), dan zie je als organisatiebeheerder geen IP-adres en browser. De naam blijft zichtbaar.</li>
     <li>Wachtwoorden, tokens en links worden nooit opgeslagen. Bij een mislukte inlogpoging staat het getypte e-mailadres er alleen als het een geldig e-mailadres is.</li>
-    <li>Het log kan niet uit. Regels ouder dan 365 dagen ruim je op met <code>php artisan activitylog:clean</code>. Dat draait nog niet automatisch (M7). Een CSV-export komt ook in M7.</li>
+    <li>Het log kan niet uit. Regels ouder dan 365 dagen ruimt de planner elke nacht om 01:00 op (<code>php artisan activitylog:clean --force</code>, zie <a href="#systeemstatus">Systeemstatus</a>). Een CSV-export komt in M7c.</li>
   </ul>
   <h4>Wat er wordt vastgelegd</h4>
   <div class="events">
@@ -1249,6 +1255,17 @@ php artisan skv:bootstrap</code></pre>
     </ul></div>
   </div>
   <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Enums/ActivityEvent.php:18-114; app/Actions/Audit/RecordActivity.php:15-20; config/activitylog.php:15-19; docs/decisions.md:132 (7, 34), :134</p></details>
+
+  <h3 id="systeemstatus">Systeemstatus</h3>
+  <p><span class="ui">Systeemstatus</span> (<span class="ui">Gezondheidscontroles, back-ups en de planner bekijken</span>) staat in de groep <span class="ui">Systeem</span>, op <code>/system</code>. Alleen superbeheerders zien hem, en alleen op een centrale host (<code>admin.mijnapp.test</code> of <code>mijnapp.test</code>); op een organisatiehost bestaat de pagina niet.</p>
+  <ul>
+    <li><strong>Gezondheid.</strong> De controles van de database, de queue, de mislukte taken, de mail en de laatste back-up, met <span class="ui">Gezond</span> of <span class="ui">Niet gezond</span> en het tijdstip (<span class="ui">Gecontroleerd &hellip;</span>). De uitslag blijft 30 seconden bewaard; <span class="ui">Vernieuwen</span> controleert opnieuw. Bewaarde mislukte taken geven alleen een waarschuwing. Een monitoringdienst leest dezelfde uitslag op <code>/health-check</code>, met de waarde van <code>HEALTH_CHECK_KEY</code> in de header <code>X-Health-Check-Key</code>.</li>
+    <li><strong>Back-ups.</strong> Per back-upschijf: of hij bereikbaar is, het aantal back-ups, de <span class="ui">Nieuwste back-up</span> en de <span class="ui">Gebruikte opslag</span>. Staat de module uit (op SQLite altijd), dan staat hier <span class="ui">De back-upmodule staat uit</span>.</li>
+    <li><strong>Planning.</strong> Elke geplande taak met <span class="ui">Wanneer</span> hij draait en de <span class="ui">Volgende keer</span>. Een taak die nu niet draait, zoals de back-uptaken met de module uit, krijgt <span class="ui">uit</span>. Daaronder staat de <span class="ui">Laatste hartslag</span> van de planner. Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbreekt de cronregel op de server.</li>
+    <li><strong>Controle.</strong> <span class="ui">Controles draaien</span> draait de controles van <code>php artisan skv:doctor</code> die geen proces starten. Repareren doe je in de terminal met <code>php artisan skv:doctor --fix</code>.</li>
+  </ul>
+  <p><strong>Back-ups.</strong> Met de module aan (alleen op PostgreSQL) maakt de planner elke nacht om 02:00 een versleutelde back-up van de database. Het wachtwoord staat in <code>BACKUP_ARCHIVE_PASSWORD</code> in <code>.env</code>: bewaar een kopie buiten de server, want zonder dat wachtwoord open je geen enkele back-up. Is het leeg, dan maakt de planner geen back-up en staan de controle <span class="ui">Wachtwoord van het back-uparchief</span> en de laatste back-up op mislukt; <code>php artisan skv:doctor --fix</code> vult een nieuw wachtwoord in. Mislukt een back-up of is de nieuwste ouder dan een dag, dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">routes/admin.php; resources/views/pages/system/index/*; app/Support/Health/HealthReport.php; app/Support/Health/SystemChecks.php; app/Support/Scheduler/Heartbeat.php; routes/console.php; config/backup.php; README.md (Health check, Backups, Scheduler, System page)</p></details>
 </section>
 
 <!-- ============================ 6 ============================ -->
@@ -1522,7 +1539,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M6a zitten in <code>main</code> (M6a sinds merge <code>6dc448a</code>). M6 is in tweeën gesplitst: M6a, de setupmotor met zijn commando&rsquo;s, en M6b, de wizard in de browser met snel inloggen, die op de branch <code>m6b-setup-wizard</code> staat en na de review naar <code>main</code> gaat. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
+  <p>Milestones M0 tot en met M6b zitten in <code>main</code> (M6b sinds merge <code>0b558b4</code>). M7 is in drieën gesplitst: M7a, de beheerlaag (health check, back-ups, planner en Systeemstatus), die op de branch <code>m7a-ops</code> staat en na de review naar <code>main</code> gaat, M7b, het verstevigen van de setup, en M7c, de extra&rsquo;s en het verstevigen van de beveiliging. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1535,18 +1552,20 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
         <tr><td class="tabnum">M4</td><td>Beheer: organisaties, gebruikers, uitnodigingen, rollen, inloggen als, activiteitenlog</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M5</td><td>UI: één basislayout, weergave per gebruiker, huisstijl, zijbalk met Overzicht / Beheer / Systeem, gebruikersmenu, Nederlands en Engels overal, foutpagina&rsquo;s, dashboard met &lsquo;Aan de slag&rsquo;, passkeymodule, optionele Flux Pro-laag, browsertests</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M6a</td><td>Setupmotor: <code>skv:install</code>, <code>skv:bootstrap</code>, <code>skv:doctor</code>, <code>skv:create-super-admin</code>, <code>skv:create-organisation</code>, <code>skv:flux-pro</code>; demoseeder met <code>demo1</code> en <code>demo2</code>; e2e-job voor de installer</td><td><span class="badge b-ok">klaar</span></td></tr>
-        <tr><td class="tabnum">M6b</td><td>Setupwizard op <code>/welcome-setup</code> met dezelfde stappen als <code>skv:install</code>, het setup-token en de setupmodus, de Herd-stap met eenmalig inloggen, snel inloggen met de demo-accounts (alleen lokaal), <code>npm run build:setup</code> en de phase-1-controles voor de vier instappunten</td><td><span class="badge b-ok">op branch</span></td></tr>
+        <tr><td class="tabnum">M6b</td><td>Setupwizard op <code>/welcome-setup</code> met dezelfde stappen als <code>skv:install</code>, het setup-token en de setupmodus, de Herd-stap met eenmalig inloggen, snel inloggen met de demo-accounts (alleen lokaal), <code>npm run build:setup</code> en de phase-1-controles voor de vier instappunten</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M7a</td><td>Beheerlaag: <code>/health-check</code> met sleutel, versleutelde back-ups van de database, de planner met hartslag, de pagina Systeemstatus, auditregels van de opdrachtregel, wachtwoorden nooit meer als argument, en <code>skv:install</code> en de demodata alleen lokaal</td><td><span class="badge b-ok">op branch</span></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab, 0b788a1, 6dc448a; m6b-setup-wizard); CHANGELOG.md; README.md (Status)</p>
+  <p class="src">git log (bfdaadd, 262f0e7, c416f61, 8c9ecab, 0b788a1, 6dc448a, 0b558b4; m7a-ops); CHANGELOG.md; README.md (Status)</p>
 
   <h3 id="roadmap">Wat er komt</h3>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M7 · Beheer en extra&rsquo;s</strong></td><td><code>/health-check</code>, back-ups, scheduler en een Systeempagina in de groep Systeem; sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; automatisch opruimen van log en overdrachtslinks; rate limits op uitnodigen en e-mailwijziging</td></tr>
+        <tr><td><strong>M7b · Setup verstevigen</strong></td><td>De resterende punten uit de reviews van de wizard, de statusbestanden en de Herd-stap</td></tr>
+        <tr><td><strong>M7c · Extra&rsquo;s en beveiliging</strong></td><td>Sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars; rate limits op uitnodigen en e-mailwijziging</td></tr>
         <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
@@ -1557,8 +1576,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
   <ul>
     <li>Installeren met één klik vanuit de Herd-app werkt pas na de publicatie (M8); tot dan kloon je de code en open je de wizard zoals in <a href="#herd">Installeren via Herd</a>.</li>
     <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); de setup controleert de waarden, maar er is nog geen pagina voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
-        <li>Het log ruimt zichzelf nog niet op en heeft geen export.</li>
-    <li>Er is nog geen Systeempagina (M7).</li>
+    <li>Het log heeft nog geen export.</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
     <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
   </ul>
@@ -1568,7 +1586,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van de branch <code>m6b-setup-wizard</code> (M6b, na <code>8b0ff2c</code>). Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van de branch <code>m7a-ops</code> (M7a, na <code>47f27c6</code>). Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
       </footer>
     </main>
   </div>
