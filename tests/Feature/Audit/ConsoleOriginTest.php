@@ -73,11 +73,12 @@ it('leaves entries a web request writes during Artisan::call untagged (CD-7)', f
         ->and($entry->getProperty('command'))->toBeNull();
 });
 
+// A literal list, not ConsoleOrigin::WORKERS: the dataset must not shrink with the list it checks.
 it('never tags the queue workers or the scheduler itself (RL-9)', function (string $worker): void {
     ConsoleOrigin::enter($worker);
 
     expect(ConsoleOrigin::command())->toBeNull();
-})->with(ConsoleOrigin::WORKERS);
+})->with(['queue:work', 'queue:listen', 'schedule:run', 'schedule:work', 'schedule:test', 'horizon', 'horizon:work', 'octane:start']);
 
 it('keeps the outer command through a nested Artisan::call (RL-9)', function (): void {
     ConsoleOrigin::enter('skv:install');
