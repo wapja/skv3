@@ -23,6 +23,7 @@ final class Navigation
             new NavigationItem('organisations.index', 'Organisations', 'building-office', Permission::OrganisationsView, 'organisations.*', NavigationGroup::Management),
             new NavigationItem('roles.index', 'Roles', 'shield-check', Permission::RolesView, 'roles.*', NavigationGroup::Management),
             new NavigationItem('activity.index', 'Activity log', 'clipboard-document-list', Permission::ActivityLogView, 'activity.*', NavigationGroup::System),
+            new NavigationItem('system.index', 'System status', 'server-stack', Permission::SystemHealth, 'system.*', NavigationGroup::System, centralOnly: true),
         ];
     }
 

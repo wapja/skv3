@@ -11,8 +11,11 @@ declare(strict_types=1);
 
 use App\Models\Organisation;
 use App\Models\User;
+use App\Setup\Support\Toolchain;
+use App\Support\Health\HealthReport;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /** @return list<string> */
 function matrixRoutes(): array
@@ -21,7 +24,7 @@ function matrixRoutes(): array
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
         'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
         'users.invite', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
-        'roles.index', 'activity.index',
+        'roles.index', 'activity.index', 'system.index',
     ];
 }
 
@@ -48,7 +51,7 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
             default => 'ok',
         },
         ! $signedIn => 'login',
-        $route === 'organisations.create' && $host === 'tenant' => 'not found', // central page; host before can:
+        in_array($route, ['organisations.create', 'system.index'], true) && $host === 'tenant' => 'not found', // central pages; host before can:
         $route === 'security.edit' => 'confirm',
         $actor === 'member' && in_array($route, [
             'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
@@ -88,6 +91,14 @@ it('answers every route on every host for every role', function (string $route, 
         'apex' => onApex(),
         default => onAdminHost(),
     };
+
+    if ($route === 'system.index') {
+        // The System page runs the health report: point it at a sandbox, never the repository's .env or backups.
+        $sandbox = setupSandbox();
+        app()->instance(Toolchain::class, new Toolchain($sandbox->path('home')));
+        app()->instance(HealthReport::class, new HealthReport(basePath: $sandbox->basePath));
+        Storage::fake('backups');
+    }
 
     $response = $this->get(route($route, $parameters));
 

@@ -15,7 +15,8 @@ it('renders exactly the items each role may use, on every module setting', funct
     // The routes each actor sees in the sidebar (RL-6); a closure, so no new global helper.
     $expected = fn (string $actor): array => match ($actor) {
         'member' => ['dashboard'],
-        default => ['dashboard', 'users.index', 'invitations.pending', 'organisations.index', 'roles.index', 'activity.index'],
+        'organisation admin' => ['dashboard', 'users.index', 'invitations.pending', 'organisations.index', 'roles.index', 'activity.index'],
+        default => ['dashboard', 'users.index', 'invitations.pending', 'organisations.index', 'roles.index', 'activity.index', 'system.index'],
     };
 
     useImpersonationModule($impersonation);
@@ -91,7 +92,7 @@ it('groups the kit\'s items as Overzicht, Beheer and Systeem', function (): void
     expect($groups)->toBe([
         'overview' => ['dashboard'],
         'management' => ['users.index', 'invitations.pending', 'organisations.index', 'roles.index'],
-        'system' => ['activity.index'],
+        'system' => ['activity.index', 'system.index'],
     ]);
 });
 

@@ -41,6 +41,11 @@ Route::middleware(['auth'])->group(function (): void {
         Route::livewire('organisations/create', 'pages::organisations.create')
             ->can(Permission::OrganisationsCreate)
             ->name('organisations.create');
+
+        // §6.5: the System page, platform-wide, super admins only (system.health is super-only).
+        Route::livewire('system', 'pages::system.index')
+            ->can(Permission::SystemHealth)
+            ->name('system.index');
     });
 
     // Any host; the page resolves the id per request inside the host's scope (OR-M5).
