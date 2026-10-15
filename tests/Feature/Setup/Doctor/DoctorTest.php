@@ -32,8 +32,8 @@ it('runs every check in the documented order (§5.4)', function (): void {
     expect(array_keys(app(Doctor::class)->run($this->context)))->toBe([
         'php', 'gd', 'app-key', 'marker', 'herd', 'herd-pro', 'herd-site', 'herd-secured', 'subdomains', 'apex', 'database', 'migrations',
         'test-database', 'schema-tools', 'permissions', 'organisation-admin-role', 'super-admin', 'super-admin-badges',
-        'session-driver', 'authenticate-session', 'health-check-key', 'node', 'assets', 'mail', 'pg-dump', 'flux-pro-credentials',
-        'queue', 'git-hooks', 'playwright', 'claude-files', 'mcp', 'superpowers', 'setup-token', 'storage-link',
+        'session-driver', 'authenticate-session', 'health-check-key', 'backup-password', 'node', 'assets', 'mail', 'pg-dump', 'flux-pro-credentials',
+        'queue', 'failed-jobs', 'git-hooks', 'playwright', 'claude-files', 'mcp', 'superpowers', 'setup-token', 'storage-link',
     ]);
 });
 

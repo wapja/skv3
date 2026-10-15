@@ -17,6 +17,7 @@ use App\Setup\Doctor\Checks\ApexCheck;
 use App\Setup\Doctor\Checks\AppKeyCheck;
 use App\Setup\Doctor\Checks\AssetsCheck;
 use App\Setup\Doctor\Checks\AuthenticateSessionCheck;
+use App\Setup\Doctor\Checks\BackupPasswordCheck;
 use App\Setup\Doctor\Checks\ClaudeFilesCheck;
 use App\Setup\Doctor\Checks\DatabaseCheck;
 use App\Setup\Doctor\Checks\FluxProCredentialsCheck;
@@ -419,6 +420,35 @@ it('writes a health-check key with --fix (§5.4)', function (): void {
         ->and($result->status)->toBe(CheckStatus::Pass)
         ->and($result->message)->not->toContain((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))
         ->and(strlen((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+});
+
+it('needs an archive password while the backups module is on, and writes one with --fix (CD-10)', function (): void {
+    useBackupsModule(false);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    $off = new BackupPasswordCheck()->run($this->context);
+
+    useBackupsModule(true);
+    $missing = new BackupPasswordCheck()->run($this->context);
+    $result = new BackupPasswordCheck()->fix($this->context);
+    $written = (string) new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD');
+
+    expect($off->status)->toBe(CheckStatus::Skipped)
+        ->and($missing->status)->toBe(CheckStatus::Fail)
+        ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
+        ->and($result->status)->toBe(CheckStatus::Pass)
+        ->and(strlen($written))->toBe(32)
+        ->and($result->message)->not->toContain($written);
+});
+
+it('never replaces an archive password that exists (CD-10)', function (): void {
+    useBackupsModule(true);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+
+    $result = new BackupPasswordCheck()->fix($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('BACKUP_ARCHIVE_PASSWORD'))->toBe(str_repeat('p', 32));
 });
 
 it('warns about a missing or unsupported Node (§5.4)', function (string $version, CheckStatus $status) use ($stub): void {

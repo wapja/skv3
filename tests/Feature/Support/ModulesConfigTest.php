@@ -13,7 +13,8 @@ it('ships every module flag and the health-check key in .env.example (§5.2)', f
         ->toContain("\nMODULE_PASSKEYS=true\n")
         ->toContain("\nMODULE_BACKUPS=true\n")
         ->toContain("\nMODULE_IMPERSONATION=true\n")
-        ->toContain("\nHEALTH_CHECK_KEY=\n");
+        ->toContain("\nHEALTH_CHECK_KEY=\n")
+        ->toContain("\nOPS_CACHE_STORE=file\n");
 });
 
 it('keeps the backups module off on SQLite whatever MODULE_BACKUPS says (§6.8)', function (string $connection, bool $flag, bool $expected): void {

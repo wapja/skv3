@@ -9,8 +9,10 @@ use App\Setup\Doctor\Checks\ApexCheck;
 use App\Setup\Doctor\Checks\AppKeyCheck;
 use App\Setup\Doctor\Checks\AssetsCheck;
 use App\Setup\Doctor\Checks\AuthenticateSessionCheck;
+use App\Setup\Doctor\Checks\BackupPasswordCheck;
 use App\Setup\Doctor\Checks\ClaudeFilesCheck;
 use App\Setup\Doctor\Checks\DatabaseCheck;
+use App\Setup\Doctor\Checks\FailedJobsCheck;
 use App\Setup\Doctor\Checks\FluxProCredentialsCheck;
 use App\Setup\Doctor\Checks\GdCheck;
 use App\Setup\Doctor\Checks\GitHooksCheck;
@@ -82,12 +84,14 @@ final readonly class Doctor
             new SessionDriverCheck,
             new AuthenticateSessionCheck,
             new HealthCheckKeyCheck,
+            new BackupPasswordCheck,
             new NodeCheck,
             new AssetsCheck,
             new MailCheck,
             new PgDumpCheck,
             new FluxProCredentialsCheck,
             new QueueCheck,
+            new FailedJobsCheck,
             new GitHooksCheck,
             new PlaywrightCheck,
             new ClaudeFilesCheck,
