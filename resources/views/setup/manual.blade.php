@@ -10,11 +10,18 @@
             </div>
         @endif
 
-        <flux:text>{{ __('Run it in a terminal, then reload this page, or continue without HTTPS (passkeys are then switched off).') }}</flux:text>
+        {{-- M5: with HTTPS off, passkeys are off already and nothing more is switched off; without a command there is nothing to run. --}}
+        <flux:text>
+            @if ($command !== null)
+                {{ $https ? __('Run it in a terminal, then reload this page, or continue without HTTPS (passkeys are then switched off).') : __('Run it in a terminal, then reload this page, or continue and run it later.') }}
+            @else
+                {{ $https ? __('There is no Herd command to run. Continue without HTTPS (passkeys are then switched off).') : __('There is no Herd command to run. Continue to finish setting up.') }}
+            @endif
+        </flux:text>
 
         <div class="flex items-center gap-3">
             <flux:button :href="$reloadUrl">{{ __('Reload') }}</flux:button>
-            <flux:button variant="primary" :href="$continueUrl" data-test="setup-continue-without-https">{{ __('Continue without HTTPS') }}</flux:button>
+            <flux:button variant="primary" :href="$continueUrl" data-test="setup-continue-without-https">{{ $https ? __('Continue without HTTPS') : __('Continue') }}</flux:button>
         </div>
     </div>
 </x-layouts::setup>

@@ -24,6 +24,7 @@ use App\Setup\Wizard\StepLauncher;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use App\Tenancy\Hosts;
+use Dom\HTMLDocument;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -156,6 +157,28 @@ it('shows no command on the manual page without Herd (RL-7)', function () use ($
         ->assertDontSee('herd secure')
         ->assertDontSee('<code', false);
 });
+
+it('words the manual page for the choice made and the command left, never promising what does not happen (RL-7, M5)', function (bool $https, bool $herd, string $sentence, string $button) use ($afterStepNine, $withHerd, $herdDetection, $herdListings): void {
+    // Arrange: with Herd, it does not serve the site, so `herd link` is left; without Herd there is no command.
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context, detection: $herd ? $herdDetection() : null, https: $https);
+
+    if ($herd) {
+        $withHerd($context);
+        Process::fake($herdListings($context, served: false));
+    }
+
+    $html = (string) $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertOk()->getContent();
+    $continue = HTMLDocument::createFromString($html, LIBXML_NOERROR)->querySelector('[data-test="setup-continue-without-https"]');
+
+    expect($html)->toContain(e(__($sentence)))
+        ->and(trim((string) $continue?->textContent))->toBe(__($button));
+})->with([
+    'HTTPS chosen, a command left' => [true, true, 'Run it in a terminal, then reload this page, or continue without HTTPS (passkeys are then switched off).', 'Continue without HTTPS'],
+    'no HTTPS, a command left' => [false, true, 'Run it in a terminal, then reload this page, or continue and run it later.', 'Continue'],
+    'HTTPS chosen, no command' => [true, false, 'There is no Herd command to run. Continue without HTTPS (passkeys are then switched off).', 'Continue without HTTPS'],
+    'no HTTPS, no command' => [false, false, 'There is no Herd command to run. Continue to finish setting up.', 'Continue'],
+]);
 
 it('is not overdue at the start when an earlier stage left its exit file (g3-24)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
