@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 /** covers §4.6, §6.3 */
 
+use App\Actions\Invitations\InviteUser;
+use App\Actions\Roles\DeleteRole;
 use App\Actions\Users\UpdateUserRoles;
 use App\Authorization\Permission;
 use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -235,4 +238,37 @@ it('keeps a pending user\'s roles as invited (FU4-7, RK-B3)', function (): void 
 
     expect($before)->toBe([Role::OrganisationAdmin->value])
         ->and(roleNamesOf($invitee, $organisation))->toBe($before);
+});
+
+it('keeps a pending user\'s roles as invited after deleting their only role left them none (G2-06)', function (): void {
+    // Fails on main: RK-B3 looked at the roles the invitee still held, so an invitee whose only role was deleted
+    // counted as a fresh one and could be given any role, the organisation admin template included.
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $helpdesk = teamRole($organisation, 'Helpdesk');
+    $actor = asSuperAdmin();
+    onTenant($organisation);
+    $invitation = app(InviteUser::class)->handle($actor, $organisation, 'invitee@example.com', [(int) $helpdesk->id], Locale::default());
+    app(DeleteRole::class)->handle($actor, $organisation, (int) $helpdesk->id);
+    $invitee = User::query()->findOrFail($invitation->user_id);
+
+    expect(roleNamesOf($invitee, $organisation))->toBe([])
+        ->and(fn () => app(UpdateUserRoles::class)->handle($actor, $invitee, [systemRoleId(Role::OrganisationAdmin)]))
+        ->toThrow(ValidationException::class, __('A pending user keeps the roles they were invited with. Cancel and re-invite to change them.'));
+
+    expect(roleNamesOf($invitee, $organisation))->toBe([]);
+});
+
+it('decides again on the locked row that the target may hold organisation roles (FU2-5)', function (): void {
+    // Fails before this task: the Gate and the team read the model, which a promotion that committed while this
+    // write waited for the organisation lock leaves stale, so team roles landed on a super admin (W1).
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $helpdesk = teamRole($organisation, 'Helpdesk');
+    $target = User::factory()->for($organisation)->create();
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(['is_super_admin' => true]);
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($admin, $target, [(int) $helpdesk->id]))
+        ->toThrow(AuthorizationException::class);
+
+    expect(roleNamesOf($target, $organisation))->toBe([]);
 });

@@ -38,6 +38,8 @@ final readonly class CancelInvitation
             $organisation = HostScope::lockForWrite(Organisation::withTrashed()->findOrFail($invitation->organisation_id));
 
             Tenant::run($organisation, function () use ($actor, $invitation): void {
+                // CD-5: the invitee's row before the invitation, as AcceptInvitation locks them.
+                $invitee = User::withTrashed()->lockForUpdate()->findOrFail($invitation->user_id);
                 $locked = Invitation::query()->lockForUpdate()->findOrFail($invitation->id);
 
                 if ($locked->isAccepted()) {
@@ -45,8 +47,6 @@ final readonly class CancelInvitation
                         'invitation' => __('This invitation has already been accepted.'),
                     ]);
                 }
-
-                $invitee = $locked->user;
 
                 $locked->forceDelete();
                 $invitee->delete();

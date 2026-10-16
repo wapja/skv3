@@ -232,6 +232,24 @@ it('invalidates a pending self-service email change and the old address\'s reset
     expect($member->refresh()->email)->toBe('admin-chosen@example.com');
 });
 
+it('keeps a pending self-service email change when the caller\'s transaction rolls back (G4-08)', function (): void {
+    // Fails on main: the link was dropped right after UpdateUser's own transaction, before the caller's committed.
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com']);
+    app(RequestEmailChange::class)->handle($member, 'self-chosen@example.com');
+    $admin = asOrgAdmin($organisation);
+
+    expect(fn () => DB::transaction(function () use ($admin, $member): void {
+        app(UpdateUser::class)->handle($admin, $member, $member->name, 'admin-chosen@example.com');
+
+        throw new RuntimeException('A later step of the same save failed.');
+    }))->toThrow(RuntimeException::class, 'A later step of the same save failed.');
+
+    expect(Cache::has(RequestEmailChange::cacheKey($member)))->toBeTrue()
+        ->and($member->fresh()?->email)->toBe('old@example.com');
+});
+
 it('turns a unique-index race into a validation error, also when confirming an email change (FU3-8)', function () use ($errorsOf): void {
     Notification::fake();
     $organisation = Organisation::factory()->create();

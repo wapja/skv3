@@ -104,3 +104,15 @@ it('locks an organisation for writing and refuses an archived one or another ten
         ->and(fn (): Organisation => DB::transaction(fn (): Organisation => HostScope::lockForWrite($archived)))
         ->toThrow(ValidationException::class, __('This organisation is archived.'));
 });
+
+it('locks the organisation of a user write without refusing an archived one or another tenant\'s (CD-5)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $archived = Organisation::factory()->create();
+    $archived->delete();
+    // A tenant host of another organisation: the user policies place the target, this lock refuses nothing.
+    onTenant(Organisation::factory()->create());
+
+    expect(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($organisation->id))?->id)->toBe($organisation->id)
+        ->and(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($archived->id))?->trashed())->toBeTrue()
+        ->and(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation(null)))->toBeNull();
+});

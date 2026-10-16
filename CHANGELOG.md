@@ -151,6 +151,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - The email-change mails (the confirmation link and the notice to the old address) and the notice after an administrator changed your address are written in the account's language, also when a queue worker sends them; the email-change mails are queued only once the surrounding transaction commits.
 - Changing the language on the profile page shows its confirmation after the reload, in the new language.
 - *Try again* on the 429, 500 and 503 pages keeps the address's query string, reloads the page behind Livewire's error dialog, and after a refused form post goes back to the page you came from instead of opening an address that only accepts POST. *Back* on the 403 page only leads to a page on the same host.
+- Administrative changes lock their rows in one order (organisation, roles, users, then the rest), so concurrent changes in one organisation wait for each other instead of deadlocking on PostgreSQL. Accepting an invitation while its organisation is archived, disabling or deleting a user during an archive, and changing roles while a role is deleted no longer deadlock. Demoting a super admin or restoring a user while their organisation is archived is refused instead of slipping through.
+- A pending invitee keeps the roles they were invited with, also after their only role was deleted.
+- Saving a user's name, address and status is all or nothing: a refused status change no longer saves the new name or address, and an address change that fails keeps a pending self-service change link.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

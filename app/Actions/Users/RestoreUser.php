@@ -7,9 +7,9 @@ namespace App\Actions\Users;
 use App\Actions\Audit\RecordActivity;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
-use App\Models\Organisation;
 use App\Models\User;
 use App\Rules\AvailableEmail;
+use App\Tenancy\HostScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +21,8 @@ use Illuminate\Validation\ValidationException;
  * Restores a deleted user (§4.4, DEC-26 (11)). restore is not always-checked, so the domain guards
  * live here and apply to super admins too: never while the organisation is archived (restore the
  * organisation instead), never when the address is in use again (W9), and never for a pending user,
- * whose invitation was cancelled (C-9).
+ * whose invitation was cancelled (C-9). The archived check reads the organisation row locked first in the
+ * transaction (CD-5), so a restore and an archive of the same organisation take turns.
  */
 final readonly class RestoreUser
 {
@@ -43,17 +44,20 @@ final readonly class RestoreUser
             throw ValidationException::withMessages(['user' => [__('This user never accepted their invitation. Invite the address again.')]]);
         }
 
-        if ($target->organisation_id !== null && Organisation::onlyTrashed()->whereKey($target->organisation_id)->exists()) {
-            throw ValidationException::withMessages(['user' => [__('Restore the organisation first.')]]);
-        }
-
-        Validator::make(
-            ['email' => $target->email],
-            ['email' => [new AvailableEmail($target->organisation_id, $target->id)]],
-        )->validate();
-
         try {
             DB::transaction(function () use ($actor, $target): void {
+                // CD-5: the organisation first, so an archive that commits while this restore waits is seen.
+                $organisation = HostScope::lockOrganisation($target->organisation_id);
+
+                if ($organisation?->trashed() === true) {
+                    throw ValidationException::withMessages(['user' => [__('Restore the organisation first.')]]);
+                }
+
+                Validator::make(
+                    ['email' => $target->email],
+                    ['email' => [new AvailableEmail($target->organisation_id, $target->id)]],
+                )->validate();
+
                 $target->restore();
 
                 $this->recordActivity->handle(ActivityEvent::UserRestored, $target, causer: $actor);

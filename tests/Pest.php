@@ -28,11 +28,13 @@ use App\Tenancy\Events\TenantResolved;
 use App\Tenancy\Hosts;
 use App\Tenancy\Listeners\SetPasskeyOrigin;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
@@ -223,6 +225,42 @@ function recordedActivity(ActivityEvent $event): EloquentCollection
         ->where('event', $event->value)
         ->orderBy('id')
         ->get());
+}
+
+/**
+ * Runs $callback and returns, in the order they ran, the statements that lock or write rows (CD-5): every
+ * SELECT … FOR UPDATE, UPDATE, DELETE and INSERT, each with its table, SQL and bindings. Lock-order tests read
+ * `statement === 'for update'` for the explicit locks and the writes for the implicit ones. SQLite compiles no
+ * FOR UPDATE, so those tests run on PostgreSQL only. DB::listen() cannot be undone: the listener goes on filling
+ * its own array after the callback, but the list returned here is a copy taken when the callback returns. An
+ * exception from the callback is passed on.
+ *
+ * @return list<array{statement: 'for update'|'update'|'delete'|'insert', table: string, sql: string, bindings: list<mixed>}>
+ */
+function lockStatements(Closure $callback): array
+{
+    $statements = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$statements): void {
+        $sql = trim($query->sql);
+        $statement = match (true) {
+            str_ends_with($sql, 'for update') => 'for update',
+            str_starts_with($sql, 'update ') => 'update',
+            str_starts_with($sql, 'delete ') => 'delete',
+            str_starts_with($sql, 'insert ') => 'insert',
+            default => null,
+        };
+
+        if ($statement === null || preg_match('/^(?:select .+? from|update|delete from|insert into) "([^"]+)"/s', $sql, $table) !== 1) {
+            return;
+        }
+
+        $statements[] = ['statement' => $statement, 'table' => $table[1], 'sql' => $sql, 'bindings' => array_values($query->bindings)];
+    });
+
+    $callback();
+
+    return $statements;
 }
 
 /**

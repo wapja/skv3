@@ -75,8 +75,8 @@ new #[Title('Edit user')] class extends Component
     }
 
     /**
-     * Save name, address and status (USR-12). Your own and a pending user's address are read-only and never
-     * sent (E1); another user's new address needs a fresh password confirmation first (RL-18).
+     * Save name, address and status (USR-12), all or nothing (G4-08). Your own and a pending user's address are
+     * read-only and never sent (E1); another user's new address needs a fresh password confirmation first (RL-18).
      */
     public function saveAccount(UpdateUser $updateUser, UpdateUserStatus $updateUserStatus): void
     {
@@ -106,11 +106,15 @@ new #[Title('Edit user')] class extends Component
             return;
         }
 
-        $updateUser->handle($actor, $target, $this->name, $email);
+        // One transaction (G4-08): a refused status change keeps the old name and address too. The status goes
+        // first, so its organisation and users locks come before UpdateUser writes the target row (CD-5).
+        DB::transaction(function () use ($updateUser, $updateUserStatus, $actor, $target, $email, $status, $statusChanges): void {
+            if ($statusChanges) {
+                $updateUserStatus->handle($actor, $target, $status);
+            }
 
-        if ($statusChanges) {
-            $updateUserStatus->handle($actor, $target, $status);
-        }
+            $updateUser->handle($actor, $target, $this->name, $email);
+        });
 
         $this->resolvedTarget = null;
         $this->fillAccount($this->target());

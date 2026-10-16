@@ -10,6 +10,7 @@ use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Tenancy\Auth\Sessions;
+use App\Tenancy\HostScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -21,7 +22,8 @@ use Illuminate\Validation\ValidationException;
  * admin, whoever asks (DEC-26 (10), W12). A pending user is removed by cancelling the invitation.
  * The user's sessions end and the remember token is cycled, so a restore revives neither (RL-28); their reset
  * links go too, because reset tokens are keyed by address and the address is free for another account now.
- * Every decision is taken on the stored row, never on a possibly stale model (FU2-5).
+ * Every decision is taken on the locked row, never on a possibly stale model (FU2-5), and the locks follow the
+ * order of CD-5: the organisation, the users batch, then the sessions and reset tokens.
  */
 final readonly class DeleteUser
 {
@@ -36,22 +38,25 @@ final readonly class DeleteUser
         Gate::forUser($actor)->authorize('delete', $target);
 
         DB::transaction(function () use ($actor, $target): void {
-            $stored = DB::table('users')->where('id', $target->id)->first(['email', 'status', 'is_super_admin', 'deleted_at']);
+            // CD-5: the target's organisation, then one users batch, before the sessions and reset tokens go (G4-06).
+            HostScope::lockOrganisation($target->organisation_id);
+            $locked = $this->lockoutGuard->lockForRemoval($target);
+            $stored = $locked[$target->id] ?? null;
 
-            if ($stored === null || $stored->deleted_at !== null) {
+            if ($stored === null || $stored['deleted']) {
                 return;
             }
 
-            if ($stored->status === UserStatus::PendingActivation->value) {
+            if ($stored['status'] === UserStatus::PendingActivation) {
                 throw ValidationException::withMessages(['user' => [__('Cancel the invitation instead.')]]);
             }
 
-            if ($stored->status === UserStatus::Active->value) {
-                $this->lockoutGuard->ensureAnotherActiveAdmin($target, (bool) $stored->is_super_admin, 'user');
+            if ($stored['status'] === UserStatus::Active) {
+                $this->lockoutGuard->ensureAnotherActiveAdmin($target, $locked, 'user');
             }
 
             Sessions::endFor([$target->id]);
-            DB::table('password_reset_tokens')->where('email', $stored->email)->delete();
+            DB::table('password_reset_tokens')->where('email', $stored['email'])->delete();
             $target->forceFill(['remember_token' => null])->syncOriginalAttribute('remember_token');
             $target->delete();
 

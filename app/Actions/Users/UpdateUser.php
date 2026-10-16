@@ -26,8 +26,9 @@ use Illuminate\Validation\ValidationException;
  * profile page (E1), and a pending user's address only by cancelling and re-inviting. A changed
  * address applies at once: the old address loses its reset links and any pending self-service
  * change link (FU3-7) and gets a notice after commit (D-14); reset links issued for the new address
- * belong to an earlier holder and go too. user.updated is recorded by
- * UserActivityObserver, not here.
+ * belong to an earlier holder and go too. user.updated is recorded by UserActivityObserver, not here. It writes
+ * the target row and then its reset tokens, which keeps CD-5's order, and takes no organisation lock, so a caller
+ * may run it after UpdateUserStatus in one transaction (G4-08).
  */
 final class UpdateUser
 {
@@ -80,8 +81,10 @@ final class UpdateUser
             return;
         }
 
-        // A self-service link requested before this change must not move the address again (FU3-7).
-        Cache::forget(RequestEmailChange::cacheKey($target));
+        // A self-service link requested before this change must not move the address again (FU3-7). After the
+        // commit: when a caller's surrounding transaction rolls back (the edit page's saveAccount(), G4-08), the
+        // address stays and so does the link.
+        DB::afterCommit(fn (): bool => Cache::forget(RequestEmailChange::cacheKey($target)));
         // In the target's language, not the administrator's (G3-03).
         Notification::route('mail', $previousEmail)->notify(new EmailChangedByAdministrator($email)->locale($target->locale->value));
     }
