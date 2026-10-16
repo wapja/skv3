@@ -104,3 +104,35 @@ it('ignores a Herd binary that links outside Herd\'s root (CD-6)', function () u
     expect(str_starts_with((string) $found, $this->root.'/'))->toBeFalse()
         ->and($found)->not->toBe($outside);
 });
+
+it('ignores a Herd version that is a symlink, even into a trusted directory (CD-6)', function () use ($stub): void {
+    // Another account that can write the services directory plants 99 -> a trusted directory, then retargets it.
+    $stub($this->root.'/services/trusted/18/bin/pg_dump');
+    File::ensureDirectoryExists($this->services);
+    chmod($this->services, 0777);
+    symlink($this->root.'/services/trusted/18', $this->services.'/99');
+
+    $found = new PostgresBinaries($this->services)->find($this->context, 'pg_dump');
+
+    expect(str_starts_with((string) $found, $this->root.'/'))->toBeFalse();
+});
+
+it('ignores Herd\'s root when it is a symlink, even into a trusted directory (CD-6)', function () use ($stub): void {
+    // As a /Users/Shared/Herd link planted in the world-writable /Users/Shared.
+    $stub($this->sandbox->path('real-herd/services/postgresql/18/bin/pg_dump'));
+    symlink($this->sandbox->path('real-herd'), $this->root);
+
+    $found = new PostgresBinaries($this->services)->find($this->context, 'pg_dump');
+
+    expect(str_starts_with((string) $found, $this->sandbox->path('real-herd').'/'))->toBeFalse()
+        ->and(str_starts_with((string) $found, $this->root.'/'))->toBeFalse();
+});
+
+it('returns the resolved path of a Herd binary, so no link above Herd\'s root can swap it later (CD-6)', function () use ($stub): void {
+    $real = $stub($this->sandbox->path('actual/herd/services/postgresql/18/bin/pg_dump'));
+    symlink($this->sandbox->path('actual'), $this->sandbox->path('alias'));
+
+    $found = new PostgresBinaries($this->sandbox->path('alias/herd/services/postgresql'))->find($this->context, 'pg_dump');
+
+    expect($found)->toBe(realpath($real));
+});

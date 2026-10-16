@@ -9,9 +9,10 @@ namespace App\Setup\Doctor;
  * PG_DUMP_BINARY_PATH from `.env` first. Then, while the pgsql connection points at this machine (127.0.0.1,
  * localhost or ::1), Herd's newest PostgreSQL service before the toolchain PATH (DEC-23), because Herd's server is
  * then the one being dumped and an older PATH client refuses a newer server; otherwise the PATH first. A Herd
- * candidate counts only when it and every directory up to Herd's root (/Users/Shared/Herd, which sits in the
- * world-writable /Users/Shared) belong to this user or root and are neither group- nor world-writable, so no other
- * account can plant the pg_dump that backup:run executes. No version probe: the System page starts no process.
+ * candidate counts only when it and every directory up to and including Herd's root (/Users/Shared/Herd, which sits
+ * in the world-writable /Users/Shared) is no symlink, belongs to this user or root and is neither group- nor
+ * world-writable, so no other account can plant or later swap the pg_dump that backup:run executes; it is returned
+ * resolved, so no link above the root can swap it either. No version probe: the System page starts no process.
  */
 final readonly class PostgresBinaries
 {
@@ -50,13 +51,13 @@ final readonly class PostgresBinaries
         return null;
     }
 
-    /** @return list<string> Herd's trusted $binary of each service version, newest first */
+    /** @return list<string> the resolved path of Herd's trusted $binary of each service version, newest first */
     private function herdBinaries(string $binary): array
     {
         $versions = array_values(array_filter(glob($this->herdServices.'/*/bin/'.$binary) ?: [], $this->isTrusted(...)));
         usort($versions, fn (string $a, string $b): int => version_compare(basename(dirname($b, 2)), basename(dirname($a, 2))));
 
-        return $versions;
+        return array_values(array_filter(array_map(realpath(...), $versions), is_string(...)));
     }
 
     /** Whether the pgsql connection's host (the DB_URL host when DB_URL is set) is this machine. */
@@ -69,21 +70,26 @@ final readonly class PostgresBinaries
     }
 
     /**
-     * Whether $candidate resolves inside Herd's root, and it and every directory up to that root belong to this user
-     * or root and only their owner can write them (CD-6, F13).
+     * Whether $candidate sits inside Herd's root, and it and every directory up to and including that root is no
+     * symlink, belongs to this user or root and only its owner can write it (CD-6, F13). The path is walked as
+     * found, not resolved: a link anywhere below the root, or the root itself, could be retargeted after the check.
      */
     private function isTrusted(string $candidate): bool
     {
-        $root = realpath(dirname($this->herdServices, 2));
-        $path = realpath($candidate);
+        $root = dirname($this->herdServices, 2);
 
-        if ($root === false || $path === false || ! str_starts_with($path, $root.'/')) {
+        if (! str_starts_with($candidate, $root.'/')) {
             return false;
         }
 
         $owners = [0, $this->userId ?? $this->processUserId()];
+        $path = $candidate;
 
         while (true) {
+            if (is_link($path)) {
+                return false;
+            }
+
             $owner = fileowner($path);
             $mode = fileperms($path);
 
@@ -93,6 +99,10 @@ final readonly class PostgresBinaries
 
             if ($path === $root) {
                 return true;
+            }
+
+            if ($path === dirname($path)) {
+                return false;
             }
 
             $path = dirname($path);
