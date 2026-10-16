@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §8 */
 
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -40,6 +41,12 @@ $commitsFluxPro = function (string $composerJson): bool {
     return is_array($composer) && data_get($composer, 'extra.skv.flux-pro') === true;
 };
 
+/**
+ * git in a throwaway repository, without the developer's global or system configuration (M33): a core.fsmonitor
+ * there would start a daemon, and an init.templateDir would copy its hooks into the repository.
+ */
+$sandboxGit = fn (string $repository): PendingProcess => Process::path($repository)->env(['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1']);
+
 /** A composer.json whose mark is $flag (data_set keeps the kit's namespace in one allowed form, NameLeakTest). */
 $withFluxProMark = function (mixed $flag): string {
     $composer = ['name' => 'acme/app', 'require' => ['livewire/flux-pro' => '^2.0']];
@@ -53,15 +60,15 @@ it('never references Flux Pro in the committed composer files (committed)', func
         ->and($committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
 })->skip(fn (): bool => $commitsFluxPro($committedFile(base_path(), 'composer.json')), 'this app committed Flux Pro on purpose with skv:flux-pro');
 
-it('skips the committed-files check only for a commit that skv:flux-pro marked (CD-13)', function () use ($commitsFluxPro, $committedFile, $withFluxProMark): void {
+it('skips the committed-files check only for a commit that skv:flux-pro marked (CD-13)', function () use ($commitsFluxPro, $committedFile, $withFluxProMark, $sandboxGit): void {
     $repository = storage_path('framework/testing/ci-flux-pro-'.Str::uuid());
     File::ensureDirectoryExists($repository);
     File::put($repository.'/composer.json', $withFluxProMark(true));
 
     try {
-        Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
-        Process::path($repository)->run(['git', 'add', 'composer.json'])->throw();
-        Process::path($repository)->run(['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'Add Flux Pro'])->throw();
+        $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($repository)->run(['git', 'add', 'composer.json'])->throw();
+        $sandboxGit($repository)->run(['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'Add Flux Pro'])->throw();
 
         expect($commitsFluxPro($committedFile($repository, 'composer.json')))->toBeTrue()
             ->and($commitsFluxPro($withFluxProMark('true')))->toBeFalse()
@@ -72,13 +79,13 @@ it('skips the committed-files check only for a commit that skv:flux-pro marked (
     }
 });
 
-it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile): void {
+it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile, $sandboxGit): void {
     $repository = storage_path('framework/testing/ci-unborn-'.Str::uuid());
     File::ensureDirectoryExists($repository);
     File::put($repository.'/composer.json', '{"name": "acme/app"}');
 
     try {
-        Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
 
         expect($committedFile($repository, 'composer.json'))->toBe('{"name": "acme/app"}');
     } finally {
