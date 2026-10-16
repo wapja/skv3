@@ -278,6 +278,8 @@ it('refuses a re-check and finishing while another request holds the lock (§5.3
 /**
  * A detached step whose log has been quiet for half an hour and whose `<step>.started` holds $pid: the wizard writes it
  * empty, and a shell that never started leaves it so. 0 would signal this process group, and 1 is launchd or init.
+ * The pid 1 row pins the `$pid > 1` guard only when the suite runs as root: any other user may not signal pid 1, so
+ * posix_kill() already answers false there.
  */
 $quietFor31Minutes = fn (string $pid): Closure => function (SetupContext $context, $test) use ($pid): void {
     File::put($context->path(WizardState::STEPS.'/frontend.started'), $pid);
@@ -296,7 +298,7 @@ $diedSteps = [
     }],
     'no activity for half an hour, no pid' => [$quietFor31Minutes('')],
     'no activity for half an hour, pid 0' => [$quietFor31Minutes("0\n")],
-    'no activity for half an hour, pid 1' => [$quietFor31Minutes("1\n")],
+    'no activity for half an hour, pid 1 (pins the guard only as root)' => [$quietFor31Minutes("1\n")],
 ];
 
 it('records a detached step that died as its manual command (§5.3.1, RL-4)', function (Closure $died): void {
@@ -397,6 +399,23 @@ it('refuses a re-check while the step\'s process lives, so no second one starts 
         ->and($steps.'/frontend.started')->toBeFile()
         ->and($steps.'/frontend.log')->toBeFile()
         ->and(app(WizardRunner::class)->state()->results)->toHaveKey('frontend');
+});
+
+it('refuses to finish while a long step\'s process lives, so step 9 never deletes the steps under it (RL-8)', function () use ($beforeFrontend): void {
+    // Arrange: every page step has a result, but the frontend step's shell (this test's own pid) still runs.
+    $context = useSetupWizard();
+    $steps = $beforeFrontend($context);
+    $state = app(WizardRunner::class)->state() ?? throw new LogicException('No setup state.');
+    $state->results = array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok'));
+    $state->results['frontend'] = StepResult::manual('npm ci && npm run build', 'The step has not finished.');
+    $state->save($context->basePath);
+    File::put($steps.'/frontend.started', getmypid()."\n");
+    File::put($steps.'/frontend.log', 'npm ci');
+
+    expect(fn () => app(WizardRunner::class)->finish())->toThrow(RuntimeException::class, __('This step is still running.'))
+        ->and(Marker::exists($context))->toBeFalse()
+        ->and($steps.'/frontend.started')->toBeFile()
+        ->and(HerdState::load($context->basePath))->toBeNull();
 });
 
 it('re-checks a step that wrote its exit file, even while another process has its pid (RL-8)', function () use ($beforeFrontend): void {

@@ -191,6 +191,7 @@ final readonly class WizardRunner
     /**
      * Step 9 in this request, then step 10 detached (RL-6); returns the secret the page polls with. Once step 9 wrote
      * the marker the gate is closed, so what fails after it is recorded in the marker before it is thrown (g3-32).
+     * A long step whose process still runs refuses it (RL-8): step 9 deletes the steps directory under that child.
      */
     public function finish(): string
     {
@@ -201,6 +202,12 @@ final readonly class WizardRunner
 
             if ($this->nextStep($state) instanceof SetupStep) {
                 throw new RuntimeException(__('Finish the earlier steps first.'));
+            }
+
+            foreach ($this->runner->steps() as $step) {
+                if ($step->isLong() && in_array($step->key(), self::PAGE_STEPS, true) && $this->isRunning($basePath, $step->key())) {
+                    throw new RuntimeException(__('This step is still running.'));
+                }
             }
 
             $context = $state->context($basePath);
