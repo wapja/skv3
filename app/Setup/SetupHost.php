@@ -31,7 +31,8 @@ final class SetupHost
     /**
      * The apex the wizard sets up. Under Herd only {folder}.{tld} or admin.{folder}.{tld}, pinned to {folder}.{tld}:
      * once the marker exists a tenant subdomain without an organisation answers 404, so the Herd stage could not finish
-     * there (RL-3). Without Herd only a local name: localhost, 127.0.0.1, *.localhost or *.test.
+     * there (RL-3). Without Herd only a local name: localhost, *.localhost or *.test. Never an IP address (g3-34): the
+     * tenant hosts and passkeys need a name, and *.localhost resolves to this machine in browsers (DEC-29).
      */
     public static function forWizard(string $requestHost, ?string $herdTld, string $folder): ?string
     {
@@ -47,8 +48,24 @@ final class SetupHost
             return $host === $apex || $host === 'admin.'.$apex ? $apex : null;
         }
 
-        $local = in_array($host, ['localhost', '127.0.0.1'], true) || str_ends_with($host, '.localhost') || str_ends_with($host, '.test');
+        $local = $host === 'localhost' || str_ends_with($host, '.localhost') || str_ends_with($host, '.test');
 
         return $local ? $host : null;
+    }
+
+    /**
+     * Why the folder can be no Herd address, or null (g3-10): under Herd the folder is the site name and the address
+     * is {folder}.{tld}, so a folder that is not one DNS label (my_app, my.app) gives an address nobody can open.
+     */
+    public static function folderProblem(string $folder): ?string
+    {
+        if (preg_match('/^'.self::LABEL.'$/', Str::lower($folder)) === 1) {
+            return null;
+        }
+
+        return __('The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.', [
+            'folder' => $folder,
+            'name' => Str::slug($folder),
+        ]);
     }
 }

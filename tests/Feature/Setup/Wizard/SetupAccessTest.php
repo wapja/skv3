@@ -7,6 +7,9 @@ declare(strict_types=1);
 use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\Marker;
 use App\Setup\SetupToken;
+use App\Setup\Wizard\WizardState;
+use App\Tenancy\Hosts;
+use Illuminate\Support\Str;
 
 it('answers 404 without the token, with a wrong token, or outside setup mode (§7.2)', function (): void {
     $context = useSetupWizard();
@@ -33,7 +36,7 @@ it('answers 404 behind a proxy or tunnel (§7.2, DEC-24)', function (string $hea
     $token = (string) new SetupToken($context->basePath)->value();
 
     $this->get('/welcome-setup?token='.$token, [$header => 'x'])->assertNotFound();
-})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain']);
+})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-Port', 'X-Forwarded-Prefix', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain']);
 
 it('keeps the token in the session and drops it from the address (RL-2)', function (): void {
     $context = useSetupWizard();
@@ -71,3 +74,84 @@ it('refuses a session that holds the hash of another token, on a GET and on a Li
     $this->get('/welcome-setup')->assertNotFound();
     callPageAction($snapshot, '$refresh')->assertNotFound();
 });
+
+it('answers 404 to a request from another machine and never hands it the token (RL-4, g4-01)', function (string $address): void {
+    $context = useSetupWizard();
+    $token = (string) new SetupToken($context->basePath)->value();
+    $this->withServerVariables(['REMOTE_ADDR' => $address]);
+
+    $home = (string) $this->get('/')->assertRedirect()->headers->get('Location');
+
+    expect($home)->not->toContain('token=');
+    $this->get('/welcome-setup?token='.$token)->assertNotFound();
+})->with(['LAN' => '192.168.1.20', 'public' => '203.0.113.7', 'IPv6' => '2001:db8::1']);
+
+it('lets every loopback address through (RL-4)', function (string $address): void {
+    $context = useSetupWizard();
+    $this->withServerVariables(['REMOTE_ADDR' => $address]);
+
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value())->assertRedirect(url('/welcome-setup'));
+})->with(['127.0.0.1', '127.0.0.2', '::1']);
+
+it('issues a new session id when it accepts the token, so a planted id never becomes authorised (g3-26)', function (): void {
+    $context = useSetupWizard();
+    $planted = Str::random(40);
+
+    $this->withCookie((string) config('session.cookie'), $planted)
+        ->get('/welcome-setup?token='.new SetupToken($context->basePath)->value())
+        ->assertRedirect(url('/welcome-setup'));
+
+    expect(session()->getId())->not->toBe($planted)
+        ->and(session(EnsureSetupAccess::SESSION_KEY))->toBe(app(SetupToken::class)->hash())
+        ->and((string) session()->getHandler()->read($planted))->not->toContain((string) app(SetupToken::class)->hash());
+});
+
+it('never stores the token in the session, not even as the previous URL (g3-27)', function (): void {
+    $context = useSetupWizard();
+    $token = (string) new SetupToken($context->basePath)->value();
+
+    $this->get('/welcome-setup?token='.$token)->assertRedirect(url('/welcome-setup'));
+
+    expect((string) session()->previousUrl())->not->toContain($token)
+        ->and(json_encode(session()->all(), JSON_THROW_ON_ERROR))->not->toContain($token);
+});
+
+it('sends no referrer from the wizard, whose first URL carries the token (g3-13)', function (): void {
+    $context = useSetupWizard();
+
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value())->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
+    $this->get('/welcome-setup')->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
+});
+
+it('answers only on the pinned host and its admin host once setup has started (RL-5, g3-25)', function (): void {
+    $context = useSetupWizard();
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+    $snapshot = pageSnapshot(url('/welcome-setup'), 'pages::setup.wizard');
+    $this->withHeader('X-CSRF-TOKEN', session()->token());
+    callPageAction($snapshot, 'start', updates: [
+        'appName' => 'Acme', 'database' => 'sqlite', 'startWith' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'claude' => false,
+    ])->assertOk();
+
+    expect(WizardState::load($context->basePath)?->host)->toBe('localhost');
+    callPageAction($snapshot, '$refresh', host: Hosts::admin())->assertOk();
+    callPageAction($snapshot, 'advance', host: Hosts::tenant('acme'))->assertNotFound();
+    $this->get(Hosts::url(Hosts::tenant('acme'), '/welcome-setup'))->assertNotFound();
+    $this->get(Hosts::url(Hosts::apex(), '/welcome-setup'))->assertOk();
+});
+
+it('opens on the apex, the admin host and a tenant host until the marker exists (§6.2, g3-35)', function (string $kind): void {
+    $context = useSetupWizard();
+    $host = match ($kind) {
+        'apex' => Hosts::apex(),
+        'admin' => Hosts::admin(),
+        default => Hosts::tenant('acme'),
+    };
+    $token = (string) new SetupToken($context->basePath)->value();
+
+    $this->get(Hosts::url($host, '/welcome-setup?token='.$token))->assertRedirect(Hosts::url($host, '/welcome-setup'));
+    $this->get(Hosts::url($host, '/welcome-setup'))->assertOk()->assertSee('data-test="setup-wizard"', false);
+
+    Marker::write($context, []);
+
+    $this->get(Hosts::url($host, '/welcome-setup'))->assertNotFound();
+})->with(['apex', 'admin', 'tenant']);

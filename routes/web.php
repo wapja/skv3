@@ -10,15 +10,26 @@ use App\Setup\SetupMode;
 use App\Support\Skv;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
 
 // §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
 // everyone else (and super admins on a tenant host) lands on the dashboard. In setup mode a direct visitor goes
-// to the wizard, with the token, until a super admin exists (§5.3.4).
-Route::get('/', function (): RedirectResponse {
+// to the wizard, with the token, until a super admin exists (§5.3.4); on a host the wizard cannot pin, `/` names
+// the address to use instead, never with the token (RL-5).
+Route::get('/', function (): RedirectResponse|Response {
+    $setup = app(SetupMode::class);
+
     // §5.3.4: before setup, `/` leads to the wizard.
-    if (($wizard = app(SetupMode::class)->homeRedirect(request())) !== null) {
+    if (($wizard = $setup->homeRedirect(request())) !== null) {
         return redirect($wizard);
+    }
+
+    // g3-34: a token-less redirect to the address the wizard pins; g3-10, g3-28: no address would do, so say why.
+    if (($refused = $setup->homeHostProblem(request())) !== null) {
+        return $refused['suggestion'] !== null
+            ? redirect()->away(rtrim($refused['suggestion'], '/').'/')
+            : response()->view('setup.host-problem', ['problem' => $refused['problem']], 409);
     }
 
     $user = auth()->user();

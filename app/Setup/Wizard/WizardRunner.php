@@ -6,23 +6,21 @@ namespace App\Setup\Wizard;
 
 use App\Setup\Answers;
 use App\Setup\Detector;
+use App\Setup\Http\SetupHostGuard;
 use App\Setup\InstallPreflight;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
-use App\Setup\SetupHost;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Steps\MarkerStep;
 use App\Setup\Steps\SummaryStep;
-use App\Setup\Support\HerdTld;
 use App\Setup\Support\SafeMessage;
 use App\Setup\Support\StateFile;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use JsonException;
@@ -50,21 +48,25 @@ final readonly class WizardRunner
         private Toolchain $toolchain,
     ) {}
 
-    /** @return array{answers: Answers, host: ?string, suggestion: string} the form's defaults, the pinned host (null: refused) and the URL to suggest */
+    /**
+     * @param  string  $requestHost  the request's host with its port, when it has one (getHttpHost())
+     * @return array{answers: Answers, host: ?string, problem: ?string} the form's defaults, the pinned host (null: refused) and why it is refused
+     */
     public function defaults(string $requestHost): array
     {
-        [$host, $suggestion] = $this->host($requestHost);
+        ['host' => $host, 'problem' => $problem] = $this->host($requestHost);
         $context = app(SetupContext::class);
 
         return [
             'answers' => Answers::fromArray([], $this->detector->detect($host ?? 'localhost'), $context->folderName(), $this->installed($context)),
             'host' => $host,
-            'suggestion' => $suggestion,
+            'problem' => $problem,
         ];
     }
 
     /**
      * @param  array<string, mixed>  $input
+     * @param  string  $requestHost  the request's host with its port, when it has one (getHttpHost())
      *
      * @throws ValidationException
      */
@@ -78,10 +80,10 @@ final readonly class WizardRunner
                 $running();
             }
 
-            [$host, $suggestion] = $this->host($requestHost);
+            ['host' => $host, 'problem' => $problem] = $this->host($requestHost);
 
             if ($host === null) {
-                throw ValidationException::withMessages(['host' => __('Open the setup on :url.', ['url' => $suggestion])]);
+                throw ValidationException::withMessages(['host' => (string) $problem]);
             }
 
             $context = app(SetupContext::class);
@@ -407,13 +409,15 @@ final readonly class WizardRunner
         return $key === 'frontend' ? 'npm ci && npm run build' : 'php artisan skv:install';
     }
 
-    /** @return array{0: ?string, 1: string} the pinned host or null, and the address to suggest */
+    /**
+     * The host to pin for $requestHost (host[:port]) and, when it is refused, why and where to go instead
+     * (SetupHostGuard::resolve()); the page and begin() show only the problem.
+     *
+     * @return array{host: ?string, problem: ?string, suggestion: ?string}
+     */
     private function host(string $requestHost): array
     {
-        $folder = app(SetupContext::class)->folderName();
-        $tld = HerdTld::read($this->toolchain);
-
-        return [SetupHost::forWizard($requestHost, $tld, $folder), 'http://'.($tld === null ? 'localhost' : Str::lower($folder).'.'.$tld)];
+        return SetupHostGuard::resolve($requestHost, $this->toolchain, app(SetupContext::class)->folderName());
     }
 
     /** @return array<string, mixed> */

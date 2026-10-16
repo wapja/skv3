@@ -291,3 +291,20 @@ it('keeps polling a detached step that shows activity within half an hour (RL-4)
     expect($runner->advance())->toBe(['key' => 'frontend', 'state' => 'running', 'message' => ''])
         ->and($runner->state()?->results)->not->toHaveKey('frontend');
 });
+
+it('refuses every host while herd tld gives no answer, never falling back to the names without Herd (g3-28)', function (): void {
+    $context = useSetupWizard();
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home'), $context->basePath));
+    Process::fake([
+        "*herd' 'tld'*" => Process::result(exitCode: 1),
+        "*herd' 'services:list' '--json'*" => Process::result(''),
+    ]);
+
+    expect(fn () => app(WizardRunner::class)->begin(['database' => 'sqlite'], 'admin.'.Str::lower($context->folderName()).'.test'))
+        ->toThrow(ValidationException::class, __('Herd did not answer. Reload the page in a moment.'))
+        ->and($context->path(WizardState::PATH))->not->toBeFile();
+});

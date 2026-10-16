@@ -6,6 +6,8 @@ namespace App\Setup;
 
 use App\Models\User;
 use App\Setup\Http\DirectRequest;
+use App\Setup\Http\SetupHostGuard;
+use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Http\Request;
 use Spatie\Permission\PermissionRegistrar;
@@ -71,7 +73,8 @@ final readonly class SetupMode
 
     /**
      * Where `/` sends a direct visitor in setup mode while no super admin exists (§5.3.4), else null. A proxied or
-     * tunnelled request never gets the token (DEC-24): it would leave the machine in the tunnel's logs.
+     * tunnelled request never gets the token (DEC-24): it would leave the machine in the tunnel's logs. Nor does a
+     * host the wizard cannot pin (RL-5): a page on such a name could read the token from the redirect.
      */
     public function homeRedirect(Request $request): ?string
     {
@@ -81,7 +84,32 @@ final readonly class SetupMode
 
         $token = $this->token()->value();
 
-        return $token === null || $this->superAdminExists() ? null : '/welcome-setup?token='.$token;
+        if ($token === null || $this->superAdminExists()) {
+            return null;
+        }
+
+        return SetupHostGuard::allows($request, SetupHostGuard::pinnedWizardHost($this->basePath)) ? '/welcome-setup?token='.$token : null;
+    }
+
+    /**
+     * Why `/` hands a direct visitor no token before begin() (§5.3.4, RL-5): the host is one the wizard cannot pin.
+     * `suggestion` is the address to open instead (g3-34: localhost on the request's port without Herd; {folder}.{tld}
+     * under Herd), or null when no address would do (g3-10: the folder; g3-28: `herd tld`). Null when `/` has nothing
+     * to explain: not setup mode, not direct, no token, a super admin exists, a host is pinned, or the host is fine.
+     *
+     * @return array{suggestion: ?string, problem: string}|null
+     */
+    public function homeHostProblem(Request $request): ?array
+    {
+        if ($request->attributes->get(self::ATTRIBUTE) !== true || ! DirectRequest::isDirect($request)
+            || $this->token()->value() === null || $this->superAdminExists()
+            || SetupHostGuard::pinnedWizardHost($this->basePath) !== null) {
+            return null;
+        }
+
+        $resolved = SetupHostGuard::resolve($request->getHttpHost(), app(Toolchain::class), app(SetupContext::class)->folderName());
+
+        return $resolved['host'] === null ? ['suggestion' => $resolved['suggestion'], 'problem' => (string) $resolved['problem']] : null;
     }
 
     /** False when the database cannot be read yet (a first install): the wizard is what sets it up. */

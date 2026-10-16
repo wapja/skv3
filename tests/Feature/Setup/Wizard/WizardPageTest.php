@@ -16,6 +16,7 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\WizardState;
+use Dom\HTMLDocument;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -297,4 +298,52 @@ it('resumes at the steps after a reload, never at the questions (§5.3.4)', func
     $this->get('/welcome-setup')->assertOk()
         ->assertSee('data-test="setup-step-environment"', false)
         ->assertDontSee('data-test="setup-questions"', false);
+});
+
+it('titles the page once (g3-33)', function (): void {
+    $context = useSetupWizard();
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('/welcome-setup')->assertOk()->assertSee('<title>'.__('Setup').'</title>', false);
+});
+
+it('names the address to use and disables the start on a host the wizard refuses (§5.3.4, g4-15)', function (): void {
+    $context = useSetupWizard();
+    $this->get('http://example.com/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $html = (string) $this->get('http://example.com/welcome-setup')->assertOk()
+        ->assertSee(__('Open the setup on :url.', ['url' => 'http://localhost']))
+        ->getContent();
+    $button = HTMLDocument::createFromString($html, LIBXML_NOERROR)->querySelector('[data-test="setup-start-button"]');
+
+    expect($button?->hasAttribute('disabled'))->toBeTrue();
+});
+
+it('refuses 127.0.0.1 without Herd and suggests localhost on the same port (g3-34)', function (): void {
+    $context = useSetupWizard();
+    $this->get('http://127.0.0.1:8000/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('http://127.0.0.1:8000/welcome-setup')->assertOk()
+        ->assertSee(__('Open the setup on :url.', ['url' => 'http://localhost:8000']));
+});
+
+it('asks to rename a folder that can be no Herd address, instead of suggesting one (g3-10)', function (): void {
+    $context = useSetupWizard(setupSandbox(prefix: 'my_app_'));
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home'), $context->basePath));
+    Process::fake([
+        "*herd' 'tld'*" => Process::result("test\n"),
+        "*herd' 'services:list' '--json'*" => Process::result(''),
+    ]);
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('/welcome-setup')->assertOk()
+        ->assertSee(__('The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.', [
+            'folder' => $context->folderName(),
+            'name' => Str::slug($context->folderName()),
+        ]))
+        ->assertDontSee('http://'.Str::lower($context->folderName()).'.test');
 });

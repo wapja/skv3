@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §5.3.4, §6.8, §7.2 */
 
 use App\Models\HandoffToken;
+use App\Models\Organisation;
 use App\Models\User;
 use App\Setup\Answers;
 use App\Setup\Detection;
@@ -123,7 +124,9 @@ it('shows the manual command instead of the finishing page once the poll window 
 
 it('settles a site secured by hand once herd secured lists it, when the manual page is reloaded (§5.3.4, RL-6)', function () use ($afterStepNine, $withHerd): void {
     $context = useSetupWizard();
-    $secret = $afterStepNine($context, 'demo', $context->folderName().'.test');
+    $host = $context->folderName().'.test';
+    $secret = $afterStepNine($context, 'demo', $host);
+    config(['tenancy.apex_domain' => $host]);
     $withHerd($context);
     Process::fake([
         "*herd' 'services:list'*" => Process::result(''),
@@ -135,8 +138,8 @@ it('settles a site secured by hand once herd secured lists it, when the manual p
     ]);
     $this->travel(HerdState::POLL_SECONDS + 1)->seconds();
 
-    $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertSee('data-test="setup-manual-herd"', false);
-    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertSee('data-test="setup-summary"', false);
+    $this->get('http://'.$host.'/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertSee('data-test="setup-manual-herd"', false);
+    $this->get('http://'.$host.'/welcome-setup/finish?secret='.$secret)->assertOk()->assertSee('data-test="setup-summary"', false);
 
     $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
     expect($state->result?->message)->toStartWith(HerdSiteStep::SECURED)
@@ -247,4 +250,37 @@ it('shows the finish page without a summary when the marker no longer reads back
         ->assertSee('data-test="setup-summary"', false)
         ->assertSee('data-test="setup-login"', false)
         ->assertDontSee('data-test="setup-next-steps"', false);
+});
+
+it('answers 404 on a host other than the pinned one or its admin host (RL-5, g3-25)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+    // An organisation, so the tenant resolver lets its host through to the Herd stage.
+    Organisation::factory()->create(['slug' => 'acme']);
+
+    $this->getJson(Hosts::url(Hosts::admin(), '/welcome-setup/herd-status?secret='.$secret))->assertOk();
+    $this->getJson(Hosts::url(Hosts::tenant('acme'), '/welcome-setup/herd-status?secret='.$secret))->assertNotFound();
+    $this->get(Hosts::url(Hosts::tenant('acme'), '/welcome-setup/finish?secret='.$secret))->assertNotFound();
+});
+
+it('answers 404 to a Herd-stage request from another machine (RL-4, g4-01)', function () use ($afterStepNine): void {
+    $secret = $afterStepNine(useSetupWizard());
+
+    $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.20'])
+        ->getJson('/welcome-setup/herd-status?secret='.$secret)->assertNotFound();
+});
+
+it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URLs carry the secret (g3-13)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+
+    $this->getJson('/welcome-setup/herd-status?secret='.$secret)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
+
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
+    $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
 });

@@ -11,6 +11,7 @@ use App\Setup\Detector;
 use App\Setup\InstallPreflight;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
+use App\Setup\SetupHost;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
@@ -59,6 +60,17 @@ final class InstallCommand extends Command
         $basePath = app(SetupContext::class)->basePath;
         $folder = basename($basePath);
         $detection = $detector->detect();
+
+        // g3-10: under Herd the folder is the site name and the address; one that is no DNS label gives an address
+        // nobody can open, so nothing is written.
+        $folderProblem = $detection->herd ? SetupHost::folderProblem($folder) : null;
+
+        if ($folderProblem !== null) {
+            $this->components->error(OutputFormatter::escape($folderProblem));
+
+            return self::FAILURE;
+        }
+
         $preflight = new InstallPreflight(app(SetupContext::class));
 
         try {

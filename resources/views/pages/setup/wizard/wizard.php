@@ -12,14 +12,13 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
  * §5.3.4: the browser wizard. Questions, then steps 1–8 one request at a time (the long ones polled), then step 9 and
  * the Herd stage, which runs without Livewire because the gate closes with the marker (RL-6).
  */
-new #[Layout('layouts::setup')] #[Title('Setup')] class extends Component
+new #[Layout('layouts::setup')] class extends Component
 {
     /** The Answers keys and the form properties that show their errors; anything about the request itself goes to `host`. */
     private const array ERROR_FIELDS = [
@@ -70,11 +69,9 @@ new #[Layout('layouts::setup')] #[Title('Setup')] class extends Component
             return;
         }
 
-        $defaults = $runner->defaults(request()->getHost());
-
-        if ($defaults['host'] === null) {
-            $this->hostProblem = __('Open the setup on :url.', ['url' => $defaults['suggestion']]);
-        }
+        // The port too: without Herd, the suggestion is localhost on the port this request came in on (g3-34).
+        $defaults = $runner->defaults(request()->getHttpHost());
+        $this->hostProblem = $defaults['problem'];
 
         $this->fill($this->formOf($defaults['answers']));
     }
@@ -98,7 +95,7 @@ new #[Layout('layouts::setup')] #[Title('Setup')] class extends Component
                 'https' => $this->https,
                 'playwright' => $this->playwright,
                 'claude' => $this->claude,
-            ], request()->getHost());
+            ], request()->getHttpHost());
         } catch (ValidationException $exception) {
             throw ValidationException::withMessages($this->formErrors($exception->errors()));
         } finally {

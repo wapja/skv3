@@ -17,6 +17,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -313,4 +314,22 @@ it('defaults to SQLite whatever PostgreSQL the machine runs (g1-13, RL-3)', func
 
     expect($exitCode)->toBe(0)
         ->and(new EnvFile($this->sandbox->path('.env'))->get('DB_CONNECTION'))->toBe('sqlite');
+});
+
+it('refuses a folder name that can be no Herd address before anything runs (g3-10)', function () use ($install): void {
+    $sandbox = setupSandbox(prefix: 'my_app_');
+    $herd = $sandbox->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($sandbox->path('home')));
+    app()->instance(SetupContext::class, $sandbox);
+    $before = (string) file_get_contents($sandbox->path('.env'));
+
+    [$exitCode, $output] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(Str::slug($sandbox->folderName()))
+        ->and(Marker::exists($sandbox))->toBeFalse()
+        ->and(file_get_contents($sandbox->path('.env')))->toBe($before);
 });

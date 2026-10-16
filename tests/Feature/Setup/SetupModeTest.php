@@ -10,12 +10,14 @@ use App\Models\User;
 use App\Setup\Doctor\Checks\SessionDriverCheck;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Marker;
+use App\Setup\SetupContext;
 use App\Setup\SetupMode;
 use App\Setup\SetupToken;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Cache\FileStore;
 use Illuminate\Session\FileSessionHandler;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -25,6 +27,19 @@ beforeEach(function (): void {
     Process::fake([]);
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
+
+// Herd installed in the sandbox home; `herd tld` answers "test", or fails with $tldExitCode.
+$withHerd = function (SetupContext $context, int $tldExitCode = 0): void {
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home'), $context->basePath));
+    Process::fake([
+        "*herd' 'tld'*" => Process::result($tldExitCode === 0 ? "test\n" : '', exitCode: $tldExitCode),
+        "*herd' 'services:list' '--json'*" => Process::result(''),
+    ]);
+};
 
 it('is active only locally, without a marker and with a token (RL-1)', function (): void {
     $context = useSetupWizard();
@@ -128,4 +143,43 @@ it('never resolves a tenant in setup mode, even an existing one (§5.3.4)', func
     $this->get('http://acme.localhost/login')->assertOk();
 
     expect(Tenant::check())->toBeFalse();
+});
+
+it('hands the token out only on a host the wizard can pin (RL-5, g3-25)', function (): void {
+    $context = useSetupWizard();
+    $token = (string) new SetupToken($context->basePath)->value();
+
+    $refused = (string) $this->get('http://example.com/')->assertRedirect()->headers->get('Location');
+
+    expect($refused)->not->toContain('token=');
+    $this->get('http://acme.localhost/')->assertRedirectContains('/welcome-setup?token='.$token);
+});
+
+it('sends / on a host the wizard refuses to the address to use, without the token (§5.3.4, g3-34)', function (): void {
+    useSetupWizard();
+
+    $location = (string) $this->get('http://127.0.0.1:8000/')->assertRedirect('http://localhost:8000/')->headers->get('Location');
+
+    expect($location)->not->toContain('token=');
+});
+
+it('shows the folder problem on / under Herd, where no address would work (§5.3.4, g3-10)', function () use ($withHerd): void {
+    $context = useSetupWizard(setupSandbox(prefix: 'my_app_'));
+    $withHerd($context);
+
+    $this->get('/')->assertStatus(409)
+        ->assertSee(__('The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.', [
+            'folder' => $context->folderName(),
+            'name' => Str::slug($context->folderName()),
+        ]))
+        ->assertDontSee((string) new SetupToken($context->basePath)->value());
+});
+
+it('shows on / that Herd did not answer while herd tld fails (§5.3.4, g3-28)', function () use ($withHerd): void {
+    $context = useSetupWizard();
+    $withHerd($context, tldExitCode: 1);
+
+    $this->get('/')->assertStatus(409)
+        ->assertSee(__('Herd did not answer. Reload the page in a moment.'))
+        ->assertDontSee((string) new SetupToken($context->basePath)->value());
 });

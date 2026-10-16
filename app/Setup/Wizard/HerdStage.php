@@ -7,6 +7,7 @@ namespace App\Setup\Wizard;
 use App\Actions\Auth\IssueHandoff;
 use App\Models\User;
 use App\Setup\Http\DirectRequest;
+use App\Setup\Http\SetupHostGuard;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\StepResult;
@@ -25,7 +26,10 @@ final readonly class HerdStage
 {
     public function __construct(private WizardRunner $wizard) {}
 
-    /** The Herd state for this request's secret; anything else (not local, a proxy, a wrong or stale secret) is a 404. */
+    /**
+     * The Herd state for this request's secret. Anything else is a 404 (RL-4, RL-5, RL-6): not local, not direct, a
+     * host other than the pinned one or its admin host, or a wrong or stale secret.
+     */
     public function state(Request $request): HerdState
     {
         abort_unless(DirectRequest::isDirect($request), 404);
@@ -37,7 +41,8 @@ final readonly class HerdStage
         }
 
         $secret = $request->query('secret');
-        abort_unless($state instanceof HerdState && is_string($secret) && $state->isFresh() && $state->matches($secret), 404);
+        abort_unless($state instanceof HerdState && SetupHostGuard::allows($request, $state->host) && is_string($secret)
+            && $state->isFresh() && $state->matches($secret), 404);
 
         return $state;
     }

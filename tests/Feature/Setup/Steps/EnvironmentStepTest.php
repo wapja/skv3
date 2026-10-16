@@ -139,3 +139,12 @@ it('is complete once the file holds the answers (§5.3.1)', function (): void {
     new EnvFile($context->path('.env'))->set(['MODULE_IMPERSONATION' => false]);
     expect($step->isComplete($context))->toBeFalse();
 });
+
+it('keeps the port of an APP_URL on the same host without Herd (g1-17)', function (): void {
+    $context = setupSandbox();
+    new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://localhost:8000']);
+
+    new EnvironmentStep()->run($context);
+
+    expect(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('http://localhost:8000');
+});

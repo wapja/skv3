@@ -99,11 +99,14 @@ final class EnvironmentStep implements SetupStep
 
         // A site the Herd step already secured keeps https on a re-run (the CLI always detects http).
         $current = (string) $env->get('APP_URL');
-        $secured = parse_url($current, PHP_URL_SCHEME) === 'https' && parse_url($current, PHP_URL_HOST) === $host;
+        $currentHost = parse_url($current, PHP_URL_HOST);
+        $secured = parse_url($current, PHP_URL_SCHEME) === 'https' && $currentHost === $host;
+        // Without Herd the app may run on a port (php artisan serve): an APP_URL on this host keeps it (g1-17).
+        $port = ! $detection->herd && $currentHost === $host ? parse_url($current, PHP_URL_PORT) : null;
 
         $variables = [
             'APP_NAME' => $answers->appName,
-            'APP_URL' => ($secured ? 'https' : $detection->scheme).'://'.$host,
+            'APP_URL' => ($secured ? 'https' : $detection->scheme).'://'.$host.(is_int($port) ? ':'.$port : ''),
             'TENANCY_APEX_DOMAIN' => $host,
             'APP_FAKER_LOCALE' => 'nl_NL',
             'MODULE_PASSKEYS' => $answers->moduleEnabled('passkeys'),
