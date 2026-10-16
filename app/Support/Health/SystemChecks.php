@@ -12,8 +12,10 @@ use App\Setup\Doctor\DoctorContext;
  * The doctor checks the System page runs on demand (RL-7, F12): a selection of the checks that start no child process
  * and open no network connection other than the mail probe. The ones about the development machine (Herd, Node,
  * Playwright, Claude, the test database, the schema tools and the like) are left out. They run without a detection
- * (RL-2) and judge the running configuration where a setting has one (CD-5). Their repairs are not offered on the
- * page; php artisan skv:doctor --fix runs them.
+ * (RL-2). The mail and health-check-key rows judge the running configuration (CD-5); the app-key and apex rows read
+ * the project's .env, so behind a config cache or injected environment variables they judge the file, not what runs;
+ * the backup-password row reads both and fails when .env has a password the running configuration lacks. Their
+ * repairs are not offered on the page; php artisan skv:doctor --fix runs them.
  */
 final readonly class SystemChecks
 {
