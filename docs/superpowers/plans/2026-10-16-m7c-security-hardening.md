@@ -37,6 +37,7 @@ Decisions live in `docs/decisions.md` (DEC-27 auth, DEC-28 administration, DEC-2
 - **PHP files:** every one starts with `declare(strict_types=1);`. Pint uses the `laravel` preset plus `declare_strict_types`, `strict_comparison` and `ordered_class_elements`. Run `composer fix` after editing PHP.
 - **Dependencies:**
   - M7c adds **none**, PHP or npm, and no `ext-*` requirement (CD-9).
+  - `composer.json` changes only in Task 11's two `scripts` one-liners; `composer.lock`, `package.json` and `package-lock.json` do not change.
   - `livewire/flux-pro` and `composer.fluxui.dev` never appear in the committed `composer.json` or `composer.lock`.
 - **Never touch the developer's own environment from code or tests:**
   - No test reads or writes the repository's `.env`, `.env.testing`, `herd.yml`, `.mcp.json`, `storage/app/skv-installed`, `storage/app/private/skv-*`, `storage/app/backups`, `storage/app/backup-temp` or `public/storage`.
@@ -56,7 +57,7 @@ Decisions live in `docs/decisions.md` (DEC-27 auth, DEC-28 administration, DEC-2
   - Livewire components authorise in `mount()` and again before calling an action, keep `#[Locked]` ids, re-resolve the model on every request.
   - Links that leave the request are built for `Hosts::homeOf($user)`; signed links use `URL::temporarySignedRoute(..., absolute: false)` with `signed:relative`.
 - **Routes:**
-  - Group single-host routes with `Route::tenant()` / `Route::central()`; never `Route::domain()` (the Fortify group in `routes/fortify.php` is the one named exception, Task 14).
+  - Group single-host routes with `Route::tenant()` / `Route::central()`; never `Route::domain()` (the Fortify groups in `routes/fortify.php` and `routes/passkeys.php` are the named exceptions, Task 14).
   - Every new named GET route goes into `matrixRoutes()` in `tests/Feature/Tenancy/RouteHostMatrixTest.php` or its exclusions. M7c adds no named GET route.
 - **Audit:** entries are written only through `App\Actions\Audit\RecordActivity` with an `App\Enums\ActivityEvent` case; never `activity()`, the facade or `LogsActivity`.
 - **Mail:** mails implement `ShouldQueue` and call `afterCommit()`; tests run them on the sync queue with the `array` mailer, not `Mail::fake()`.
@@ -126,7 +127,7 @@ Not in scope:
 ## Controller decisions (owner delegation, 2026-10-15, reaffirmed 2026-10-16)
 
 - **CD-1, the split:** DEC-32's M7c held both the §6.6 extras and the security-hardening follow-ups. M7c is split into **M7c** (this plan, hardening) and **M7d** (the §6.6 extras), as M6 and M7 were split, so each plan stays reviewable. Hardening goes first because the extras build on it: bulk invitations reuse `UserActionLimit` (Task 1) and localised queued mail (Task 5); the second factor per organisation lands on the hardened security page (Task 3).
-- **CD-2, a fresh triage:** the sources (the M2–M7b memory follow-up lists, the M5 ledger's final review, DEC-32/DEC-33 Consequences, the M7b ledger's 84 deferred minors) were verified by six read-only agents against `main` `a192dba`: 149 entries. 44 were already fixed, 1 obsolete, 8 duplicates; of the rest **60 are in scope here**, 27 go to M8 and 8 are won't-fix. The ids in the triage table are this plan's numbering; DEC-34 records the mapping.
+- **CD-2, a fresh triage:** the sources (the M2–M7b memory follow-up lists, the M5 ledger's final review, DEC-32/DEC-33 Consequences, the M7b ledger's 84 deferred minors) were verified by six read-only agents against `main` `a192dba`: 149 entries: 44 were already fixed (L7b-43's binding and L7b-64's known case included), 1 obsolete, 8 duplicates; **62 are handled here** (L7b-73's failing-step tests; its other tests go to M8), 26 go to M8 only and 8 are won't-fix. The plan review added one M8 item of its own (K9). The ids in the triage table are this plan's numbering; DEC-34 records the mapping.
 - **CD-3, the limits** (`UserActionLimit`, per user, on Laravel's rate-limiter cache — the default store, as for Fortify's limiters):
 
   | Action | Key | Limit |
@@ -137,17 +138,18 @@ Not in scope:
   | Invite a user (single invite) | `invite:<user id>` | 10 per minute |
   | Send a reminder (pending list, accept page) | `remind:<user id>` | 10 per minute, and per invitation at most one reminder per 10 minutes (`RemindInvitation` checks `reminder_sent_at`) |
 
-  Fortify's 2FA management routes (`two-factor.enable`, `.confirm`, `.disable`, `.regenerate-recovery-codes`) and `passkey.destroy` get a route limiter `account-security`, 10 per minute per user. A refused action throws a `ValidationException` on the form's field with the new key "Too many attempts. Try again in :seconds seconds." (sign-in keeps `auth.throttle`, whose copy names sign-in attempts). Password and TOTP checks count every attempt; email change, invite and remind count completed sends. The TOTP confirm lives in `pages/settings/two-factor-setup-modal/`. Task 1 also replaces `FortifyServiceProvider::loginThrottled()`'s `back()` with `to_route('login')` (CD-13). Limits live in the components and routes, never in the actions, so M7d's bulk invitation can call `InviteUser` in a loop under its own limit.
+  Fortify's 2FA management routes (`two-factor.enable`, `.confirm`, `.disable`, `.regenerate-recovery-codes`) and `passkey.destroy` get a route limiter `account-security`, 10 per minute per user. A refused action throws a `ValidationException` on the form's field with the new key "Too many attempts. Try again in :seconds seconds." (sign-in keeps `auth.throttle`, whose copy names sign-in attempts). Password and TOTP checks count every attempt; email change, invite and remind reserve a slot atomically before the send and give it back when the action throws. The TOTP confirm lives in `pages/settings/two-factor-setup-modal/`. Task 1 also replaces `FortifyServiceProvider::loginThrottled()`'s `back()` with `to_route('login')` (CD-13). Limits live in the components and routes, never in the actions, so M7d's bulk invitation can call `InviteUser` in a loop under its own limit.
 - **CD-4, links from `APP_URL`:** `Hosts::origin(string $host)` keeps the host it is given (validated by tenancy) and takes the scheme and the port from `config('app.url')`; a request's port, `X-Forwarded-Proto` and `X-Forwarded-Port` no longer reach any link. This amends spec §6.2 ("Tenant URL helper keeping scheme and port") and DEC-26's test `TenantUrlTest`: the helper keeps `APP_URL`'s scheme and port.
-- **CD-5, one lock order:** inside one transaction, rows are locked in this order and each class at most once: **(1)** the organisation the write concerns (`HostScope::lockForWrite()`; `HostScope::lockOrganisation(?int)`, new in Task 7, which refuses nothing, for user writes, which then check the archived state on the locked row; `Organisation::withTrashed()->lockForUpdate()` for archive, restore and purge; user actions and `AcceptInvitation` lock the target's organisation, `UpdateUser` takes none because it writes only the target row and its reset tokens); **(2)** the roles it changes or assigns, in id order; **(3)** one batch of `users` rows in id order, on `users` only (no join under `FOR UPDATE`), taken only through `LockoutGuard::lockUsers()` / `lockForRemoval()`, and decisions read the locked rows (FU2-5); **(4)** `model_has_roles`, then invitations, then sessions and password-reset tokens; **(5)** activity inserts last. No retry loop: a deadlock is a bug. The order goes into the guideline (Task 14) and is pinned by PostgreSQL-only tests that read the `for update` statements and the writes (UPDATE, DELETE, INSERT) through `DB::listen` (`lockStatements()`). A nested action may re-lock the organisation its caller already holds; that is harmless and the tests fold the repeat.
+- **CD-5, one lock order:** inside one transaction, rows are locked in this order and each class at most once: **(1)** the organisation the write concerns (`HostScope::lockForWrite()`; `HostScope::lockOrganisation(?int)`, new in Task 7, which refuses nothing, for user writes, which then check the archived state on the locked row; `Organisation::withTrashed()->lockForUpdate()` for archive, restore and purge; user actions and `AcceptInvitation` lock the target's organisation, `UpdateUser` takes none because it writes only the target row and its reset tokens); **(2)** the roles it changes or assigns, in id order; **(3)** one batch of `users` rows: one `SELECT … FOR UPDATE` on `users` only (no join), in id order. User administration (status, delete, roles, super admin) takes it through `LockoutGuard::lockUsers()` / `lockForRemoval()` and decides on the locked rows (FU2-5); `AcceptInvitation` and `CancelInvitation` lock the invitee's row alone; `ArchiveOrganisation` and `PurgeOrganisation` lock the organisation's users in one statement; **(4)** `model_has_roles`, then invitations, then sessions and password-reset tokens; **(5)** activity inserts last. No retry loop: a deadlock is a bug. The order goes into the guideline (Task 14) and is pinned by PostgreSQL-only tests that read the `for update` statements and the writes (UPDATE, DELETE, INSERT) through `DB::listen` (`lockStatements()`). A nested action may re-lock the organisation its caller already holds; that is harmless and the tests fold the repeat.
 - **CD-6, passkey failures leave a trace:** `CounterException` (a signature counter that did not increase: a cloned authenticator) is reported again; other `WebauthnException`s stay unreported. A failed passkey sign-in is recorded like a failed password sign-in (Task 3 reads the existing `ActivityEvent` for failed sign-ins and reuses it with `properties.method = 'passkey'`), with the user only when the credential resolves to one and, on a tenant host, the user is a member of that organisation (R1's rule: no other organisation's member and no super admin in a host's log); a 429 records nothing. The recorder is the auto-discovered `RequestHandled` listener `App\Listeners\RecordFailedPasskeySignIn`.
 - **CD-7, the second-factor login after setup on the home host:** the Herd stage sends a super admin with a confirmed second factor to `Hosts::url(Hosts::homeOf($user), '/login')`, the admin host, instead of the apex. Supersedes DEC-33 (14)'s apex target.
-- **CD-8, private install files:** `skv:bootstrap` writes `.env` with mode 0600 and `DatabaseStep` writes `.env.testing` with 0600, whatever `.env.example`'s mode (supersedes DEC-33 RL-1's "the example's mode" for these two files); a read failure of `.env.example` or `.env` stops the step with "Could not read :file." (`EnvFile::contents()`, Task 11) instead of throwing PHP's warning with an absolute path. A php-fpm that runs as another account than the one that ran the bootstrap then cannot read `.env`; the production checklist says to `chown` it or use 0640 with a shared group (Task 14).
+- **CD-8, private install files:** `skv:bootstrap` writes `.env` with mode 0600, Composer's `.env` one-liner (`post-root-package-install`, `composer setup`, which create `.env` before the bootstrap on every install route) chmods its copy 0600, and `DatabaseStep` writes `.env.testing` with 0600, whatever `.env.example`'s mode (supersedes DEC-33 RL-1's "the example's mode" for these two files); a read failure of `.env.example` or `.env` stops the step with "Could not read :file." (`EnvFile::contents()`, Task 11) instead of throwing PHP's warning with an absolute path. A php-fpm that runs as another account than the one that ran the bootstrap then cannot read `.env`; the production checklist says to `chown` it or use 0640 with a shared group (Task 14).
 - **CD-9, no ext-posix requirement:** the "this account" checks (`PrivateBackupTemp`, `PostgresBinaries`) need `posix_geteuid()`/`posix_getpwuid()`. They read the uid through `App\Support\ProcessAccount` (Task 12), null without ext-posix. Without ext-posix `PrivateBackupTemp` treats every directory as foreign (fail closed, so `backup:run` refuses), `PostgresBinaries` trusts only root-owned Herd paths, and the doctor's `pg-dump` row fails and says why while the backups module is on. Under euid 0 a temporary directory counts as ours only inside `storage_path()`.
 - **CD-10, the strict password rule outside local and testing:** the existing `Password::defaults()` rule (12 characters, letters, mixed case, numbers, symbols, uncompromised) applies in every environment except `local` and `testing`, so staging gets the production rule; local and testing keep min 8. `uncompromised()` calls api.pwnedpasswords.com, so a test that validates a staging password fakes HTTP (`Http::preventStrayRequests()` + `Http::fake()`).
 - **CD-11, impersonations that end without `impersonation.stop`:** documentation only (Task 14). When the impersonator is disabled, deleted, archived or purged, their session row is deleted and no request can write the stop entry; the start entry and the status change are the record.
 - **CD-12, `public/storage`:** setup creates the storage link in a step that always runs (Task 11 places it in `EnvironmentStep`, through `Toolchain` and `Process` like the other artisan children), because `FrontendStep` is skipped when a build exists.
 - **CD-13, vendor `back()` stays:** Laravel's validation redirect, Fortify's and laravel/passkeys' response classes use `back()` on CSRF-protected POSTs; a third party cannot drive them. The kit's own three call sites change: `LocaleController` (Task 4) and the 403 page's Back link (Task 6) use `ReturnUrl`, and `loginThrottled()` redirects to the login route (Task 1). The vendor paths are won't fix.
+- **Plan review (2026-10-16, wf_1a7b1baa-b8f):** five dimensions with a skeptic each; 21 findings, 19 confirmed, 18 folded into Tasks 1, 3, 5, 6, 7, 8, 11, 12, 13, 14, 15 and the global sections; K9 (HerdSiteStep::isComplete() ignoring the PHP version) went to M8.
 
 ## Requirement traceability
 
@@ -176,7 +178,7 @@ The full rows (evidence `file:line` on `a192dba`, smallest fix, the test that fa
 **Already fixed (44):** G1-07, G1-08, G1-09, G1-10, G1-11 (661e707); G2-04 (79d797a); G2-09 (add3e07); G2-10, G2-11, G4-09, G4-10, G4-11, G4-12 (ba2665d); G4-13 (8237faa); G5-02 (449a636); G5-06 (f035ae2); G5-11 (8cbc9a6); L7b-02, -04, -06, -07, -09, -17, -23, -24, -25, -27, -29, -32, -34, -37, -40, -41, -42, -43 (the binding), -46, -47, -48, -53, -54, -64 (the known case), -66, -83, -84 (M7b's fix waves). G4-10's residual is G2-06.
 **Obsolete (1):** L7b-82 (DEC-33 (32) is complete). **Duplicates (8):** L7b-01 = G6-06, L7b-08 = G6-07, L7b-13 = L7b-11, L7b-63 = L7b-61, L7b-65 = L7b-68, L7b-76 = L7b-77, L7b-79 = M7b's M1 (M8), L7b-80 = L7b-71.
 
-**M8 (27):** G4-04 (the viewer's DISTINCT queries), G5-04 (`Role::color()`), G5-08 (`LoginTrend` and mutable Carbon), G6-01 and G6-03 (`CreateOrganisationCommandTest` polish), L7b-10, -12, -15, -19, -20, -21, -22, -26, -28, -31, -33, -43 (a pty test), -49, -50, -55 (the `default =>` dataset arms in three files), -60, -67, -70, -71, -73's remaining tests, -74, -77, -78; plus G3-08's optional lang-key guard, the weak-test lists of the M4 and M5 memory notes and M7b's M1 (a kit-repository Flux Pro guard).
+**M8 (26 triaged ids plus the plan review's K9, and the M8 halves of L7b-43 and L7b-73):** G4-04 (the viewer's DISTINCT queries), G5-04 (`Role::color()`), G5-08 (`LoginTrend` and mutable Carbon), G6-01 and G6-03 (`CreateOrganisationCommandTest` polish), L7b-10, -12, -15, -19, -20, -21, -22, -26, -28, -31, -33, -43 (a pty test), -49, -50, -55 (the `default =>` dataset arms in three files), -60, -67, -70, -71, -73's remaining tests, -74, -77, -78; HerdSiteStep::isComplete() ignoring the PHP version (plan review K9: a served site without HTTPS records "Already done" and skips run()'s PHP 8.4 isolation, while confirm() and manualCommand() require 8.4; the fix adds `&& $this->runsSupportedPhp(...)` last and the `herd isolated` / `php -r` fakes in four test files); plus G3-08's optional lang-key guard, the weak-test lists of the M4 and M5 memory notes and M7b's M1 (a kit-repository Flux Pro guard).
 
 **Won't fix (8):** G3-08 (Flux/Blaze compile-time copy, upstream; DEC-29), L7b-36 (RL-16's exact `APP_URL` comparison), L7b-44 (`--answers=-` is for pipes), L7b-52 (macOS ACLs), L7b-59, -61, -62 (the System page limiter's fail-open and non-atomic count, by design), L7b-75 (`$wizardCommands`). Also not changed, as rulings: G4-02's behaviour (CD-11), the vendor `back()` paths (CD-13), L7b-64's general vendor `exec()` guard and L7b-65's clean-up half.
 
@@ -196,7 +198,7 @@ The full rows (evidence `file:line` on `a192dba`, smallest fix, the test that fa
    - `resources/views/layouts/base.blade.php`: Task 4 (the `$appearance` line); Task 9 leaves `<title>` as it is (DEC-29 (5)).
    - `app/Support/Locales.php`, `app/Tenancy/Auth/Impersonation.php`, `app/Actions/Settings/{UpdateLocale,UpdateAppearance}.php`: Task 4; Task 5 adds `Locales::forNextPage()` after `forErrorPage()`.
    - `app/Support/EnvFile.php`, `tests/Pest.php`'s `setupSandbox()`: Task 11. `tests/Pest.php`'s `lockStatements()`: Task 7.
-   - `lang/nl.json`, `lang/en.json`, `CHANGELOG.md`: every task adds its own keys and lines; `README.md`, `docs/handleiding.html`, `.ai/guidelines/skv3.md` and `docs/decisions.md`: Task 14 only (tasks list what Task 14 must say in their report).
+   - `lang/nl.json`, `lang/en.json`, `CHANGELOG.md`: every task adds its own keys and lines; `README.md`, `docs/handleiding.html`, `.ai/guidelines/skv3.md` and `docs/decisions.md`: Task 14 only (tasks list what Task 14 must say in their report), except the one `.env` command line in `docs/handleiding.html`, which Task 11 changes with `composer.json`'s `scripts` and `scripts/e2e-local.sh` because it quotes them.
 2. **Spec edits** that a behaviour change needs are made in the same task as the behaviour (Task 2: §4.2 and §6.2; Task 10: §5.3.4's access gate; Task 11: §5.3.3 steps 1–2), so tests and spec never disagree on a commit.
 3. **No new named GET route** in any task.
 
@@ -230,7 +232,7 @@ The full rows (evidence `file:line` on `a192dba`, smallest fix, the test that fa
 
 **Interfaces:**
 - Consumes:
-  - `RateLimiter::tooManyAttempts()`, `::increment(string $key, int $decaySeconds, int $amount)`, `::availableIn()`, `::clear()` (Laravel 13; the default cache store)
+  - `RateLimiter::tooManyAttempts()`, `::increment(string $key, int $decaySeconds, int $amount): int` (atomic; returns the new count), `::decrement(string $key, int $decaySeconds, int $amount): int`, `::attempts()`, `::availableIn()`, `::clear()` (Laravel 13; the default cache store)
   - `pageSnapshot(string $url, string $component)`, `callPageAction(array $snapshot, string $method, array $params = [], array $updates = [], ?string $host = null)`, `inviteMember()`, `acceptLinkFor()`, `usePasskeysModule()`, `asOrgAdmin()`, `asSuperAdmin()`, `onTenant()` (`tests/Pest.php`)
   - `App\Concerns\ResolvesCurrentUser::currentUser(): User`
 - Produces:
@@ -238,9 +240,12 @@ The full rows (evidence `file:line` on `a192dba`, smallest fix, the test that fa
     - `__construct(public string $name, public int $maxAttempts, public int $decaySeconds)` (throws `InvalidArgumentException` for `$maxAttempts < 1` or `$decaySeconds < 1`)
     - named limits `emailChange()` (3 / 600 s), `passwordUpdate()` (5 / 60 s), `twoFactorConfirm()` (5 / 60 s), `invite()` (10 / 60 s), `remind()` (10 / 60 s); M7d adds its own named constructor or calls `new UserActionLimit('bulk-invite', …)`
     - `key(User $user): string` = `"{name}:{user id}"`
-    - `ensureAvailable(User $user, string $field, int $cost = 1): void` — throws `ValidationException` on `$field` with "Too many attempts. Try again in :seconds seconds." when `$cost` more attempts would pass the limit; counts nothing
-    - `hit(User $user, int $cost = 1): void` — counts `$cost` attempts in a fixed window of `$decaySeconds` from the first hit
-    - `attempt(User $user, string $field, int $cost = 1): void` — `ensureAvailable()` then `hit()`, for limits that count every attempt
+    - `attempt(User $user, string $field, int $cost = 1): void` — counts `$cost` attempts first (`RateLimiter::increment()` returns the new count atomically) and throws `ValidationException` on `$field` with "Too many attempts. Try again in :seconds seconds." when that count passes the limit, so parallel requests cannot all read the old count (DEC-27 (2)); a refused attempt still counts (a burst guard, never given back); for limits that count every attempt
+    - `reserve(User $user, string $field, int $cost = 1): void` — `attempt()`, named for the completed-send limits: called before the action, which the caller wraps in `try { … } catch (Throwable $exception) { $limit->release($user); throw $exception; }`
+    - `release(User $user, int $cost = 1): void` — gives back `$cost` reserved attempts (`RateLimiter::decrement()`) when the action threw, so a typo or a refused address costs nothing
+    - `ensureAvailable(User $user, string $field, int $cost = 1): void` — the same refusal when `$cost` more attempts would pass the limit; counts nothing (a pre-check parallel requests can outrun; kept for M7d)
+    - `hit(User $user, int $cost = 1): void` — counts `$cost` attempts without a check, in a fixed window of `$decaySeconds` from the first hit (kept for M7d and the tests that fill a limit)
+    - the refusal is one private `refuse(User $user, string $field): never`
     - `$cost` outside `1…$maxAttempts` throws `InvalidArgumentException`, so a batch larger than the limit is the caller's validation error, never a silent pass
   - `App\Support\RateLimits\ThrottleKey::of(string $limiter, string $key): string`
   - route limiter `account-security` (10 per minute per user, every request) on `two-factor.enable`, `two-factor.confirm`, `two-factor.disable`, `two-factor.regenerate-recovery-codes` and `passkey.destroy`
@@ -249,7 +254,7 @@ The full rows (evidence `file:line` on `a192dba`, smallest fix, the test that fa
 
 **Notes for the implementer:**
 - **The refusal message.** CD-3 names `auth.throttle`, whose copy is "Too many login attempts" ("Te veel inlogpogingen"), which is wrong on an invite or email form. The limits use a new key, "Too many attempts. Try again in :seconds seconds.", next to the System page's existing "Too many attempts. Try again in a minute.". The sign-in limiter keeps `auth.throttle`.
-- **What counts.** The password and TOTP limits count every attempt before the secret is checked (`attempt()`). The email-change, invite and remind limits count only a send that went through (`ensureAvailable()` before the action, `hit()` after it), so a typo or a refused address costs nothing. The checks sit in the components, never in the actions (CD-3), so `RemindInvitation`'s cooldown is a rule of the invitation, not a limit of the actor.
+- **What counts.** The password and TOTP limits count every attempt before the secret is checked (`attempt()`). The email-change, invite and remind limits reserve a slot atomically before the send (`reserve()`) and give it back when the action throws (`release()` in a `catch (Throwable)` that rethrows), so a typo or a refused address costs nothing and parallel requests cannot pass the limit (DEC-27 (2): a check before and a count after the action lets a burst of parallel `/livewire/update` requests through, and Livewire's update route has no throttle). A refused attempt or reservation still counts and is never given back. The checks sit in the components, never in the actions (CD-3), so `RemindInvitation`'s cooldown is a rule of the invitation, not a limit of the actor.
 - **Livewire errors.** Livewire keeps only errors on component properties in the snapshot (`SupportValidation::dehydrate()`). The pending list and the accept page show `invitation`, which is no property, so those tests read the rendered HTML of the update.
 - **Why `ThrottleKey`.** `ThrottleRequests` stores a named limiter's `Limit` under `md5($limiterName.$limit->key)`, so clearing the `login:` bucket outside the middleware needs that hash. Pest's security preset bans `md5`; the hash is Laravel's storage format, not a security use, so the preset ignores this one class (no `hash('md5', …)` workaround).
 - **Fortify's own route replacements.** Fortify registers its routes while its provider boots, and `routes/web.php` loads after that, so a kit route with the same method, domain, prefix and path replaces the vendor one (FU3-3). `passkey.destroy` lives in `routes/passkeys.php`, because `usePasskeysModule(true)` replays that file (and not `routes/fortify.php`) when a test turns the module on after boot.
@@ -270,6 +275,7 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Support\RateLimits\UserActionLimit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
 beforeEach(function (): void {
@@ -313,6 +319,37 @@ it('checks without counting, and counts only what hit() is told (CD-3)', functio
     expect(fn () => $limit->ensureAvailable($user, 'email'))->toThrow(ValidationException::class);
 });
 
+it('counts an attempt before it checks it, so a refused attempt counts too (CD-3, DEC-27 (2))', function (): void {
+    $user = User::factory()->create();
+    $limit = new UserActionLimit('test-action', 5, 60);
+
+    foreach (range(1, 5) as $attempt) {
+        $limit->attempt($user, 'current_password');
+    }
+
+    expect(fn () => $limit->attempt($user, 'current_password'))->toThrow(ValidationException::class)
+        ->and(RateLimiter::attempts($limit->key($user)))->toBe(6);
+});
+
+it('reserves without a hit in between, refuses past the limit and takes a released slot back (CD-3, DEC-27 (2))', function (): void {
+    $user = User::factory()->create();
+    $limit = new UserActionLimit('test-send', 5, 60);
+
+    foreach (range(1, 5) as $reservation) {
+        $limit->reserve($user, 'email');
+    }
+
+    expect(fn () => $limit->reserve($user, 'email'))->toThrow(ValidationException::class);
+
+    // The refused reservation counted (6); two releases bring it back under the limit, so one more passes.
+    $limit->release($user);
+    $limit->release($user);
+    $limit->reserve($user, 'email');
+
+    expect(RateLimiter::attempts($limit->key($user)))->toBe(5)
+        ->and(fn () => $limit->reserve($user, 'email'))->toThrow(ValidationException::class);
+});
+
 it('weighs a batch by its cost and refuses a batch that would pass the limit (M7d)', function (): void {
     $user = User::factory()->create();
     $limit = new UserActionLimit('test-batch', 10, 3600);
@@ -322,7 +359,8 @@ it('weighs a batch by its cost and refuses a batch that would pass the limit (M7
 
     expect(fn () => $limit->ensureAvailable($user, 'emails', cost: 4))->toThrow(ValidationException::class)
         ->and(fn () => $limit->ensureAvailable($user, 'emails', cost: 11))->toThrow(InvalidArgumentException::class)
-        ->and(fn () => $limit->hit($user, cost: 0))->toThrow(InvalidArgumentException::class);
+        ->and(fn () => $limit->hit($user, cost: 0))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $limit->release($user, cost: 11))->toThrow(InvalidArgumentException::class);
 });
 
 it('opens again once the window has passed (CD-3)', function (): void {
@@ -467,13 +505,17 @@ it('counts every two-factor confirmation before it checks the code (CD-3, G1-01)
         ->and($member->fresh()?->two_factor_confirmed_at)->toBeNull();
 });
 
-it('counts sent invitations per inviter and refuses the one past ten a minute (CD-3, G1-01)', function () use ($errorsOf, $throttled): void {
+it('counts sent invitations per inviter, gives a refused one back and refuses the one past ten a minute (CD-3, G1-01)', function () use ($errorsOf, $throttled): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($organisation);
     $templateId = (string) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
     $snapshot = pageSnapshot(route('users.invite'), 'pages::users.invite');
     $invite = fn (string $email): TestResponse => callPageAction($snapshot, 'invite', updates: ['email' => $email, 'roles' => [$templateId]]);
     UserActionLimit::invite()->hit($admin, cost: 9);
+
+    // InviteUser refuses an invitation without a role; the component gives the reserved slot back.
+    expect($errorsOf(callPageAction($snapshot, 'invite', updates: ['email' => 'no-role@example.com', 'roles' => []])))->toHaveKey('roles')
+        ->and(RateLimiter::attempts(UserActionLimit::invite()->key($admin)))->toBe(9);
 
     expect($errorsOf($invite('tenth@example.com')))->toBe([])
         ->and(RateLimiter::attempts(UserActionLimit::invite()->key($admin)))->toBe(10)
@@ -674,7 +716,7 @@ it('sends one reminder per invitation per ten minutes, whoever sends it (CD-3, G
 
 Run: `php artisan test --compact tests/Feature/Support/UserActionLimitTest.php tests/Feature/Auth/ActionLimitsTest.php tests/Feature/Auth/LoginThrottleTest.php tests/Feature/Auth/FortifyRoutesTest.php tests/Feature/Invitations/RemindInvitationTest.php`
 
-Expected: FAIL (27 tests), as follows:
+Expected: FAIL (29 tests), as follows:
 - `UserActionLimitTest`, and the invite, pending-list and accept-page cases of `ActionLimitsTest`: `Class "App\Support\RateLimits\UserActionLimit" not found`.
 - Email change, password update and TOTP confirmation: the last call returns no errors (`Array &0 []`); nothing limits them.
 - `account-security`: the 11th request answers 200 (enable, disable, regenerate), 422 (confirm) or 404 (passkey) instead of 429.
@@ -758,7 +800,43 @@ final readonly class UserActionLimit
     }
 
     /**
-     * Refuses when $cost more attempts would pass the limit; counts nothing.
+     * Counts $cost attempts first and refuses when the new count passes the limit: RateLimiter::increment() returns
+     * that count atomically, so parallel requests cannot all read the old one (CD-3, DEC-27 (2)). A refused attempt
+     * still counts; it is a burst guard and is never given back. For limits that count every attempt.
+     *
+     * @throws ValidationException
+     */
+    public function attempt(User $user, string $field, int $cost = 1): void
+    {
+        $this->assertCost($cost);
+
+        if (RateLimiter::increment($this->key($user), $this->decaySeconds, $cost) > $this->maxAttempts) {
+            $this->refuse($user, $field);
+        }
+    }
+
+    /**
+     * Reserves $cost attempts before a completed-send action (email change, invite, remind), as attempt() does.
+     * The caller gives them back with release() when the action throws, so a refused address costs nothing.
+     *
+     * @throws ValidationException
+     */
+    public function reserve(User $user, string $field, int $cost = 1): void
+    {
+        $this->attempt($user, $field, $cost);
+    }
+
+    /** Gives back $cost reserved attempts of an action that did not go through. */
+    public function release(User $user, int $cost = 1): void
+    {
+        $this->assertCost($cost);
+
+        RateLimiter::decrement($this->key($user), $this->decaySeconds, $cost);
+    }
+
+    /**
+     * Refuses when $cost more attempts would pass the limit; counts nothing. A pre-check that parallel requests can
+     * outrun, so the kit's limits use attempt() or reserve(); kept for M7d.
      *
      * @throws ValidationException
      */
@@ -766,18 +844,12 @@ final readonly class UserActionLimit
     {
         $this->assertCost($cost);
 
-        if (! RateLimiter::tooManyAttempts($this->key($user), $this->maxAttempts - $cost + 1)) {
-            return;
+        if (RateLimiter::tooManyAttempts($this->key($user), $this->maxAttempts - $cost + 1)) {
+            $this->refuse($user, $field);
         }
-
-        throw ValidationException::withMessages([
-            $field => __('Too many attempts. Try again in :seconds seconds.', [
-                'seconds' => max(1, RateLimiter::availableIn($this->key($user))),
-            ]),
-        ]);
     }
 
-    /** Counts $cost attempts, after the action they stand for succeeded. */
+    /** Counts $cost attempts without a check (M7d; tests fill a limit with it). */
     public function hit(User $user, int $cost = 1): void
     {
         $this->assertCost($cost);
@@ -785,22 +857,25 @@ final readonly class UserActionLimit
         RateLimiter::increment($this->key($user), $this->decaySeconds, $cost);
     }
 
-    /**
-     * Refuses or counts at once: for limits that count every attempt, whatever its outcome.
-     *
-     * @throws ValidationException
-     */
-    public function attempt(User $user, string $field, int $cost = 1): void
-    {
-        $this->ensureAvailable($user, $field, $cost);
-        $this->hit($user, $cost);
-    }
-
     private function assertCost(int $cost): void
     {
         if ($cost < 1 || $cost > $this->maxAttempts) {
             throw new InvalidArgumentException("A cost of {$cost} does not fit the {$this->name} limit of {$this->maxAttempts}.");
         }
+    }
+
+    /**
+     * The refusal on the form's field, with the seconds left in the window.
+     *
+     * @throws ValidationException
+     */
+    private function refuse(User $user, string $field): never
+    {
+        throw ValidationException::withMessages([
+            $field => __('Too many attempts. Try again in :seconds seconds.', [
+                'seconds' => max(1, RateLimiter::availableIn($this->key($user))),
+            ]),
+        ]);
     }
 }
 ```
@@ -1178,13 +1253,14 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
 
 - [ ] **Step 5: The component limits and the reminder cooldown (G1-01, CD-3)**
 
-`resources/views/pages/settings/profile/profile.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Enums\Locale;`, and replace `updateProfileInformation()` with its docblock:
+`resources/views/pages/settings/profile/profile.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Enums\Locale;` and `use Throwable;` after `use Livewire\Component;`, and replace `updateProfileInformation()` with its docblock:
 
 ```php
     /**
      * Save the name and the language; a new email address only applies after it is confirmed through the
      * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10). Sending the
-     * confirmation link is limited per user (CD-3); a refusal saves nothing.
+     * confirmation link is limited per user (CD-3): the slot is reserved before anything is saved, so a refusal
+     * saves nothing, and given back when the request throws.
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
@@ -1201,7 +1277,7 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         $emailChangeLimit = UserActionLimit::emailChange();
 
         if ($email !== $user->email) {
-            $emailChangeLimit->ensureAvailable($user, 'email');
+            $emailChangeLimit->reserve($user, 'email');
         }
 
         $user->fill(['name' => $validated['name']])->save();
@@ -1214,8 +1290,14 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         }
 
         if ($email !== $user->email) {
-            $requestEmailChange->handle($user, $email);
-            $emailChangeLimit->hit($user);
+            try {
+                $requestEmailChange->handle($user, $email);
+            } catch (Throwable $exception) {
+                $emailChangeLimit->release($user);
+
+                throw $exception;
+            }
+
             $this->email = $user->email;
 
             Flux::toast(variant: 'success', text: __('We sent a confirmation link to :email.', ['email' => $email]));
@@ -1291,7 +1373,7 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
     }
 ```
 
-`resources/views/pages/users/invite/invite.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Models\Organisation;`, and replace `invite()`:
+`resources/views/pages/users/invite/invite.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Models\Organisation;` and `use Throwable;` after `use Spatie\Permission\Models\Role as RoleModel;`, and replace `invite()`:
 
 ```php
     public function invite(InviteUser $inviteUser): void
@@ -1310,30 +1392,35 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         $this->authorize('create', [Invitation::class, $organisation]);
 
         // CD-3: a per-user limit on sent invitations, here and not in InviteUser, so a bulk caller counts its own way.
+        // The slot is reserved before the send and given back when InviteUser refuses (DEC-27 (2)).
         $inviteLimit = UserActionLimit::invite();
-        $inviteLimit->ensureAvailable($this->currentUser(), 'email');
+        $inviteLimit->reserve($this->currentUser(), 'email');
 
-        $inviteUser->handle(
-            $this->currentUser(),
-            $organisation,
-            $email,
-            array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles),
-            Locale::from($this->locale),
-        );
+        try {
+            $inviteUser->handle(
+                $this->currentUser(),
+                $organisation,
+                $email,
+                array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles),
+                Locale::from($this->locale),
+            );
+        } catch (Throwable $exception) {
+            $inviteLimit->release($this->currentUser());
 
-        $inviteLimit->hit($this->currentUser());
+            throw $exception;
+        }
 
         session()->flash('status', __('Invitation sent to :email.', ['email' => Str::lower($email)]));
         $this->redirectRoute($this->returnRoute(), navigate: true);
     }
 ```
 
-`resources/views/pages/invitations/pending/pending.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Models\Organisation;`, and replace `remind()` with its docblock:
+`resources/views/pages/invitations/pending/pending.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Models\Organisation;` and `use Throwable;` after `use Livewire\WithPagination;`, and replace `remind()` with its docblock:
 
 ```php
     /**
      * Sends the invitation again with a renewed expiry (W5: refused once accepted, and within the cooldown, by the
-     * action), under the actor's reminder limit (CD-3).
+     * action), under the actor's reminder limit (CD-3): reserved before the send, given back when the action refuses.
      */
     public function remind(int $invitationId, RemindInvitation $remindInvitation): void
     {
@@ -1341,21 +1428,26 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         $this->authorize('remind', $invitation);
 
         $remindLimit = UserActionLimit::remind();
-        $remindLimit->ensureAvailable($this->currentUser(), 'invitation');
+        $remindLimit->reserve($this->currentUser(), 'invitation');
 
-        $remindInvitation->handle($this->currentUser(), $invitation);
-        $remindLimit->hit($this->currentUser());
+        try {
+            $remindInvitation->handle($this->currentUser(), $invitation);
+        } catch (Throwable $exception) {
+            $remindLimit->release($this->currentUser());
+
+            throw $exception;
+        }
 
         Flux::toast(variant: 'success', text: __('The invitation was sent again.'));
     }
 ```
 
-`resources/views/pages/invitations/accept/accept.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Support\Locales;`, and replace `resend()` with its docblock:
+`resources/views/pages/invitations/accept/accept.php`: add `use App\Support\RateLimits\UserActionLimit;` after `use App\Support\Locales;` and `use Throwable;` after `use Livewire\Component;`, and replace `resend()` with its docblock:
 
 ```php
     /**
      * Send the invitation again from the expired state (INV-11); RemindInvitation authorises. The actor's reminder
-     * limit is the pending list's (CD-3).
+     * limit is the pending list's (CD-3): reserved before the send, given back when the action refuses.
      */
     public function resend(RemindInvitation $remindInvitation): void
     {
@@ -1366,10 +1458,15 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         }
 
         $remindLimit = UserActionLimit::remind();
-        $remindLimit->ensureAvailable($actor, 'invitation');
+        $remindLimit->reserve($actor, 'invitation');
 
-        $remindInvitation->handle($actor, $this->invitation());
-        $remindLimit->hit($actor);
+        try {
+            $remindInvitation->handle($actor, $this->invitation());
+        } catch (Throwable $exception) {
+            $remindLimit->release($actor);
+
+            throw $exception;
+        }
 
         Flux::toast(variant: 'success', text: __('Invitation reminder sent.'));
     }
@@ -1442,7 +1539,7 @@ Expected: PASS.
 - [ ] **Step 8: Verify by mutation**
 
 For each mutation: `cp <file> /tmp/<name>.orig` (or the scratchpad), make the change, run the named test and confirm it fails, then `cp` the original back and confirm it passes. Never `git stash` (shared by every worktree). Name each mutation and its result in the task report.
-1. In `profile.php`, drop `$emailChangeLimit->hit($user);`. Expect 'sends at most three email-change links per ten minutes…' to fail (the fourth send goes through).
+1. In `profile.php`, replace `$emailChangeLimit->reserve($user, 'email');` with `$emailChangeLimit->ensureAvailable($user, 'email');`. Expect 'sends at most three email-change links per ten minutes…' to fail (nothing counts, so the fourth send goes through).
 2. In `security.php`, move the `attempt()` line below `$this->validate([...])`. Expect 'counts every password change attempt before it checks the current password' to fail (wrong passwords throw before they are counted, so the sixth try succeeds).
 3. In `UserActionLimit::ensureAvailable()`, replace `$this->maxAttempts - $cost + 1` with `$this->maxAttempts`. Expect 'weighs a batch by its cost…' to fail.
 4. In `FortifyServiceProvider::boot()`, drop `$this->clearLoginFailuresOnSignIn();`. Expect both G1-03 tests to fail.
@@ -1450,6 +1547,8 @@ For each mutation: `cp <file> /tmp/<name>.orig` (or the scratchpad), make the ch
 6. In `RemindInvitation`, drop the cooldown `if`. Expect 'sends one reminder per invitation per ten minutes…' to fail.
 7. In `loginThrottled()`, put `back()` back. Expect 'sends a throttled sign-in back to the login page, never to the Referer' to fail.
 8. In `routes/passkeys.php`, drop `'throttle:account-security'`. Expect the `delete a passkey` case of 'limits the account-security routes…' to fail, also in the modules-off run (the helper replays this file).
+9. In `UserActionLimit::attempt()`, check before counting again (`if (RateLimiter::tooManyAttempts($this->key($user), $this->maxAttempts - $cost + 1)) { $this->refuse($user, $field); }` then `RateLimiter::increment(...)`). Expect 'counts an attempt before it checks it…' to fail (5 instead of 6).
+10. In `invite.php`, drop `$inviteLimit->release($this->currentUser());` from the `catch`. Expect 'counts sent invitations per inviter, gives a refused one back…' to fail (10 instead of 9).
 
 - [ ] **Step 9: The gate, then commit**
 
@@ -1792,6 +1891,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify:
   - `resources/views/pages/settings/security/security.php` (written against Task 1's version, whose `updatePassword()` starts with `UserActionLimit::attempt(...)`; this task does not touch `updatePassword()` or the imports Task 1 added: `loadPasskeys()`, `confirmDelete()` and `deletePasskey()` start with a module guard, and a private `ensurePasskeysEnabled()` is added)
   - `resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.php` (one private reader of the stored codes, used by `downloadRecoveryCodes()` and `loadRecoveryCodes()`)
+  - `resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php` (the 'Regenerate codes' trigger leaves the `@if (filled($recoveryCodes))`, so codes that cannot be read can still be replaced)
   - `bootstrap/app.php` (`dontReport` loses `WebauthnException`; a `dontReportWhen` that keeps `CounterException` reported; a `report()` callback that logs it as one warning and stops)
   - `CHANGELOG.md`
 - Test:
@@ -1808,7 +1908,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `Tenant::current(): ?Organisation`
   - test helpers: `usePasskeysModule()`, `asMember()`, `onTenant()`, `pageSnapshot()`, `callPageAction()`, `recordedActivity()`; `PasskeyTest.php`'s file-level `registerPasskeyFor()`, `passkeyHost()`, `signInWithPasskey()`; `RecoveryCodesTest.php`'s `memberWithRecoveryCodes()`; `Tests\Support\SoftwareAuthenticator`
 - Produces:
-  - `App\Listeners\RecordFailedPasskeySignIn::handle(Illuminate\Foundation\Http\Events\RequestHandled $event): void` (final readonly, constructor `RecordActivity $recordActivity`). A `passkey.login` response with status 422, or a redirect whose session holds `errors`, writes `ActivityEvent::LoginFailed` with properties exactly `['method' => 'passkey']`. The subject is the passkey's user when `credential.rawId` (trailing `=` stripped) matches a stored `credential_id` and, on a tenant host, the user's `organisation_id` is the tenant's; otherwise the entry has no subject. A 429 records nothing.
+  - `App\Listeners\RecordFailedPasskeySignIn::handle(Illuminate\Foundation\Http\Events\RequestHandled $event): void` (final readonly, constructor `RecordActivity $recordActivity`). A `passkey.login` response with status 422, or a redirect whose session holds `errors`, writes `ActivityEvent::LoginFailed` with properties exactly `['method' => 'passkey']`. The subject is the passkey's user when `credential.rawId` is a base64url string that (trailing `=` stripped) matches a stored `credential_id` and, on a tenant host, the user's `organisation_id` is the tenant's and the user is not a super admin; otherwise the entry has no subject (any other `rawId`, invalid UTF-8 included, never reaches the database). A 429 records nothing. A failure while recording is reported (`report()`), never answered instead of the response: `RequestHandled` runs outside the kernel's exception handling.
   - The log line for a cloned authenticator: `Log::warning('A passkey was used with a signature counter that did not increase; the authenticator may have been cloned.', ['credential_id' => ?string, 'received_counter' => int, 'stored_counter' => int, 'host' => string, 'ip' => ?string])`. The default error report of that exception is stopped.
   - `CounterException` is reported (`ExceptionHandler::shouldReport()` is true); every other `WebauthnException` stays unreported (FU3-1).
 
@@ -1817,7 +1917,8 @@ Background for the implementer:
 - **G2-07:** `downloadRecoveryCodes()` calls Fortify's `recoveryCodes()` without a `try`. After an `APP_KEY` rotation without `APP_PREVIOUS_KEYS` that throws `DecryptException` (500). A value that decrypts to something other than a JSON list gives a `TypeError` in `array_filter()`, and on mount `loadRecoveryCodes()` assigns `null` to the typed `$recoveryCodes` (500 on the security page). One reader decrypts through `Fortify::currentEncrypter()`, as Fortify does, and returns `null` for either case.
 - **G2-03 (a):** `bootstrap/app.php` lists `WebauthnException` in `dontReport`. `Webauthn\Exception\CounterException` (final, extends `WebauthnException`) is thrown raw by `ThrowExceptionIfInvalid`, whose logger is a `NullLogger`, and it is not wrapped by `AuthenticatorAssertionResponseValidator`. So a cloned authenticator leaves no trace today.
 - **G2-03 (b):** `PasskeyLoginController::store()` fires no `Failed` event. The route is vendor-defined, so the kit reads the outcome from `RequestHandled`, which the HTTP kernel fires after the response is built. The tenant is still bound then (`CurrentTenant` is scoped and is not forgotten at the end of the pipeline). `StartSession` has already saved the session by then: saving ages the flash data, so `session()->has('errors')` is true exactly when this request flashed errors.
-- **R1 on tenant hosts:** a host's audit log never names another organisation's member or a super admin. That is the same rule as the password-reset entries in `RecordAuthenticationActivity`. On central hosts (central entries, which only super admins read) the passkey's user is named.
+- **R1 on tenant hosts:** a host's audit log never names another organisation's member or a super admin, also not a super admin promoted from this organisation (`SetSuperAdmin` keeps `organisation_id`). That is the same rule as the password-reset entries in `RecordAuthenticationActivity` after Task 8 (G4-01). On central hosts (central entries, which only super admins read) the passkey's user is named.
+- **A credential id from a form post:** `PasskeyVerificationRequest` only checks that `credential.rawId` is a string. A form post can carry invalid UTF-8 (`credential[rawId]=%C3%28`): `TrimStrings` keeps the bytes, `json_encode()` fails, the request answers a redirect with flashed errors, and a `where('credential_id', …)` with those bytes throws on PostgreSQL (SQLSTATE 22021; SQLite accepts them). `RequestHandled` is dispatched after the kernel's `try`/`catch`, so that throw would turn the refused sign-in into a 500. The listener therefore looks up only a base64url id and reports any failure of its own.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1875,10 +1976,22 @@ it('renders the security page with an error when the stored codes are not a list
 
     $this->get(route('security.edit'))->assertOk()->assertSee(__('Failed to load recovery codes'));
 });
+
+it('offers to regenerate codes it cannot read (G2-07)', function (): void {
+    $user = memberWithRecoveryCodes();
+    $user->forceFill(['two_factor_recovery_codes' => encrypt('not json')])->save();
+
+    $html = Livewire::withoutLazyLoading()->test('pages::settings.two-factor.recovery-codes')
+        ->assertHasErrors('recoveryCodes')
+        ->html();
+
+    // The trigger and the confirmation modal's button; the modal alone always renders one.
+    expect(substr_count($html, __('Regenerate codes')))->toBe(2);
+});
 ```
 
 `tests/Feature/Auth/PasskeyTest.php`: add these imports at their sorted places:
-- `use App\Enums\ActivityEvent;` before `use App\Models\Organisation;`
+- `use App\Authorization\SetSuperAdmin;` and `use App\Enums\ActivityEvent;` before `use App\Models\Organisation;`
 - `use Illuminate\Support\Facades\Log;` after `use Illuminate\Support\Facades\DB;`
 - `use Webauthn\Exception\CounterException;` after `use Webauthn\Exception\AuthenticatorResponseVerificationException;`
 - `use function Pest\Laravel\post;` after `use function Pest\Laravel\getJson;`
@@ -1945,7 +2058,13 @@ it('records a failed passkey sign-in without a user when the passkey names nobod
     match ($owner) {
         'another organisation\'s member' => registerPasskeyFor(User::factory()->for($beta)->create(), $authenticator, passkeyHost('tenant', $beta)),
         'a super admin' => registerPasskeyFor(User::factory()->superAdmin()->create(), $authenticator, passkeyHost('admin', $acme)),
-        'an unknown passkey' => null,
+        // SetSuperAdmin, the flag's only writer, keeps the organisation_id of a promoted member (G4-01's premise).
+        'a super admin promoted from this organisation' => registerPasskeyFor(
+            tap(User::factory()->for($acme)->create(), fn (User $promoted) => app(SetSuperAdmin::class)->handle($promoted, true)),
+            $authenticator,
+            passkeyHost('admin', $acme),
+        ),
+        default => null, // 'an unknown passkey': nothing is registered
     };
     onTenant($acme);
 
@@ -1954,7 +2073,7 @@ it('records a failed passkey sign-in without a user when the passkey names nobod
     $entry = recordedActivity(ActivityEvent::LoginFailed)->sole();
     expect([$entry->subject_id, $entry->organisation_id])->toBe([null, $acme->id])
         ->and($entry->getProperty('method'))->toBe('passkey');
-})->with(['an unknown passkey', 'another organisation\'s member', 'a super admin']);
+})->with(['an unknown passkey', 'another organisation\'s member', 'a super admin', 'a super admin promoted from this organisation']);
 
 it('records a failed passkey sign-in sent as a form post (CD-6)', function (): void {
     onTenant(Organisation::factory()->create(['slug' => 'acme']));
@@ -1967,6 +2086,17 @@ it('records a failed passkey sign-in sent as a form post (CD-6)', function (): v
 
     expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->getProperty('method'))->toBe('passkey');
 });
+
+it('records a form post whose credential id is not valid UTF-8 without a user instead of failing (CD-6)', function (): void {
+    onTenant(Organisation::factory()->create(['slug' => 'acme']));
+
+    // PostgreSQL refuses these bytes in a bound parameter (SQLSTATE 22021); SQLite accepts them.
+    post(route('passkey.login'), ['credential' => ['id' => 'x', 'rawId' => "\xC3\x28", 'type' => 'public-key', 'response' => ['clientDataJSON' => 'x']]])
+        ->assertRedirect()
+        ->assertSessionHasErrors('credential');
+
+    expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->subject_id)->toBeNull();
+});
 ```
 
 `clone $authenticator` copies the private counter (0 after registration). The original's sign-in stores counter 1, and the clone then presents 1 again, so `ThrowExceptionIfInvalid` throws `CounterException` (`1 > 1` is false). The existing 'does not report failed WebAuthn ceremonies (FU3-1)' test stays as it is and keeps passing.
@@ -1978,10 +2108,10 @@ Run: `php artisan test --compact tests/Feature/Passkeys/PasskeysModuleTest.php t
 Expected: FAIL, as follows:
 - The three G2-01 rows get 200 instead of 404. The module-on test already passes; it guards against an over-broad fix.
 - The G2-07 download rows throw "The MAC is invalid." and "array_filter(): Argument #1 ($array) must be of type array, null given".
-- The security page answers 500 with "Cannot assign null to property … $recoveryCodes".
+- The security page answers 500 with "Cannot assign null to property … $recoveryCodes"; 'offers to regenerate codes it cannot read' fails the same way on mount (with Step 4's reader but without the moved trigger it counts 1 instead of 2).
 - `shouldReport(CounterException)` is false.
 - The clone test finds no `warning` call.
-- The four failed-sign-in tests find no `auth.login_failed` entry (`sole()` throws `ItemNotFoundException`).
+- The five failed-sign-in tests find no `auth.login_failed` entry (`sole()` throws `ItemNotFoundException`).
 
 - [ ] **Step 3: The security page's module guard (G2-01)**
 
@@ -2119,6 +2249,36 @@ Replace `loadRecoveryCodes()` with these two methods:
 
 The FU3-4 check before it (two-factor off, or a `null` column) stays as it is and keeps its own message.
 
+`resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php`: with unreadable codes `$recoveryCodes` is `[]`, and the 'Regenerate codes' trigger sits inside `@if (filled($recoveryCodes))`, so the remedy Task 14 documents ("regenerate them") would be gone. Replace the block from `@if (filled($recoveryCodes))` to its `@endif` (the Copy, Download and Regenerate buttons) with:
+
+```blade
+            <div x-show="showRecoveryCodes" class="flex flex-wrap gap-2">
+                @if (filled($recoveryCodes))
+                    <flux:button
+                        icon="clipboard"
+                        variant="filled"
+                        x-data="{ copied: false, failed: false }"
+                        x-on:click="navigator.clipboard.writeText(@js(implode(PHP_EOL, $recoveryCodes))).then(() => { copied = true; setTimeout(() => copied = false, 2000) }).catch(() => { failed = true; setTimeout(() => failed = false, 4000) })"
+                    >
+                        <span x-show="! copied && ! failed">{{ __('Copy') }}</span>
+                        <span x-show="copied" x-cloak>{{ __('Copied') }}</span>
+                        <span x-show="failed" x-cloak>{{ __('Copying failed; select the codes and copy them yourself.') }}</span>
+                    </flux:button>
+
+                    <flux:button icon="arrow-down-tray" variant="filled" wire:click="downloadRecoveryCodes">
+                        {{ __('Download') }}
+                    </flux:button>
+                @endif
+
+                {{-- G2-07: also when the stored codes cannot be read; this component renders only while 2FA is on. --}}
+                <flux:modal.trigger name="confirm-regenerate-recovery-codes">
+                    <flux:button icon="arrow-path" variant="filled">{{ __('Regenerate codes') }}</flux:button>
+                </flux:modal.trigger>
+            </div>
+```
+
+Copy and Download stay inside the `@if`; the wrapper keeps the buttons' layout. `regenerateRecoveryCodes()` only writes new codes, so it works whatever the stored value was.
+
 - [ ] **Step 5: Report a cloned authenticator (G2-03 a, CD-6)**
 
 `bootstrap/app.php`: add `use Illuminate\Support\Facades\Log;` and `use Webauthn\Exception\CounterException;`, so the end of the import block reads:
@@ -2184,6 +2344,7 @@ use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Laravel\Passkeys\Passkeys;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * Records a failed passkey sign-in like a failed password sign-in (§4.8, CD-6): auth.login_failed with
@@ -2191,7 +2352,8 @@ use Symfony\Component\HttpFoundation\Response;
  * response: a 422 (a WebAuthn or validation failure, JSON) or a redirect that flashed errors (a form post).
  * A throttled request (429) is not a sign-in attempt. The entry names a user only when the posted credential
  * is one of their passkeys and, on a tenant host, they are the host's own member: never another organisation's
- * member or a super admin (R1). Auto-discovered.
+ * member or a super admin (R1). RequestHandled runs outside the kernel's exception handling, so a failure here is
+ * reported and never replaces the response. Auto-discovered.
  */
 final readonly class RecordFailedPasskeySignIn
 {
@@ -2205,7 +2367,12 @@ final readonly class RecordFailedPasskeySignIn
             return;
         }
 
-        $this->recordActivity->handle(ActivityEvent::LoginFailed, $this->ownerOf($request), ['method' => 'passkey']);
+        // An audit failure is reported, never answered instead of the response (a 500 for a refused sign-in).
+        try {
+            $this->recordActivity->handle(ActivityEvent::LoginFailed, $this->ownerOf($request), ['method' => 'passkey']);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**
@@ -2222,7 +2389,10 @@ final readonly class RecordFailedPasskeySignIn
     {
         $rawId = $request->input('credential.rawId');
 
-        if (! is_string($rawId) || $rawId === '') {
+        // A credential id is base64url (stored unpadded); anything else, invalid UTF-8 included, names nobody and never
+        // reaches the database: PostgreSQL refuses invalid UTF-8 (SQLSTATE 22021), and RequestHandled runs outside the
+        // kernel's exception handling, so a throw here would turn the refused sign-in into a 500.
+        if (! is_string($rawId) || preg_match('/^[A-Za-z0-9_-]{1,1400}={0,2}$/', $rawId) !== 1) {
             return null;
         }
 
@@ -2235,12 +2405,18 @@ final readonly class RecordFailedPasskeySignIn
 
         $organisation = Tenant::current();
 
-        return $organisation === null || $user->organisation_id === $organisation->id ? $user : null;
+        if ($organisation === null) {
+            return $user;
+        }
+
+        // R1 (as G4-01): a host's log names only its own members, never a super admin, also not one promoted from
+        // this organisation, who keeps its organisation_id.
+        return $user->organisation_id === $organisation->id && ! $user->isSuperAdmin() ? $user : null;
     }
 }
 ```
 
-Laravel's event discovery registers it from the `handle()` type hint, as it does `RecordAuthenticationActivity`. No provider changes, so `FortifyServiceProvider` (Task 1's file) stays untouched. The listener reads the credential id only through `is_string()`, so an array `credential.rawId` (G1-02's shape) records an entry without a user instead of failing. The passkey guest route has no signed-in user, so the entry has no causer, like a failed password sign-in.
+Laravel's event discovery registers it from the `handle()` type hint, as it does `RecordAuthenticationActivity`. No provider changes, so `FortifyServiceProvider` (Task 1's file) stays untouched. The listener reads the credential id only when it is a base64url string (`is_string()` and the pattern), so an array `credential.rawId` (G1-02's shape) or one with invalid UTF-8 records an entry without a user instead of failing, and anything else that fails while recording is reported, not answered. The passkey guest route has no signed-in user, so the entry has no causer, like a failed password sign-in.
 
 - [ ] **Step 7: Run the tests to verify they pass**
 
@@ -2254,8 +2430,11 @@ Revert each change locally, run the named test, expect it to fail, then restore 
 1. Empty the body of `ensurePasskeysEnabled()`. Expect all three rows of 'refuses the security page's passkey actions while the module is off…' to fail with 200.
 2. In `storedRecoveryCodes()`, replace the `try`/`catch` with a bare `$decrypted = Fortify::currentEncrypter()->decrypt(...)`. Expect the 'encrypted with another key' row to fail with "The MAC is invalid."
 3. Drop `->stop()` from the `CounterException` report callback. Expect 'refuses a cloned authenticator…' to fail on `shouldNotHaveReceived('error')`.
-4. In `RecordFailedPasskeySignIn::ownerOf()`, return `$user` without the tenant comparison. Expect the 'another organisation's member' and 'a super admin' rows to fail on `[1, 1]`.
+4. In `RecordFailedPasskeySignIn::ownerOf()`, return `$user` without the tenant comparison. Expect the 'another organisation's member', 'a super admin' and 'a super admin promoted from this organisation' rows to fail on `[1, 1]`.
 5. In `RecordFailedPasskeySignIn::failed()`, keep only the 422 comparison. Expect 'records a failed passkey sign-in sent as a form post' to fail.
+6. In `RecordFailedPasskeySignIn::ownerOf()`, drop `&& ! $user->isSuperAdmin()`. Expect the 'a super admin promoted from this organisation' row to fail on `[<promoted id>, <acme id>]`.
+7. In `RecordFailedPasskeySignIn::ownerOf()`, drop the `preg_match(...)` conjunct (keep `! is_string($rawId)`). Under `composer test:pgsql`, expect 'records a form post whose credential id is not valid UTF-8…' to fail: the lookup throws SQLSTATE 22021, `handle()` reports it and writes no entry, so `sole()` throws. (On SQLite it passes; that is why the guard exists.)
+8. In `recovery-codes.blade.php`, move the 'Regenerate codes' trigger back inside the `@if (filled($recoveryCodes))`. Expect 'offers to regenerate codes it cannot read' to fail with 1 instead of 2.
 
 - [ ] **Step 9: CHANGELOG**
 
@@ -2270,7 +2449,8 @@ Under `### Fixed`, append:
 
 ```markdown
 - With the passkeys module off, the security page refuses its passkey actions (404) even when a Livewire request calls them directly.
-- Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download.
+- Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download, and "Regenerate codes" stays available to replace them.
+- A failed passkey sign-in never names a super admin in an organisation's audit log, also not one promoted from that organisation, and a form post with a malformed credential id no longer answers with a server error.
 ```
 
 No lang keys: "Failed to load recovery codes" already exists in both files, and the log line is not translated.
@@ -2279,6 +2459,7 @@ No lang keys: "Failed to load recovery codes" already exists in both files, and 
 
 ```bash
 composer fix
+vendor/bin/phpstan analyse tests/Feature/Auth/PasskeyTest.php
 composer check
 composer test:pgsql
 php artisan config:clear && MODULE_IMPERSONATION=false MODULE_PASSKEYS=false vendor/bin/pest --parallel --exclude-group=browser
@@ -2287,12 +2468,13 @@ npm run build:setup && git diff --exit-code resources/setup/setup.css
 php artisan config:clear
 ```
 
-Task 3 changes no setup view, so expect no stylesheet diff.
+Run the `phpstan` line before `composer check`: the Pest prototypes never ran Larastan, and a `match` over a dataset's `string` needs its `default =>` arm (`match.unhandled`), as `passkeyHost()` has. Task 3 changes no setup view, so expect no stylesheet diff.
 
 ```bash
 git add app/Listeners/RecordFailedPasskeySignIn.php bootstrap/app.php \
     resources/views/pages/settings/security/security.php \
-    resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.php CHANGELOG.md \
+    resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.php \
+    resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php CHANGELOG.md \
     tests/Feature/Passkeys/PasskeysModuleTest.php tests/Feature/Settings/RecoveryCodesTest.php tests/Feature/Auth/PasskeyTest.php
 git commit -m "fix: guard the security page's passkey actions, read recovery codes safely and trace failed passkey sign-ins
 
@@ -3019,7 +3201,7 @@ Every string a user reads after a redirect or in a mail is worded in the languag
 - Consumes:
   - `Locales::resolve()` (private), `Locales::forRequest()` and `Locales::forErrorPage()` as on `main`. If Task 4 (G2-05) changed `resolve()` so that an impersonation's session locale wins, `forNextPage()` inherits that: it is called only once the impersonation has ended, so the account's language applies.
   - `Illuminate\Notifications\Notification::locale(string $locale): static` (the framework; `NotificationSender::queueNotification()` keeps `$notification->locale` on the queued copy, and `sendNow()` renders inside `withLocale()`)
-  - Task 1's profile page: its `email-change:<user id>` limit check in `updateProfileInformation()` stays where Task 1 put it. This task's edits replace only the two `Flux::toast(...)` lines and the closing `if ($localeChanged)` block.
+  - Task 1's profile page: its `email-change:<user id>` limit in `updateProfileInformation()` (the `reserve()` before the name is saved, and the `try`/`release()` around `RequestEmailChange::handle()`) stays where Task 1 put it. This task's edits replace only the docblock, the two `Flux::toast(...)` lines and the closing `if ($localeChanged)` block.
   - The global test helpers `startImpersonatingOverHttp()`, `asOrgAdmin()`, `onTenant()`, `useImpersonationModule()` (the impersonation files already call it in `beforeEach`)
 - Produces:
   - `App\Support\Locales::forNextPage(Request $request, ?User $user): Locale`: the language the next page for `$user` is answered in, or a guest's (session choice, then the browser, then `Locale::default()`) when `$user` is null. It never asks the guard (RL-20, RK-I1).
@@ -3151,7 +3333,9 @@ it('writes both email-change mails in the account\'s language when the worker se
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
     // The worker answers in its own language (here Dutch), not in the account's.
     app()->setLocale('nl');
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--tries' => 1]);
+    // Two jobs in one daemon run: --sleep=0 skips the 3-second sleep once the queue is empty, and --memory=0 keeps
+    // the loop from stopping after the first job once a long test process passes 128 MB (Worker::memoryExceeded).
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
 
     expect($deliveredSubjects())->toBe([
         'new@example.com' => 'Confirm your new email address',
@@ -3396,6 +3580,8 @@ This line has no test of its own. `phpunit.xml` sets `APP_LOCALE=en`, and the va
      * Save the name and the language; a new email address only applies after it is confirmed through the
      * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10); the result
      * is then flashed in that language for the reloaded page instead of a toast the reload would drop (G3-06).
+     * Sending the confirmation link is limited per user (CD-3): the slot is reserved before anything is saved,
+     * so a refusal saves nothing, and given back when the request throws.
      */
 ```
 
@@ -3580,7 +3766,7 @@ The kit's error pages cover every status, and their links never lead somewhere b
 
 **Interfaces:**
 - Consumes:
-  - Task 4's `App\Http\Support\ReturnUrl::previous(Request $request, string $fallback): string`. It returns the previous URL (the `Referer`, else the session's previous URL, as `url()->previous()` picks it) as a same-host relative path *with its query string*, for example `/dashboard?page=2`. When that URL is on another scheme, host or port, or there is none, it returns `$fallback`. It must not throw on a request without a started session: the partial renders it for a POST that failed before `StartSession`, such as a 503 in maintenance mode.
+  - Task 4's `App\Http\Support\ReturnUrl::previous(Request $request, string $fallback): string`. It returns the previous URL (the `Referer`, else the session's previous URL, as `url()->previous()` picks it) as a same-host root-relative path *with its query string*, for example `/dashboard?page=2`. Any http/https scheme and any port on this host count as this host, because only the path and query are kept. A root-relative path is kept as it is. Another host, a protocol-relative URL, a relative path (`users`), a non-http(s) scheme, a backslash, space or control character, or no previous URL gives `$fallback`. It must not throw on a request without a started session: the partial renders it for a POST that failed before `StartSession`, such as a 503 in maintenance mode.
   - `routes/web.php`'s `throttle:30,1` on `locale.update` (unchanged since `main`), and Task 4's `LocaleController`, which still answers a redirect.
   - `Handler::renderHttpException()` passing `$exception` (an `HttpExceptionInterface`) to every error view; the `View::composer(['errors::*', 'errors.*'])` in `AppServiceProvider`, which applies `Locales::forErrorPage()` to these new views too.
 - Produces:
@@ -3858,7 +4044,7 @@ The administrative actions lock rows in different orders today, so on PostgreSQL
 4. **Roles against role deletion (cycle 4).** `UpdateUserRoles` deletes the target's role assignment and then needs a key-share lock on the role; `DeleteRole` holds the role and deletes every assignment. Without a deadlock, the same race gives a foreign-key 500.
 5. **Demote against archive (the D-race, FU3-4).** `SetSuperAdmin` reads "is the organisation archived?" without a lock, so a demotion that runs while the organisation is archived leaves a member who is neither super admin nor archived. `RestoreUser` has the same unlocked check.
 
-CD-5 fixes all five with one order (organisation → roles → one users batch → assignments, invitations, sessions and reset tokens → activity). Every write of an organisation's users, roles and invitations now takes that organisation's row lock first, so those writes take turns per organisation. `LockoutGuard` becomes the one place that locks users rows: one statement, on `users` only, in id order. The guards decide on the locked rows.
+CD-5 fixes all five with one order (organisation → roles → one users batch → assignments, invitations, sessions and reset tokens → activity). Every write of an organisation's users, roles and invitations now takes that organisation's row lock first, so those writes take turns per organisation. `LockoutGuard` is the one place where user administration locks users rows: one statement, on `users` only, in id order. The guards decide on the locked rows. The other users locks are single statements of their own: `AcceptInvitation` and `CancelInvitation` lock the invitee's row alone, `ArchiveOrganisation` and `PurgeOrganisation` the organisation's users.
 
 The task also closes two smaller items:
 - **G2-06** (G4-10's residual). RK-B3 in `UpdateUserRoles` looked at the roles a pending user still holds, so an invitee whose only custom role was deleted (`DeleteRole` removes it from its holders) counted as fresh and could be given any role, the organisation admin template included. RK-B3 is now decided on the locked status and on whether an invitation row exists. InviteUser's first assignment runs before the invitation exists.
@@ -4014,8 +4200,9 @@ use Spatie\Permission\Models\Role as RoleModel;
 */
 
 /**
- * The tables of the explicit row locks, in order, with a repeat of the table just locked folded into one
- * (InviteUser's nested UpdateUserRoles locks the organisation it already holds again).
+ * The tables of the explicit row locks, in order. Only a repeat of the organisation lock is merged (InviteUser's
+ * nested UpdateUserRoles locks the organisation it already holds again); any other table locked twice is a CD-5
+ * violation and shows up twice (G4-06 was two users batches in a row).
  *
  * @param  list<array{statement: string, table: string, sql: string, bindings: list<mixed>}>  $statements
  * @return list<string>
@@ -4024,7 +4211,7 @@ $lockedTables = function (array $statements): array {
     $tables = [];
 
     foreach ($statements as $statement) {
-        if ($statement['statement'] === 'for update' && end($tables) !== $statement['table']) {
+        if ($statement['statement'] === 'for update' && ! ($statement['table'] === 'organisations' && end($tables) === 'organisations')) {
             $tables[] = $statement['table'];
         }
     }
@@ -4418,6 +4605,21 @@ it('keeps a pending user\'s roles as invited after deleting their only role left
 
     expect(roleNamesOf($invitee, $organisation))->toBe([]);
 });
+
+it('decides again on the locked row that the target may hold organisation roles (FU2-5)', function (): void {
+    // Fails before this task: the Gate and the team read the model, which a promotion that committed while this
+    // write waited for the organisation lock leaves stale, so team roles landed on a super admin (W1).
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $helpdesk = teamRole($organisation, 'Helpdesk');
+    $target = User::factory()->for($organisation)->create();
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(['is_super_admin' => true]);
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($admin, $target, [(int) $helpdesk->id]))
+        ->toThrow(AuthorizationException::class);
+
+    expect(roleNamesOf($target, $organisation))->toBe([]);
+});
 ```
 
 `tests/Feature/Users/UsersEditTest.php`: add right before `it('asks for a fresh password confirmation before switching super admin and comes back to this page (RL-18)', …`. All imports are already there.
@@ -4499,6 +4701,7 @@ Expected: FAIL, as follows:
 - **LockoutGuardTest:** all four fail with "Call to undefined method App\Authorization\LockoutGuard::lockUsers()".
 - **HostScopeTest:** the new test fails with "Call to undefined method App\Tenancy\HostScope::lockOrganisation()".
 - **G2-06:** "Exception [Illuminate\Validation\ValidationException] not thrown".
+- **FU2-5, the locked target:** "Exception [Illuminate\Auth\Access\AuthorizationException] not thrown" (the stale model passes the Gate and Helpdesk is assigned).
 - **G4-08, page:** fails on the first expectation: the stored name is `Olga de Admin`.
 - **G4-08, UpdateUser:** fails with "Failed asserting that false is true": the link was forgotten inside the rolled-back transaction.
 - **LockOrderTest:** every test is skipped ("needs PostgreSQL row locks").
@@ -4567,8 +4770,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * The users lock of every administrative write and the lock-out guards (§4.4, §4.6, §6.3): never remove the last
- * active, non-deleted super admin or the last active organisation admin of a team.
+ * The one place where user administration (status, delete, roles, super admin) locks users rows, and the lock-out
+ * guards (§4.4, §4.6, §6.3): never remove the last active, non-deleted super admin or the last active organisation
+ * admin of a team. Invitations lock the invitee's row alone and archive/purge the organisation's users (CD-5).
  *
  * A write locks its users rows once, in one batch (CD-5 step 3): one SELECT … FOR UPDATE on users only (no join),
  * in id order, after the organisation lock (step 1) and the role locks (step 2). The batch holds the target and
@@ -4938,8 +5142,8 @@ final readonly class LockoutGuard
 - [ ] **Step 5: Roles, RK-B3 and the invitations (cycle 4, G2-06, G4-07)**
 
 `app/Actions/Users/UpdateUserRoles.php`:
-1. Add `use App\Tenancy\HostScope;` after `use App\Models\User;`.
-2. In the class docblock, append "The locks follow CD-5: the organisation, the assigned roles, then one users batch; decisions read the locked rows (FU2-5)." to the last sentence. Then add ` *` and ` * @phpstan-import-type LockedUser from LockoutGuard` before ` */`.
+1. Add `use App\Tenancy\HostScope;` after `use App\Models\User;` (`Illuminate\Auth\Access\AuthorizationException` is already imported).
+2. In the class docblock, append "The locks follow CD-5: the organisation, the assigned roles, then one users batch; decisions read the locked rows (FU2-5), the policy's 'not a super admin, still in this organisation, not deleted' included." to the last sentence. Then add ` *` and ` * @phpstan-import-type LockedUser from LockoutGuard` before ` */`.
 3. Replace `handle()` and `resolveRoles()` with `handle()`, `lockedRoles()` and the new `guardInvitedRoles()`:
 
 ```php
@@ -4965,6 +5169,12 @@ final readonly class LockoutGuard
 
                 if ($stored === null) {
                     return;
+                }
+
+                // FU2-5: the policy's preconditions, decided again on the locked row; a promotion, a move or a
+                // deletion that committed while this write waited for the organisation lock is seen here.
+                if ($stored['is_super_admin'] || $stored['organisation_id'] !== $teamId || $stored['deleted']) {
+                    throw new AuthorizationException;
                 }
 
                 $this->guardInvitedRoles($target, $stored['status']);
@@ -5252,6 +5462,8 @@ Revert each change locally, confirm the named test fails, restore it, and confir
 5. In `UpdateUser`, call `Cache::forget(...)` directly again. Expect "keeps a pending self-service email change when the caller's transaction rolls back (G4-08)" to fail.
 6. In `AcceptInvitation`, move the `HostScope::lockForWrite(...)` line below the invitation lock. Expect the PostgreSQL dataset case "AcceptInvitation (G4-07)" to fail with `['invitations', 'organisations', 'users']`.
 7. In `LockoutGuard::lockUsers()`, lock the team admins with the old `model_has_roles` join (`DB::table('model_has_roles')->join('users', …)->lockForUpdate()`) before the users statement. Expect the PostgreSQL test "locks one users batch, on users only, … (G4-06)" to fail on `not->toContain('model_has_roles')`.
+8. In `SetSuperAdmin::handle()`, add `$this->lockoutGuard->lockUsers([$user->id]);` before the users batch (G4-06's shape: two users batches in a row). Expect both SetSuperAdmin dataset cases of 'takes its row locks in the one order of CD-5' to fail with `['organisations', 'users', 'users']`.
+9. In `UpdateUserRoles::handle()`, drop the FU2-5 `if` on the locked row. Expect 'decides again on the locked row that the target may hold organisation roles (FU2-5)' to fail.
 
 - [ ] **Step 9: CHANGELOG**
 
@@ -5492,7 +5704,9 @@ it('delivers both queued invitation mails while the invitation is open (W10)', f
     $queueBothMails();
 
     // --sleep=0: with --stop-when-empty the worker otherwise sleeps 3 seconds once the queue is empty.
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1]);
+    // --memory=0: the daemon loop stops after the first job once the test process passes 128 MB
+    // (Worker::memoryExceeded), which a long parallel or sequential run reaches.
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
 
     // inviteMember() invites in the default language; the worker renders each mail in it.
     expect(DB::table('jobs')->count())->toBe(0)
@@ -5514,7 +5728,7 @@ it('drops a queued invitation mail without a failed job once the invitation is g
         $this->travel(8)->days();
     }
 
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1]);
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
 
     // A failed job would warn on the health report and the System page, and queue:retry would only fail it again.
     expect(DB::table('jobs')->count())->toBe(0)
@@ -5793,6 +6007,8 @@ No new `__()` key. The subjects and templates keep their keys, and the `LogicExc
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `php artisan test --compact tests/Feature/Audit tests/Feature/Invitations tests/Feature/Console/CreateOrganisationCommandTest.php tests/Feature/Setup/Steps/DatabaseStepTest.php tests/Feature/LangCoverageTest.php tests/Arch`
+
+Then `vendor/bin/pest tests/Feature` (sequential, one long-lived process): the two daemon-worker tests of `InvitationMailTest` must also pass there, not only when the file runs alone. Without `'--memory' => 0` the worker stops after the first of the two jobs once the process passes 128 MB, and `jobs` keeps 1 row.
 
 Expected: PASS. The arch preset (`tests/Arch/PresetsTest.php`, the Laravel preset) accepts the abstract base: every class in `App\Mail` extends `Mailable` and implements `ShouldQueue`.
 
@@ -7475,9 +7691,12 @@ Expected: all green. The setup stylesheet is unchanged, because this task edits 
   - `app/Setup/Support/EnvFile.php` (new `contents()`; `all()` and `set()` read through it: L7b-03)
   - `app/Setup/Support/Bootstrap.php` (`.env` written 0600 from `contents()`: L7b-03, L7b-05, CD-8)
   - `app/Setup/Steps/DatabaseStep.php` (`.env.testing` written 0600 from `contents()`: L7b-03, CD-8)
+  - `composer.json` (only `scripts`: the `.env` one-liner of `post-root-package-install` and of `setup` chmods the copy 0600, CD-8; `composer.lock` does not change, its content hash does not cover `scripts`)
+  - `scripts/e2e-local.sh` (the clone route repeats that one-liner)
+  - `docs/handleiding.html` (the clone instructions quote it; the one line of this file outside Task 14)
   - `tests/Pest.php` (`setupSandbox()` links `public/storage` as setup leaves it)
   - `lang/nl.json`, `lang/en.json` (one key)
-  - `docs/superpowers/specs/2026-10-10-skv3-design.md` (§5.3.3 steps 1 and 2)
+  - `docs/superpowers/specs/2026-10-10-skv3-design.md` (§5.3.3 steps 1 and 2; the one-liner in §5.2 and §5.3)
   - `CHANGELOG.md`
 - Test:
   - `tests/Feature/Setup/Wizard/DetachedStepLauncherTest.php`
@@ -7485,6 +7704,7 @@ Expected: all green. The setup stylesheet is unchanged, because this task edits 
   - `tests/Feature/Setup/Doctor/DoctorTest.php`, `tests/Feature/Setup/Doctor/ChecksTest.php` (each removes the sandbox's new link where it needs none)
   - `tests/Feature/Setup/BootstrapTest.php`
   - `tests/Feature/Setup/Steps/DatabaseStepTest.php`
+  - `tests/Feature/Tooling/ComposerScriptsTest.php` (the one-liner, three expectations)
 
 No setup view changes, so `resources/setup/setup.css` stays as it is.
 
@@ -7953,13 +8173,28 @@ it('stops with a message instead of writing an empty .env.testing when .env cann
 
 (The two `posix_geteuid()` skips follow the existing `StateFileTest` and `ChecksTest` cases. The sandbox is removed with `File::deleteDirectory()`, which unlinks a 0000 file.)
 
+`tests/Feature/Tooling/ComposerScriptsTest.php`: on every real install route `.env` exists before `skv:bootstrap` runs. The Herd GUI, `laravel new` and `composer create-project` run Composer's `post-root-package-install` hook, and `composer setup` (and the e2e clone route) run the same one-liner, `file_exists('.env') || copy('.env.example', '.env')`. PHP's `copy()` creates the file as `0666 & ~umask` (0644) whatever the example's mode, so Bootstrap's 0600 branch never runs there, and `APP_KEY`, `HEALTH_CHECK_KEY` and `BACKUP_ARCHIVE_PASSWORD` land in a world-readable file (`EnvFile::set()` keeps the mode). In the three expectations that spell the one-liner ('runs skv:bootstrap from the Composer and installer hooks', 'sets up through skv:bootstrap and skv:install' and 'ends composer setup with the CLI after the commands the clone route repeats'), replace
+
+```php
+"@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+```
+
+with
+
+```php
+"@php -r \"file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));\""
+```
+
+'repeats the commands of composer setup in the clone route of scripts/e2e-local.sh' stays as it is: it compares the clone route with `composer.json`, so it fails until both change.
+
 - [ ] **Step 13: Run them and see them fail**
 
-Run: `php artisan test --compact tests/Feature/Setup/BootstrapTest.php tests/Feature/Setup/Steps/DatabaseStepTest.php`
+Run: `php artisan test --compact tests/Feature/Setup/BootstrapTest.php tests/Feature/Setup/Steps/DatabaseStepTest.php tests/Feature/Tooling/ComposerScriptsTest.php`
 
-Expected: four failures.
+Expected: seven failures.
 - The two mode tests: "436 is identical to 384" (0664 copied) and "420 is identical to 384" (0644 copied).
 - The two read tests: the exception message is "file_get_contents(/…/.env.example): Failed to open stream: Permission denied", not "Could not read .env.example.". The same goes for `.env`. See the evidence correction above.
+- The three `ComposerScriptsTest` expectations: `composer.json` still holds the old one-liner.
 
 - [ ] **Step 14: Read through `EnvFile::contents()`, write 0600**
 
@@ -8021,7 +8256,29 @@ with
         }
 ```
 
-`EnvFile::set()` keeps a file's mode, so the `APP_KEY` and secrets written next keep `.env` at 0600.
+`EnvFile::set()` keeps a file's mode, so the `APP_KEY` and secrets written next keep `.env` at 0600. Bootstrap's own write covers a bare `skv:bootstrap` on a clone without `.env`; the install routes create `.env` earlier, through Composer's hook:
+
+`composer.json`, in `scripts`, replace the one-liner in `post-root-package-install` and the third entry of `setup`
+
+```json
+"@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+```
+
+with
+
+```json
+"@php -r \"file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));\""
+```
+
+Nothing else in `composer.json` changes, and `composer.lock` does not (its content hash covers `require`, `extra` and the like, not `scripts`). Run `composer validate --no-check-publish`: it must report the file valid and the lock file up to date.
+
+`scripts/e2e-local.sh`, in the `clone)` route, replace `&& php -r "file_exists('.env') || copy('.env.example', '.env');" \` with:
+
+```bash
+                && php -r "file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));" \
+```
+
+`docs/handleiding.html` (the clone instructions, "Bereid de app voor"): replace `php -r "file_exists('.env') || copy('.env.example', '.env');"` with `php -r "file_exists('.env') || (copy('.env.example', '.env') &amp;&amp; chmod('.env', 0600));"` (inside `<pre><code>`, so `&&` is written `&amp;&amp;`).
 
 `app/Setup/Steps/DatabaseStep.php`, in `writeEnvironment()`: replace
 
@@ -8050,13 +8307,14 @@ with
 
 - [ ] **Step 15: Run them and see them pass; verify by mutation**
 
-Run: `php artisan test --compact tests/Feature/Setup tests/Feature/Console tests/Feature/LangCoverageTest.php tests/Feature/Localisation/LangFilesTest.php`
-Expected: PASS.
+Run: `php artisan test --compact tests/Feature/Setup tests/Feature/Console tests/Feature/Tooling/ComposerScriptsTest.php tests/Feature/LangCoverageTest.php tests/Feature/Localisation/LangFilesTest.php`
+Expected: PASS. Also `composer validate --no-check-publish` (valid, lock file up to date) and `git diff --stat -- composer.lock` (empty).
 
 Mutations:
 1. In `Bootstrap`, write `fileperms(…) & 0777` again. The Bootstrap mode test fails.
 2. In `contents()`, return `''` instead of throwing. Both read tests fail. Each step writes an empty copy, and nothing is thrown.
 3. In `DatabaseStep`, write with `0644`. The DatabaseStep mode test fails.
+4. In `scripts/e2e-local.sh`, put the old one-liner back in the clone route. Expect 'repeats the commands of composer setup in the clone route of scripts/e2e-local.sh' to fail with "The clone route lacks […]".
 
 - [ ] **Step 16: Spec, CHANGELOG, commit**
 
@@ -8066,14 +8324,19 @@ Mutations:
 Writes `.env.testing` (`<db>_test`, or in-memory SQLite) with mode 0600, like the `.env` that `skv:bootstrap` creates (CD-8).
 ```
 
+In the same spec, replace the one-liner in §5.2 (the `post-root-package-install` bullet) and in §5.3's `composer setup` line the same way as in `composer.json`: `file_exists('.env') || copy('.env.example', '.env');` becomes `file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));` (in §5.3 inside the escaped `\"…\"` string, as there).
+
 `CHANGELOG.md`, `### Changed`, append:
 
 ```markdown
-- `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.
+- `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`, also when Composer's install hook (`post-root-package-install`, `composer setup`) creates `.env`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.
 ```
 
 ```bash
-git add app/Setup/Support/EnvFile.php app/Setup/Support/Bootstrap.php app/Setup/Steps/DatabaseStep.php tests/Feature/Setup/BootstrapTest.php tests/Feature/Setup/Steps/DatabaseStepTest.php lang/en.json lang/nl.json docs/superpowers/specs/2026-10-10-skv3-design.md CHANGELOG.md
+git add app/Setup/Support/EnvFile.php app/Setup/Support/Bootstrap.php app/Setup/Steps/DatabaseStep.php \
+    composer.json scripts/e2e-local.sh docs/handleiding.html \
+    tests/Feature/Setup/BootstrapTest.php tests/Feature/Setup/Steps/DatabaseStepTest.php tests/Feature/Tooling/ComposerScriptsTest.php \
+    lang/en.json lang/nl.json docs/superpowers/specs/2026-10-10-skv3-design.md CHANGELOG.md
 git commit -m "fix: write .env and .env.testing 0600 and refuse an env file that cannot be read
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -8105,7 +8368,7 @@ Expected: all green. The setup stylesheet is unchanged, because this task edits 
   - `app/Support/Backups/BackupEncryption.php` (`problem()` names the cause; `available()` delegates to it)
   - `app/Setup/Doctor/Checks/LastBackupCheck.php` (one message and fix per cause, G6-05; a `$zipHasAes256` seam)
   - `config/filesystems.php` (`backups` disk `visibility => private`, G6-10)
-  - `app/Support/Backups/ConfigurePgDump.php` (`passSslMode()` public, narrowed to `--db-name`; the listener no longer exports `PGSSLMODE`, L7b-68)
+  - `app/Support/Backups/ConfigurePgDump.php` (`passSslMode()` public, narrowed to `--db-name`; the listener exports `PGSSLMODE` only as the backstop, when `backup:run` is not the app's `BackupRunCommand`, L7b-68, L-05)
   - `app/Console/Commands/BackupRunCommand.php` (calls `passSslMode()` once `--config` and `--db-name` are known)
   - `app/Support/Backups/PrivateBackupTemp.php` (the uid from `ProcessAccount`, fail closed without ext-posix, L7b-51; under euid 0 only below `storage_path()`, L7b-69; `MESSAGE` extended)
   - `app/Setup/Doctor/PostgresBinaries.php` (the uid from `ProcessAccount`; without ext-posix only root-owned Herd candidates; `processUserId()` removed)
@@ -8299,7 +8562,7 @@ it('writes archives on the backups disk readable by this account only (§4.9, G6
 });
 ```
 
-**`backup:run --config` / `--db-name` and `PGSSLMODE` (L7b-68).** `tests/Feature/Backups/ConfigurePgDumpTest.php`: add `use Tests\Fixtures\PgSslModeSnapshot;` to the imports. Replace the `PGSSLMODE` part of `beforeEach()` (the comment and the four lines from `$this->pgSslMode = [...]` to `unset(...)`) and the whole `afterEach()`:
+**`backup:run --config` / `--db-name` and `PGSSLMODE` (L7b-68).** `tests/Feature/Backups/ConfigurePgDumpTest.php`: add `use Illuminate\Support\Facades\Artisan;` after `use Illuminate\Console\Events\CommandStarting;`, `use Spatie\Backup\Commands\BackupCommand;` before `use Symfony\Component\Console\Input\ArrayInput;` and `use Tests\Fixtures\PgSslModeSnapshot;` to the imports. Replace the `PGSSLMODE` part of `beforeEach()` (the comment and the four lines from `$this->pgSslMode = [...]` to `unset(...)`) and the whole `afterEach()`:
 
 ```php
     // L-05: ConfigurePgDump exports PGSSLMODE; start without one and put the original back afterwards.
@@ -8383,6 +8646,20 @@ it('leaves PGSSLMODE to backup:run, which knows its --config, for every command 
     expect(getenv('PGSSLMODE'))->toBeFalse()
         ->and($_ENV)->not->toHaveKey('PGSSLMODE');
 })->with(['backup:run', 'migrate']);
+
+it('still exports the default sources\' sslmode should the package\'s command hold backup:run again (L-05, L7b-68)', function () use ($starting): void {
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
+        'database.connections.pgsql.sslmode' => 'verify-full',
+        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
+    ]);
+    // The backstop path, bound as RefuseUnencryptedBackupsTest binds it: nothing else would export PGSSLMODE.
+    Artisan::registerCommand(app(BackupCommand::class));
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+
+    expect(getenv('PGSSLMODE'))->toBe('verify-full');
+});
 ```
 
 (The old 'leaves PGSSLMODE alone for other commands and other databases' rows live on: 'a SQLite source' in the third test, 'another command' as the `migrate` row of the last.)
@@ -8520,7 +8797,7 @@ Expected: FAIL, as follows:
 - HealthChecksTest: the three message expectations get 'Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty or this PHP zip has no AES-256'; the AES-256 test fails with "Unknown named parameter $zipHasAes256".
 - BackupEncryptionTest fails to load its dataset: `BackupEncryption::NO_PASSWORD` is undefined.
 - 'writes archives on the backups disk readable by this account only': 420 (0644) instead of 384 (0600).
-- ConfigurePgDumpTest: "Call to private method …passSslMode()"; the listener's `backup:run` row sees `verify-full` instead of false.
+- ConfigurePgDumpTest: "Call to private method …passSslMode()"; the listener's `backup:run` row sees `verify-full` instead of false. The backstop test passes already (today's listener exports on every `backup:run`); mutation 7 proves it.
 - BackupRunCommandTest's three sslmode rows: `getenv('PGSSLMODE')` is false (without `WithConsoleEvents` no listener runs, and `handle()` exports nothing).
 - The PrivateBackupTemp, PostgresBinaries and ChecksTest ext-posix and root tests: "Class "App\Support\ProcessAccount" not found".
 
@@ -8695,16 +8972,26 @@ In `run()`, replace the `if (! BackupEncryption::available()) { … }` block wit
 
 - [ ] **Step 4: `PGSSLMODE` for the run's own sources (L7b-68)**
 
-`app/Support/Backups/ConfigurePgDump.php`: replace the class docblock's last paragraph:
+`app/Support/Backups/ConfigurePgDump.php`: add `use App\Console\Commands\BackupRunCommand;` before `use App\Setup\Doctor\DoctorContext;` and `use Illuminate\Support\Facades\Artisan;` after `use Illuminate\Console\Events\CommandStarting;`. Replace the class docblock's last paragraph:
 
 ```php
  * passSslMode() passes the source connection's sslmode as PGSSLMODE (L-05), because pg_dump reads its TLS mode from
  * the environment, not from the Laravel connection. BackupRunCommand calls it once --config and --db-name are known
- * (L7b-68): this listener runs before handle() and would read the default configuration's sources.
+ * (L7b-68): this listener runs before handle() and would read the default configuration's sources. Should the
+ * package's command hold the name again (as RefuseUnencryptedBackups and PrivateBackupTemp guard against), this
+ * listener exports the default sources' mode itself, as before, so pg_dump never falls back to libpq's `prefer`.
  */
 ```
 
-In `__invoke()`, delete the line `$this->passSslMode();` and the blank line after it. Replace the docblock, signature and loop head of `passSslMode()`:
+In `__invoke()`, replace the line `$this->passSslMode();` with:
+
+```php
+        // L7b-68: BackupRunCommand exports PGSSLMODE once --config and --db-name are known; should the package's
+        // command hold the name again, this backstop exports the default sources' mode, as before (L-05).
+        if (! Artisan::findCommand('backup:run') instanceof BackupRunCommand) {
+            $this->passSslMode();
+        }
+``` Replace the docblock, signature and loop head of `passSslMode()`:
 
 ```php
     /**
@@ -8922,8 +9209,9 @@ Copy the production file aside (never `git stash`: it is shared by every worktre
 4. `config/filesystems.php`: drop `'visibility' => 'private'`. Expect 'writes archives on the backups disk readable by this account only' to fail with 420.
 5. `BackupRunCommand::handle()`: move the `passSslMode()` line above the `--config` block. Expect the '--config' row to fail with `prefer`.
 6. `ConfigurePgDump::passSslMode()`: drop the `$only` check. Expect '--config and --db-name' to fail with `require`, and 'takes the sslmode of the connection --db-name names' with `prefer`.
-7. `PrivateBackupTemp::ownDirectoryMode()`: delete the `$user === 0` block. Expect 'as root, counts only a directory inside storage/…' to fail with "chmod(): Operation not permitted" (the rule would chmod `/usr`).
-8. `PrivateBackupTemp` and `PostgresBinaries`: `app(ProcessAccount::class)->uid()` → `app(ProcessAccount::class)->uid() ?? getmyuid()`. Expect both ext-posix tests to fail with "true is false".
+7. `ConfigurePgDump::__invoke()`: delete the backstop `if` and its call. Expect 'still exports the default sources' sslmode should the package's command hold backup:run again' to fail with `false`. Then make the call unconditional again: expect the `backup:run` row of 'leaves PGSSLMODE to backup:run…' to fail with `verify-full`.
+8. `PrivateBackupTemp::ownDirectoryMode()`: delete the `$user === 0` block. Expect 'as root, counts only a directory inside storage/…' to fail with "chmod(): Operation not permitted" (the rule would chmod `/usr`).
+9. `PrivateBackupTemp` and `PostgresBinaries`: `app(ProcessAccount::class)->uid()` → `app(ProcessAccount::class)->uid() ?? getmyuid()`. Expect both ext-posix tests to fail with "true is false".
 
 - [ ] **Step 9: The gate, then commit**
 
@@ -8958,24 +9246,25 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify:
   - `app/Console/Commands/CreateSuperAdminCommand.php` (one `passwordRules()` that also refuses a hash, L7b-38)
   - `app/Providers/AppServiceProvider.php` (`Password::defaults()` strict outside `local` and `testing`, CD-10)
-  - `app/Console/Commands/FluxProCommand.php` (undo the mark and the repository after a failed or interrupted install, name the manual command when an undo fails, trap SIGINT/SIGTERM; L7b-72, L7b-81)
+  - `app/Console/Commands/FluxProCommand.php` (undo the mark and the repository after a failed or interrupted install, name the manual command when an undo fails, trap SIGINT/SIGTERM, and undo too when a step throws `ProcessSignaledException` or `ProcessTimedOutException`; L7b-72, L7b-81)
   - `lang/nl.json`, `lang/en.json`
   - `CHANGELOG.md`
 - Test:
   - `tests/Feature/Console/CreateSuperAdminCommandTest.php`
   - `tests/Feature/Console/ProductionGuardsTest.php` (the staging install now needs a strict password)
   - `tests/Arch/AuthorizationRulesTest.php` (the `SetSuperAdmin` caller rule, L7b-39)
-  - `tests/Feature/Console/FluxProCommandTest.php` (the failing-step dataset, L7b-73; the undo warning; the signal)
+  - `tests/Feature/Console/FluxProCommandTest.php` (the failing-step dataset, L7b-73; the undo warning; the signal; a step that throws)
 
 **Interfaces:**
 - Consumes (main `a192dba`; Task 3 may add a listener registration elsewhere in `AppServiceProvider`, Task 13 touches only `configureDefaults()`):
   - `Hash::isHashed(string): bool`
+  - `Illuminate\Process\PendingProcess::run()`, which rethrows Symfony's `ProcessSignaledException` and turns a timeout into `ProcessTimedOutException` (it catches only the timeout)
   - `Illuminate\Console\Command::trap(Closure|iterable|int $signals, callable $callback)` and `Illuminate\Console\Signals::resolveAvailabilityUsing(callable)` (signals are off under unit tests: `ArtisanServiceProvider` resolves them to `! runningUnitTests()`)
   - `kitSourceFiles()`, `filesMatching()` (`tests/Pest.php`)
 - Produces:
   - `Password::defaults()`: the strict rule (min 12, mixed case, letters, numbers, symbols, uncompromised) in every environment except `local` and `testing`; `null` (Laravel's min 8) there.
   - `skv:create-super-admin` refuses a value `Hash::isHashed()` accepts, with "Pass the password itself, not a hash."
-  - `skv:flux-pro` (no signature change): on a failed step it runs `composer config --unset <key>` for each key it added, newest first (`repositories.flux-pro`, then `extra.skv`); a failed unset prints "Could not remove :key from composer.json. Run: composer config --unset :key"; after SIGINT/SIGTERM it starts no further step, undoes and prints "Flux Pro was not installed: the command was interrupted."
+  - `skv:flux-pro` (no signature change): on a failed step it runs `composer config --unset <key>` for each key it added, newest first (`repositories.flux-pro`, then `extra.skv`); a failed unset prints "Could not remove :key from composer.json. Run: composer config --unset :key"; after SIGINT/SIGTERM it starts no further step, undoes and prints "Flux Pro was not installed: the command was interrupted."; a step that throws `Symfony\Component\Process\Exception\ProcessSignaledException` (Composer re-raised Ctrl-C) or `Illuminate\Process\Exceptions\ProcessTimedOutException` (900 s) is undone the same way, with the interrupted message or "Composer could not install Flux Pro.", and an unset that throws counts as a failed one
 
 Notes for the implementer:
 - **Never use `git stash` to try a mutation.** The stash is shared by every worktree of the repository; copy the file aside (`cp`) and back instead.
@@ -9064,7 +9353,7 @@ it('never calls SetSuperAdmin from a page, a component or a route file (L7b-39)'
 
 Both pass on `main` (they pin today's callers; `tests/Pest.php`'s helpers are not autoloaded classes, and `UserFactory`'s docblock mention is no use). Step 6 proves they fail on a new caller.
 
-**`skv:flux-pro`'s cleanup (L7b-72, L7b-81, L7b-73).** `tests/Feature/Console/FluxProCommandTest.php`: add `use Illuminate\Console\Signals;` before `use Illuminate\Process\FakeProcessResult;`. In 'fails with the last line Composer printed when the require fails (RL-12)', the command now also removes the repository, so add its fake after the `--unset extra.skv` one:
+**`skv:flux-pro`'s cleanup (L7b-72, L7b-81, L7b-73).** `tests/Feature/Console/FluxProCommandTest.php`: add `use Illuminate\Console\Signals;` and `use Illuminate\Process\Exceptions\ProcessTimedOutException;` before `use Illuminate\Process\FakeProcessResult;`, and `use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyTimeout;` and `use Symfony\Component\Process\Process as SymfonyProcess;` after `use Illuminate\Support\Str;` (as `HerdSiteStepTest` builds a timeout). In 'fails with the last line Composer printed when the require fails (RL-12)', the command now also removes the repository, so add its fake after the `--unset extra.skv` one:
 
 ```php
         "*composer' 'config' '--unset' 'extra.skv'*" => Process::result(''),
@@ -9151,6 +9440,18 @@ it('undoes the mark and the repository and skips the require after Ctrl-C or SIG
     Process::assertRan($ran('config --unset extra.skv'));
     Process::assertDidntRun($ran('require livewire/flux-pro'));
 })->skip(fn (): bool => ! extension_loaded('pcntl') || ! extension_loaded('posix'), 'needs pcntl and posix to trap and send a signal');
+
+it('undoes the mark and the repository when a step throws instead of failing, as on a timeout or Ctrl-C (L7b-72, L7b-81)', function () use ($composerSteps, $ran): void {
+    // A real Ctrl-C makes Composer re-raise the signal, so Symfony throws ProcessSignaledException instead of
+    // returning a failed result; a timeout throws too. Only the timeout can be built in a fake.
+    $composerSteps(['require' => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['composer']), SymfonyTimeout::TYPE_GENERAL), Process::result(''))]);
+
+    expect(Artisan::call('skv:flux-pro', ['--no-interaction' => true]))->toBe(1)
+        ->and(Artisan::output())->toContain(__('Composer could not install Flux Pro.'));
+
+    Process::assertRan($ran('config --unset repositories.flux-pro'));
+    Process::assertRan($ran('config --unset extra.skv'));
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -9160,7 +9461,7 @@ Run: `php artisan test --compact tests/Feature/Console/CreateSuperAdminCommandTe
 Expected: FAIL, as follows:
 - 'refuses a hash in place of the password…': `[0, 0]` instead of `[1, 1]` (the hash is stored as the password hash).
 - 'applies the strict password rule on staging…': exit 0 (min 8 accepts 'password1').
-- FluxProCommandTest: the 'the repository' and 'the require' rows fail with "An expected process was not invoked" (no `--unset repositories.flux-pro`); 'names the manual command…' does not find the warning; the signal test gets exit 0 (no trap: the test's own handler swallows the signal and the require runs).
+- FluxProCommandTest: the 'the repository' and 'the require' rows fail with "An expected process was not invoked" (no `--unset repositories.flux-pro`); 'names the manual command…' does not find the warning; the signal test gets exit 0 (no trap: the test's own handler swallows the signal and the require runs); the timeout test ends with the uncaught `ProcessTimedOutException`.
 - The 'the mark' row, ProductionGuardsTest and the two arch tests pass already (they pin behaviour that must survive the change).
 
 - [ ] **Step 3: Refuse a hash (L7b-38)**
@@ -9218,7 +9519,7 @@ Setup is not affected: `Answers` always `Hash::make()`s the password it is given
 
 - [ ] **Step 5: `skv:flux-pro` undoes what it added (L7b-72, L7b-81)**
 
-`app/Console/Commands/FluxProCommand.php`: replace the class docblock, add the `$interrupted` property and replace `handle()`; add `undo()` before `lastLine()`. The whole class after the change:
+`app/Console/Commands/FluxProCommand.php`: add `use Illuminate\Process\Exceptions\ProcessTimedOutException;` before `use Illuminate\Process\PendingProcess;` and `use Symfony\Component\Process\Exception\ProcessSignaledException;` after `use Illuminate\Support\Str;`. Replace the class docblock, add the `$interrupted` property and replace `handle()`; add `undo()` before `lastLine()`. The whole class after the change:
 
 ```php
 /**
@@ -9230,7 +9531,9 @@ Setup is not affected: `Answers` always `Hash::make()`s the password it is given
  *
  * An install that does not finish undoes what it added to composer.json, the mark and the repository (L7b-72), and
  * names the manual command for a key Composer would not remove. Ctrl-C or SIGTERM is trapped while pcntl is loaded
- * (L7b-81): Composer, in the same process group, stops by itself and the same undo runs; no later step starts.
+ * (L7b-81): Composer, in the same process group, reverts its own change and re-raises the signal, so Symfony throws
+ * ProcessSignaledException instead of returning a failed result; that and a timeout are caught and the same undo
+ * runs; no later step starts.
  */
 #[Description('Install Flux Pro with your Composer credentials (§6.7)')]
 #[Signature('skv:flux-pro')]
@@ -9283,7 +9586,18 @@ final class FluxProCommand extends Command
                 $added[] = $key;
             }
 
-            $result = $this->process($toolchain, 900)->run($command);
+            try {
+                $result = $this->process($toolchain, 900)->run($command);
+            } catch (ProcessSignaledException|ProcessTimedOutException $exception) {
+                // Ctrl-C: Composer re-raises the signal, so Symfony throws instead of returning a failed result; a
+                // timeout throws too (L7b-72, L7b-81).
+                $this->undo($toolchain, $composer, $added);
+                $this->components->error($this->interrupted || $exception instanceof ProcessSignaledException
+                    ? __('Flux Pro was not installed: the command was interrupted.')
+                    : __('Composer could not install Flux Pro.'));
+
+                return self::FAILURE;
+            }
 
             if ($result->failed()) {
                 // An install that did not finish must not mark the app as committing Flux Pro (CD-13).
@@ -9309,7 +9623,14 @@ final class FluxProCommand extends Command
     private function undo(Toolchain $toolchain, string $composer, array $keys): void
     {
         foreach (array_reverse($keys) as $key) {
-            if ($this->process($toolchain, 60)->run([$composer, 'config', '--unset', $key])->failed()) {
+            try {
+                $failed = $this->process($toolchain, 60)->run([$composer, 'config', '--unset', $key])->failed();
+            } catch (ProcessSignaledException|ProcessTimedOutException) {
+                // A second Ctrl-C or a hung Composer: the key may still be there, so the manual command is named.
+                $failed = true;
+            }
+
+            if ($failed) {
                 $this->components->warn(__('Could not remove :key from composer.json. Run: composer config --unset :key', ['key' => $key]));
             }
         }
@@ -9330,7 +9651,7 @@ final class FluxProCommand extends Command
 }
 ```
 
-Why it works: a terminal's Ctrl-C reaches the whole foreground process group, so Composer stops and `run()` returns a failed result; the trap keeps PHP alive (the callback only sets the flag, so neither Laravel nor Symfony exits), and the failed-step branch undoes. A SIGTERM sent to PHP alone lets the running step finish, and the loop stops before the next one. An interruption during a `require` that still succeeds leaves Pro installed, mark and all, which is the consistent state. The signal list is a closure, so `SIGINT` is only read where `Signals::whenAvailable()` found pcntl.
+Why it works: a terminal's Ctrl-C reaches the whole foreground process group. Composer's `require` handles SIGINT/SIGTERM by reverting its own `composer.json` change and re-raising the signal on itself (seld/signal-handler's `exitWithLastSignal()`), and a `composer config` child dies of the default action, so the child ends *signaled*. Symfony's `Process::wait()` then throws `ProcessSignaledException` (a signal it did not send), which Laravel's `PendingProcess::run()` does not catch; a 900-second timeout throws `ProcessTimedOutException`. The `catch` around `run()` undoes for both, so `extra.skv.flux-pro` and `repositories.flux-pro` never stay behind. The trap keeps PHP alive (the callback only sets the flag, so neither Laravel nor Symfony exits). A SIGTERM sent to PHP alone lets the running step finish, and the loop stops before the next one. An interruption during a `require` that still succeeds leaves Pro installed, mark and all, which is the consistent state. The signal list is a closure, so `SIGINT` is only read where `Signals::whenAvailable()` found pcntl.
 
 - [ ] **Step 6: Copy**
 
@@ -9347,7 +9668,7 @@ In `en.json` each value equals its key.
 CHANGELOG.md, under `## [Unreleased]`:
 - `### Changed`:
   - `` - Every environment except `local` and `testing` uses the strict password rule (12 characters, mixed case, letters, numbers, symbols, not in a known breach), so a staging install's super admin gets it too. ``
-  - `` - `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C. ``
+  - `` - `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout. ``
 - `### Fixed`:
   - `` - `skv:create-super-admin` refuses a password hash given in place of the password, which the `hashed` cast would have stored as it was. ``
 
@@ -9367,6 +9688,7 @@ Copy the file aside (never `git stash`), make the change, confirm the named test
 5. `FluxProCommand`: replace the `$added` bookkeeping with a fixed `$this->undo($toolchain, $composer, ['extra.skv'])`. Expect the 'the repository' and 'the require' rows to fail.
 6. `FluxProCommand::undo()`: drop the `warn()`. Expect 'names the manual command…' to fail.
 7. `FluxProCommand::handle()`: delete the `$this->trap(…)` call. Expect the signal test to fail with exit 0, and the Pest run to go on (the test's own handler caught the signal).
+8. `FluxProCommand::handle()`: remove the `try`/`catch` around `run()`. Expect 'undoes the mark and the repository when a step throws…' to fail with the uncaught `ProcessTimedOutException`.
 
 - [ ] **Step 9: The gate, then commit**
 
@@ -9406,20 +9728,20 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: the task reports of Tasks 1–13 (`.superpowers/sdd/<plan>/task-N-report.md` and the ledger) and the code as merged on the branch. Where a statement below and the code disagree, the code wins and the report records the difference.
 - Produces: no code.
 
-- [ ] **Step 1: The Fortify domain group is the one exception (G5-07)**
+- [ ] **Step 1: The Fortify domain groups are the only exceptions (G5-07)**
 
 `tests/Arch/KitRulesTest.php`: add after the `Number` test:
 
 ```php
-it('constrains routes by domain only in the Fortify group (G5-07)', function (): void {
-    // Route::tenant() / Route::central() attach host middleware instead (§6.2). routes/fortify.php keeps Fortify's own
-    // domain + prefix group so its replacements match the vendor routes (FU3-3). An empty Route::domain() in a
-    // comment does not match.
-    expect(filesMatching(kitSourceFiles('routes', 'app'), "/Route::domain\\s*\\(\\s*[^)\\s]|'domain'\\s*=>/"))->toBe(['routes/fortify.php']);
+it('constrains routes by domain only in the Fortify groups (G5-07)', function (): void {
+    // Route::tenant() / Route::central() attach host middleware instead (§6.2). routes/fortify.php and
+    // routes/passkeys.php keep Fortify's own domain + prefix group, so their replacements match the vendor routes
+    // (FU3-3, CD-3). An empty Route::domain() in a comment does not match.
+    expect(filesMatching(kitSourceFiles('routes', 'app'), "/Route::domain\\s*\\(\\s*[^)\\s]|'domain'\\s*=>/"))->toBe(['routes/fortify.php', 'routes/passkeys.php']);
 });
 ```
 
-Run: `php artisan test --compact --filter='constrains routes by domain'` → PASS (it pins today's state).
+Run: `php artisan test --compact --filter='constrains routes by domain'` → PASS (it pins the state after Task 1, whose `passkey.destroy` group in `routes/passkeys.php` mirrors Fortify's).
 Verify by mutation: add `Route::domain('x.test')->group(function (): void {});` to the end of `routes/web.php` (copy the file aside with `cp` first); the test fails listing `routes/web.php`; copy the file back.
 
 - [ ] **Step 2: README**
@@ -9451,8 +9773,8 @@ The same statements in Dutch (informal "je", the glossary of the Global Constrai
 - [ ] **Step 4: `.ai/guidelines/skv3.md`, then `AGENTS.md`**
 
 Edit these bullets (keep the file's one-line-per-rule style; replace, do not add a contradicting line):
-- **Tenancy and authorization:** replace "An action that takes an `Organisation` calls `HostScope::lockForWrite($organisation)` inside its transaction before `Tenant::run()`." with CD-5's order: first the organisation (`HostScope::lockForWrite()`, `HostScope::lockOrganisation()` for user writes, `withTrashed()->lockForUpdate()` for archive, restore and purge), then the roles in id order, then one users batch only through `LockoutGuard::lockUsers()` / `lockForRemoval()` (users only, id order, no join under `FOR UPDATE`; decide on the locked rows), then `model_has_roles`, invitations, sessions and reset tokens, activity last; no retry loop; lock-order tests use `lockStatements()` and skip outside PostgreSQL.
-- **Limits (Task 1):** a Livewire action that sends mail or checks a secret limits itself with `App\Support\RateLimits\UserActionLimit` in the component, never in the action; code that clears a named limiter's bucket builds the key with `ThrottleKey::of()`.
+- **Tenancy and authorization:** replace "An action that takes an `Organisation` calls `HostScope::lockForWrite($organisation)` inside its transaction before `Tenant::run()`." with CD-5's order: first the organisation (`HostScope::lockForWrite()`, `HostScope::lockOrganisation()` for user writes, `withTrashed()->lockForUpdate()` for archive, restore and purge), then the roles in id order, then one batch of users rows (one `SELECT … FOR UPDATE` on `users` only, no join, in id order: user administration — status, delete, roles, super admin — takes it through `LockoutGuard::lockUsers()` / `lockForRemoval()` and decides on the locked rows; `AcceptInvitation` and `CancelInvitation` lock the invitee's row alone; `ArchiveOrganisation` and `PurgeOrganisation` lock the organisation's users in one statement), then `model_has_roles`, invitations, sessions and reset tokens, activity last; no retry loop; lock-order tests use `lockStatements()` and skip outside PostgreSQL.
+- **Limits (Task 1):** a Livewire action that sends mail or checks a secret limits itself with `App\Support\RateLimits\UserActionLimit` in the component, never in the action (`attempt()` before a secret check; `reserve()` before a send, with `release()` in a `catch (Throwable)` that rethrows; never a check before and a count after the action, which parallel requests outrun); code that clears a named limiter's bucket builds the key with `ThrottleKey::of()`.
 - **Links (Task 2):** `Hosts::origin()`, `Hosts::url()` and `tenant_url()` take scheme and port from `APP_URL`; never build a link from the request's scheme or port.
 - **Return targets (Tasks 4, 6):** "go back" targets in kit code use `App\Http\Support\ReturnUrl::previous($request, $fallback)`, a same-host root-relative path; never `back()`, `url()->previous()` or `url()->current()` in kit code or error views; vendor `back()` on CSRF-protected POSTs stays (CD-13).
 - **Preferences (Task 4):** display preferences change through `UpdateLocale` / `UpdateAppearance`, which keep an impersonator's choice in the session; read them with `Impersonation::localeFor()` / `appearanceFor()` (or `Locales::forRequest()`), never `$user->locale` / `$user->appearance` for display.
@@ -9461,7 +9783,7 @@ Edit these bullets (keep the file's one-line-per-rule style; replace, do not add
 - **Passkeys (Task 3):** failed passkey sign-ins are recorded only by `App\Listeners\RecordFailedPasskeySignIn`.
 - **Mail (Task 8):** queued invitation mails carry the invitation id, not the model, and send nothing when it is gone.
 - **Flux Pro (Task 9):** the stripper and the lint share `App\Support\BladeDirectives`; a `{{-- pro-only … --}}` comment stands on the line before its `@if`.
-- **Routes (G5-07):** after "never use `Route::domain()`" add "(the one exception is `routes/fortify.php`'s Fortify group, pinned by `KitRulesTest`)".
+- **Routes (G5-07):** after "never use `Route::domain()`" add "(the exceptions are the Fortify-mirroring groups in `routes/fortify.php` and `routes/passkeys.php`, pinned by `KitRulesTest`)".
 - **UI (G5-05):** replace "Navigation entries go into `App\Support\Navigation\Navigation::items()`, never into a Blade file." with "The sidebar's navigation entries go into `App\Support\Navigation\Navigation::items()`, never into a Blade file; the settings sub-navigation (`pages/settings/layout.blade.php`) and the user menu keep their own items."
 - **Setup (Task 11):** `setupSandbox()` links `public/storage`, so a test of the link unlinks it first; `DetachedStepLauncherTest` runs the real launch script with `Process::preventStrayProcesses(false)`, the second exception after `BackupRunTest`; read env files through `EnvFile`, whose `contents()` refuses an unreadable file.
 - **Ops (Tasks 12, 13):** "this account" checks read the uid through `App\Support\ProcessAccount` (tests bind `new ProcessAccount(fn (): ?int => null)` or `fn (): int => 0`); a test that runs `backup:run` past the `--config` resolution restores `PGSSLMODE` with `Tests\Fixtures\PgSslModeSnapshot`; `SetSuperAdmin` is called only from `UpdateSuperAdmin`, `DatabaseStep`, `skv:create-super-admin` and `DemoSeeder` (`tests/Arch/AuthorizationRulesTest.php`).
@@ -9473,15 +9795,15 @@ Then run `php artisan boost:update --no-discover --ignore-skills --no-interactio
 
 1. **DEC-34 — Security hardening build rulings (M7c)**, after DEC-33, in its format (**Question**, **Answer** with numbered items, **Evidence**, **Consequence**):
    - **Question:** Which choices made while building M7c refine the spec or earlier decisions, what did the controller decide under the owner's delegation, and what is deferred?
-   - **Answer:** (1)–(13) CD-1…CD-13 as built, each with what the task report changed (CD-3's limits table and what counts, the new throttle key, `UserActionLimit`'s API and `RemindInvitation::COOLDOWN_MINUTES`; CD-5's order and the five problems it removes — the LockoutGuard cycle, accept/archive, status/delete/archive, roles/delete-role, the demote and restore races — plus `HostScope::lockOrganisation()`, the global template-role lock's accepted cost and the two allowed exceptions; CD-6's naming rule and the `RequestHandled` recorder; CD-7; CD-8 with the production note; CD-9; CD-10; CD-12; CD-13's three call sites). (14) The triage (CD-2) and its id mapping: the counts, where the triage files' evidence went (this plan's header), and the 27 M8 items by id. (15) The deviations from the spec with their reasons: §6.2's scheme-and-port rule (CD-4), §4.11's flashed text (`Locales::forNextPage()`), M5 RL-7's server-side `returnPath` replaced by a client reload (G3-07), the 401/402 kit pages next to the 4xx fallback (G3-04), 419 keeping `location.reload()`, `<title>` keeping `platformName()` (DEC-29 (5)). (16) The deviations from the plan that the task reports and the review fix rounds recorded, with the controller's rulings during the run (filled in after execution). (17) The documentation (this task). (18) The controller's real verification (Task 15; filled in after execution).
+   - **Answer:** (1)–(13) CD-1…CD-13 as built, each with what the task report changed (CD-3's limits table and what counts, the new throttle key, `UserActionLimit`'s API and `RemindInvitation::COOLDOWN_MINUTES`; CD-5's order and the five problems it removes — the LockoutGuard cycle, accept/archive, status/delete/archive, roles/delete-role, the demote and restore races — plus `HostScope::lockOrganisation()`, the global template-role lock's accepted cost and the two allowed exceptions; CD-6's naming rule and the `RequestHandled` recorder; CD-7; CD-8 with the production note; CD-9; CD-10; CD-12; CD-13's three call sites). (14) The triage (CD-2) and its id mapping: the counts (149 = 44 already fixed + 1 obsolete + 8 duplicates + 62 handled here + 26 M8 only + 8 won't fix), where the triage files' evidence went (this plan's header), and the 26 M8 ids plus the M8 halves of L7b-43 and L7b-73, and the plan review's K9 (`HerdSiteStep::isComplete()` ignoring the PHP version). (15) The deviations from the spec with their reasons: §6.2's scheme-and-port rule (CD-4), §4.11's flashed text (`Locales::forNextPage()`), M5 RL-7's server-side `returnPath` replaced by a client reload (G3-07), the 401/402 kit pages next to the 4xx fallback (G3-04), 419 keeping `location.reload()`, `<title>` keeping `platformName()` (DEC-29 (5)). (16) The deviations from the plan that the task reports and the review fix rounds recorded, with the controller's rulings during the run (filled in after execution). (17) The documentation (this task). (18) The controller's real verification (Task 15; filled in after execution).
    - **Evidence:** the test files each task names.
-   - **Consequence:** Deferred to M7d: the §6.6 extras. Deferred to M8: the triage's M8 list, with the CI runs of the e2e and `phase1` jobs, the release check and publication. Won't fix: the triage's list. The deferred minors of the M7c reviews: (filled in after execution).
+   - **Consequence:** Deferred to M7d: the §6.6 extras. Deferred to M8: the triage's M8 list (with "HerdSiteStep::isComplete() ignoring the PHP version (plan review K9)"), with the CI runs of the e2e and `phase1` jobs, the release check and publication. Won't fix: the triage's list. The deferred minors of the M7c reviews: (filled in after execution).
 2. **Amend in place**, each with "(amended by DEC-34 (n))":
    - DEC-26: `TenantUrlTest` keeps `APP_URL`'s scheme and port (CD-4).
    - DEC-27 (2): passkeys are limited "per signed-in user, or per IP for a guest's sign-in" instead of "per credential (or session) and IP" (G1-05).
    - DEC-28 (24) and the residual of (30) ("until M7's limits"): closed by CD-3. DEC-28 (29): the tenant-host reset log skips a promoted super admin too (G4-01).
    - DEC-29: RL-7's stored return path (G3-07); the open-minors list names the M5 minors M7c closed (G5-12) and points at DEC-34 (14) for the rest.
-   - DEC-33 (14): the second-factor login goes to the admin host (CD-7). DEC-33's RL-1 note: `.env` and `.env.testing` are 0600 (CD-8). DEC-33's L-05 / (32)(h): the `PGSSLMODE` export moved to `BackupRunCommand::handle()` (L7b-68). DEC-33 CD-13: `skv:flux-pro` also removes `repositories.flux-pro` (L7b-72, L7b-81).
+   - DEC-33 (14): the second-factor login goes to the admin host (CD-7). DEC-33's RL-1 note: `.env` and `.env.testing` are 0600 (CD-8). DEC-33's L-05 / (32)(h): the `PGSSLMODE` export moved to `BackupRunCommand::handle()` (L7b-68); `ConfigurePgDump` still exports it as the backstop when `backup:run` is not the app's command (L-05). DEC-33 CD-13: `skv:flux-pro` also removes `repositories.flux-pro` (L7b-72, L7b-81).
    - DEC-32's and DEC-33's Consequences: append "M7c done (DEC-34): …" naming what they deferred to M7c and where it went (fixed here, or M7d / M8).
 
 - [ ] **Step 6: CHANGELOG consistency**
@@ -9491,7 +9813,7 @@ Read the `[Unreleased]` section top to bottom. Every M7c behaviour change has on
 - [ ] **Step 7: Checks and commit**
 
 - `grep -rn "m5-ui\|m7b-setup-hardening\|op de branch" docs/handleiding.html` prints nothing.
-- `grep -n "HostScope::lockForWrite(\$organisation)" .ai/guidelines/skv3.md` prints nothing.
+- `grep -nF 'HostScope::lockForWrite($organisation)' .ai/guidelines/skv3.md` prints nothing (fixed-string match; before the edit it prints line 26).
 - `grep -c "(filled in after execution)" docs/decisions.md` prints `3` (DEC-34 (16), (18) and the Consequence).
 - The gate of the Global Constraints.
 
@@ -9520,10 +9842,11 @@ git status --short
 git show HEAD:composer.json | grep -c flux-pro; git show HEAD:composer.lock | grep -c flux-pro
 grep -rnE "'\*' *=>|\"\*\" *=>|Process::fake\(\)" tests/ | grep -v KitRulesTest
 grep -L "covers §" $(git diff --name-only --diff-filter=A main -- 'tests/**/*.php' | grep -v -e Fixtures -e Support)
-git diff main --stat -- composer.json composer.lock package.json package-lock.json
+git diff main --stat -- composer.lock package.json package-lock.json
+git diff main -- composer.json
 ```
 
-Expected: four green suites; the stylesheet as committed; a clean tree; `0` and `0`; no catch-all fake; an empty `grep -L`; no dependency change.
+Expected: four green suites; the stylesheet as committed; a clean tree; `0` and `0`; no catch-all fake; an empty `grep -L`; no dependency change (the `--stat` prints nothing); the `composer.json` diff shows only the two `scripts` lines of Task 11 (the `.env` one-liner in `setup` and `post-root-package-install`).
 
 - [ ] **Step 2: The real run (PostgreSQL + Herd Pro + HTTPS)**
 
