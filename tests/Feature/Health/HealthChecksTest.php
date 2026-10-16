@@ -152,13 +152,20 @@ it('skips the queue and failed-jobs checks while the default database is down, s
         ->and(Arr::only($report['checks']['failed-jobs'], ['status', 'message']))->toBe($skipped);
 });
 
-it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seconds by default (F2)', function (): void {
+it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seconds by default and never under 1 (F2)', function (): void {
     $original = [
         'getenv' => getenv('DB_CONNECT_TIMEOUT'),
         'server' => $_SERVER['DB_CONNECT_TIMEOUT'] ?? null,
         'env' => $_ENV['DB_CONNECT_TIMEOUT'] ?? null,
     ];
-    $timeout = function (): mixed {
+    $timeout = function (?string $value): mixed {
+        putenv($value === null ? 'DB_CONNECT_TIMEOUT' : 'DB_CONNECT_TIMEOUT='.$value);
+        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
+
+        if ($value !== null) {
+            $_SERVER['DB_CONNECT_TIMEOUT'] = $_ENV['DB_CONNECT_TIMEOUT'] = $value;
+        }
+
         /** @var array{connections: array{pgsql: array<string, mixed>}} $config */
         $config = require config_path('database.php');
         $options = $config['connections']['pgsql']['options'] ?? [];
@@ -167,13 +174,10 @@ it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seco
     };
 
     try {
-        putenv('DB_CONNECT_TIMEOUT');
-        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
-        $default = $timeout();
-
-        putenv('DB_CONNECT_TIMEOUT=2');
-        $_SERVER['DB_CONNECT_TIMEOUT'] = $_ENV['DB_CONNECT_TIMEOUT'] = '2';
-        $configured = $timeout();
+        $default = $timeout(null);
+        $configured = $timeout('2');
+        // libpq reads connect_timeout=0 as "wait forever", the hang F2 bounds (M6).
+        $floored = [$timeout(''), $timeout('0'), $timeout('-3')];
     } finally {
         putenv($original['getenv'] === false ? 'DB_CONNECT_TIMEOUT' : 'DB_CONNECT_TIMEOUT='.$original['getenv']);
         unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
@@ -189,6 +193,7 @@ it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seco
 
     expect($default)->toBe(5)
         ->and($configured)->toBe(2)
+        ->and($floored)->toBe([1, 1, 1])
         ->and((string) file_get_contents(base_path('.env.example')))->toMatch('/^DB_CONNECT_TIMEOUT=5$/m');
 });
 

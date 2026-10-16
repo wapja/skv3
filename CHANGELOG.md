@@ -53,7 +53,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `skv:create-organisation --as=<email>` picks the acting super admin.
 - `skv:flux-pro` marks `composer.json` with `extra.skv.flux-pro` before it requires the package, so an app that commits Flux Pro on purpose skips the kit's "never references Flux Pro in the committed composer files" test.
 - An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link.
-- `DB_CONNECT_TIMEOUT` (5 seconds) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
+- `DB_CONNECT_TIMEOUT` (5 seconds, at least 1, because 0 waits forever) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
 
 ### Changed
