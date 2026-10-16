@@ -110,6 +110,8 @@ it('fails without a backup or with one older than a day, and passes with a fresh
     expect($none->status)->toBe(CheckStatus::Fail)
         ->and($none->fix)->toBe('php artisan backup:run --only-db')
         ->and($stale->status)->toBe(CheckStatus::Fail)
+        ->and($stale->message)->toBe(__('The last backup on :disk is from :time', ['disk' => 'backups', 'time' => Carbon::parse('2026-10-13 02:00:00')->diffForHumans()]))
+        ->and($stale->fix)->toBe('php artisan backup:run --only-db')
         ->and($fresh->status)->toBe(CheckStatus::Pass)
         // diffForHumans() follows the app locale, so the expectation is computed the same way.
         ->and($fresh->message)->toContain(Carbon::parse('2026-10-15 02:00:00')->diffForHumans());
@@ -188,4 +190,27 @@ it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seco
     expect($default)->toBe(5)
         ->and($configured)->toBe(2)
         ->and((string) file_get_contents(base_path('.env.example')))->toMatch('/^DB_CONNECT_TIMEOUT=5$/m');
+});
+
+it('fails without a configured backup disk (CD-4, L-17)', function (): void {
+    useBackupsModule(true);
+    config(['backup.backup.destination.disks' => []]);
+
+    $result = new LastBackupCheck()->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('No backup disk is configured'))
+        ->and($result->fix)->toBe('config/backup.php');
+});
+
+it('fails while a backup disk cannot be reached (CD-4, L-17)', function (): void {
+    useBackupsModule(true);
+    // An undefined disk: BackupDestination::create() catches the filesystem error and the destination is unreachable.
+    config(['backup.backup.destination.disks' => ['no-such-disk']]);
+
+    $result = new LastBackupCheck()->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('The backup disk :disk cannot be reached', ['disk' => 'no-such-disk']))
+        ->and($result->fix)->toBe('config/filesystems.php');
 });

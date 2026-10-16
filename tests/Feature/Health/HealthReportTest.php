@@ -9,8 +9,8 @@ use App\Setup\Doctor\Checks\MailCheck;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthReport;
+use App\Support\Health\OpsCache;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Tests\Fixtures\FixedStatusCheck;
@@ -64,7 +64,7 @@ it('caches the report on the ops store until it is refreshed (CD-5)', function (
 
     expect($second['checked_at'])->toBe($first['checked_at'])
         ->and($refreshed['checked_at'])->not->toBe($first['checked_at'])
-        ->and(Cache::store((string) config('skv.ops_cache_store'))->get($report->key()))->toBe($refreshed);
+        ->and(OpsCache::store()->get($report->key()))->toBe($refreshed);
 });
 
 it('caches one report per language, because labels and messages are translated (§6.5, CD-5)', function (): void {
@@ -74,8 +74,23 @@ it('caches one report per language, because labels and messages are translated (
     app()->setLocale('en');
 
     expect($report->key())->toBe(HealthReport::CACHE_KEY.':en')
-        ->and(Cache::store((string) config('skv.ops_cache_store'))->get($report->key()))->toBeNull()
-        ->and(Cache::store((string) config('skv.ops_cache_store'))->get(HealthReport::CACHE_KEY.':nl'))->toBe($dutch);
+        ->and(OpsCache::store()->get($report->key()))->toBeNull()
+        ->and(OpsCache::store()->get(HealthReport::CACHE_KEY.':nl'))->toBe($dutch);
+});
+
+it('runs the checks again once the cached report is older than cache_seconds (CD-5, L-16)', function (): void {
+    $report = new HealthReport([new FixedStatusCheck(CheckStatus::Pass, 'fine')], $this->sandbox->basePath);
+    $this->travelTo(Carbon::parse('2026-10-15 10:00:00'));
+    $first = $report->cached();
+
+    $this->travelTo(Carbon::parse('2026-10-15 10:00:29'));
+    $within = $report->cached();
+    $this->travelTo(Carbon::parse('2026-10-15 10:00:31'));
+    $expired = $report->cached();
+
+    expect(config('skv.health_check.cache_seconds'))->toBe(30)
+        ->and($within['checked_at'])->toBe($first['checked_at'])
+        ->and($expired['checked_at'])->toBe(Carbon::parse('2026-10-15 10:00:31')->toIso8601String());
 });
 
 it('probes the mail server the running configuration names, not the one in .env (CD-5, F10)', function (): void {
