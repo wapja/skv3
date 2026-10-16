@@ -20,6 +20,7 @@ use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Process\FakeProcessResult;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -475,8 +476,9 @@ it('detects the machine once per setup, not on every poll (CD-15, g3-29)', funct
         ->and(WizardState::load($context->basePath)?->results)->toHaveKeys(['environment', 'database', 'herd-manifest']);
 });
 
-it('reports a long step whose completion check throws as failed, not a 500 (§5.3.1, g3-31)', function (): void {
+it('reports a long step whose completion check throws as failed, not a 500, and logs the unexpected error (§5.3.1, g3-31, M8)', function (): void {
     // Arrange: steps 1–6 are done, so the Claude step (long) comes next, and its check reads a broken composer.json.
+    Exceptions::fake();
     $context = useSetupWizard();
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
@@ -492,6 +494,7 @@ it('reports a long step whose completion check throws as failed, not a 500 (§5.
         ->and($outcome['state'] ?? null)->toBe('failed')
         ->and($runner->state()?->results)->not->toHaveKey('claude')
         ->and($launcher->started)->toBe([]);
+    Exceptions::assertReported(JsonException::class);
 });
 
 it('records what the Herd step did not do in the marker when the Herd stage cannot start after step 9 (g3-32)', function (): void {

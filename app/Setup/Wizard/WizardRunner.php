@@ -147,7 +147,7 @@ final readonly class WizardRunner
 
                 $result = $this->runner->runStep($context, $step);
             } catch (Throwable $exception) {
-                return ['key' => $step->key(), 'state' => 'failed', 'message' => SafeMessage::of($exception)];
+                return ['key' => $step->key(), 'state' => 'failed', 'message' => SafeMessage::reported($exception)];
             }
 
             $state->absorb($context);

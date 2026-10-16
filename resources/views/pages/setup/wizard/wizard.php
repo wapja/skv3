@@ -127,7 +127,7 @@ new #[Layout('layouts::setup')] class extends Component
             throw ValidationException::withMessages($this->formErrors($exception->errors()));
         } catch (Throwable $exception) {
             // A lock or state file that cannot be written is a message on the form, not a 500 (g3-30).
-            $this->addError('host', SafeMessage::of($exception));
+            $this->addError('host', SafeMessage::reported($exception));
 
             return;
         } finally {
@@ -148,7 +148,7 @@ new #[Layout('layouts::setup')] class extends Component
         try {
             $outcome = $runner->advance();
         } catch (Throwable $exception) {
-            $this->failure = SafeMessage::of($exception);
+            $this->failure = SafeMessage::reported($exception);
 
             return;
         }
@@ -197,7 +197,7 @@ new #[Layout('layouts::setup')] class extends Component
         try {
             $runner->recheck($key);
         } catch (Throwable $exception) {
-            $this->failure = SafeMessage::of($exception);
+            $this->failure = SafeMessage::reported($exception);
 
             return;
         }
@@ -219,7 +219,7 @@ new #[Layout('layouts::setup')] class extends Component
             $this->herdSecret = $runner->finish();
             $this->stage = 'herd';
         } catch (Throwable $exception) {
-            $this->failure = SafeMessage::of($exception);
+            $this->failure = SafeMessage::reported($exception);
 
             // Step 9 wrote the marker and closed the gate: "Try again" would answer 404, so the login page is offered.
             if (Marker::exists(app(SetupContext::class))) {

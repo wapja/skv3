@@ -20,18 +20,21 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdState;
 use App\Setup\Wizard\SetupLock;
+use App\Setup\Wizard\StepLauncher;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use App\Tenancy\Hosts;
 use Dom\HTMLDocument;
 use Illuminate\Process\FakeProcessResult;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Fixtures\FixedStatusCheck;
+use Tests\Fixtures\InlineStepLauncher;
 
 use function Pest\Laravel\get;
 use function Pest\Laravel\withHeader;
@@ -459,6 +462,25 @@ it('offers the login page instead of Try again when the Herd stage cannot start 
         ->not->toContain('wire:click="retry"')
         ->and(Marker::exists($context))->toBeTrue();
 });
+
+it('logs an unexpected error behind the message it shows, but not a failure the page explains (M8)', function (Throwable $exception, bool $reported) use ($open, $next): void {
+    // Arrange: steps 1–8 are done, and the Herd step's launcher throws, so finishing fails after the marker.
+    Exceptions::fake();
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, Detection::none(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->throws = $exception;
+
+    [, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-stranded"')->toContain(e($exception->getMessage()));
+    $reported ? Exceptions::assertReported($exception::class) : Exceptions::assertNotReported($exception::class);
+})->with([
+    'a type error' => [fn (): Throwable => new TypeError('Unexpected type.'), true],
+    'a runtime exception' => [fn (): Throwable => new RuntimeException('Herd is not there.'), false],
+]);
 
 it('renders the wizard without a Vite manifest (§5.3.4, M55)', function (): void {
     $context = useSetupWizard();
