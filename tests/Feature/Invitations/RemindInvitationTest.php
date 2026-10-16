@@ -74,6 +74,29 @@ it('refuses to remind an accepted invitation and sends nothing (W5)', function (
         ->and($queuedReminders())->toBe(0);
 });
 
+it('sends one reminder per invitation per ten minutes, whoever sends it (CD-3, G1-01)', function () use ($queuedReminders): void {
+    $this->freezeSecond();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    DB::table('jobs')->delete();
+    $superAdmin = asSuperAdmin();
+    onTenant($organisation);
+
+    app(RemindInvitation::class)->handle($admin, $invitation);
+    $this->travel(9)->minutes();
+
+    expect(fn () => app(RemindInvitation::class)->handle($superAdmin, $invitation))
+        ->toThrow(ValidationException::class, __('This invitation was sent again less than :minutes minutes ago.', ['minutes' => 10]));
+    expect($queuedReminders())->toBe(1);
+
+    $this->travel(61)->seconds();
+    app(RemindInvitation::class)->handle($superAdmin, $invitation);
+
+    expect($queuedReminders())->toBe(2)
+        ->and($invitation->refresh()->reminder_sent_at?->equalTo(now()))->toBeTrue();
+});
+
 it('reminds an expired invitation', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($organisation);

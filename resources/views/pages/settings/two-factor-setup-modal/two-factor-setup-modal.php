@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Concerns\ConfirmsPasswords;
+use App\Concerns\ResolvesCurrentUser;
+use App\Support\RateLimits\UserActionLimit;
 use Laravel\Fortify\Actions\ConfirmTwoFactorAuthentication;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
 use Livewire\Attributes\Computed;
@@ -14,6 +16,7 @@ use Livewire\Component;
 new class extends Component
 {
     use ConfirmsPasswords;
+    use ResolvesCurrentUser;
 
     #[Locked]
     public bool $requiresConfirmation;
@@ -70,7 +73,8 @@ new class extends Component
     }
 
     /**
-     * Confirm two-factor authentication for the user.
+     * Confirm two-factor authentication for the user. Every attempt counts against the user's limit before the
+     * code is checked (CD-3).
      */
     public function confirmTwoFactor(ConfirmTwoFactorAuthentication $confirmTwoFactorAuthentication): void
     {
@@ -78,9 +82,11 @@ new class extends Component
             return;
         }
 
+        UserActionLimit::twoFactorConfirm()->attempt($this->currentUser(), 'code');
+
         $this->validate();
 
-        $confirmTwoFactorAuthentication(auth()->user(), $this->code);
+        $confirmTwoFactorAuthentication($this->currentUser(), $this->code);
 
         $this->setupComplete = true;
 

@@ -8,6 +8,7 @@ use App\Authorization\Permission;
 use App\Concerns\ResolvesCurrentUser;
 use App\Models\Invitation;
 use App\Models\Organisation;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\HostScope;
 use App\Tenancy\UserNames;
@@ -67,13 +68,25 @@ new #[Title('Pending invitations')] class extends Component
         $this->resetPage();
     }
 
-    /** Sends the invitation again with a renewed expiry (W5: refused once accepted, by the action). */
+    /**
+     * Sends the invitation again with a renewed expiry (W5: refused once accepted, and within the cooldown, by the
+     * action), under the actor's reminder limit (CD-3): reserved before the send, given back when the action refuses.
+     */
     public function remind(int $invitationId, RemindInvitation $remindInvitation): void
     {
         $invitation = $this->findInvitation($invitationId);
         $this->authorize('remind', $invitation);
 
-        $remindInvitation->handle($this->currentUser(), $invitation);
+        $remindLimit = UserActionLimit::remind();
+        $remindLimit->reserve($this->currentUser(), 'invitation');
+
+        try {
+            $remindInvitation->handle($this->currentUser(), $invitation);
+        } catch (Throwable $exception) {
+            $remindLimit->release($this->currentUser());
+
+            throw $exception;
+        }
 
         Flux::toast(variant: 'success', text: __('The invitation was sent again.'));
     }

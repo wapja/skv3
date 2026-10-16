@@ -55,6 +55,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link; `backup:run` refuses to start with one error line when the directory cannot be private (a symbolic link, a shared or the system temporary directory, or another account's).
 - `DB_CONNECT_TIMEOUT` (5 seconds, at least 1, because 0 waits forever) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
+- Per-user limits on sending email-change links (3 per 10 minutes), password changes and two-factor confirmations (5 per minute, every attempt), invitations and reminders (10 per minute), and on the two-factor and passkey management routes (10 per minute); an invitation is sent again at most once per 10 minutes.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
@@ -132,6 +133,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - The System page no longer answers 500 when the ops store or a backup disk fails, no longer needs ext-intl for its sizes, no longer boots the console kernel or looks up the PHP binary on every render, and no longer takes the backup lock to show whether a job is on.
 - The backups' source connection defaults to the app's default database (`sqlite`), like `config/database.php`.
 - The test suite flushes Livewire's per-request state before every test, so an asset one test's page registers no longer shows up in the next test's page.
+- A successful sign-in, also with a second factor or a passkey, clears the failed attempts of that address from that IP address.
+- An array sent as the address to the sign-in, reset-link and reset routes, or as the credential id to the passkey sign-in, answers with a validation error instead of a server error.
+- Failed passkey sign-ins are limited per IP address and failed passkey confirmations per user, whatever credential id the client sends.
+- A throttled sign-in returns to the login page, never to the page the Referer names.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

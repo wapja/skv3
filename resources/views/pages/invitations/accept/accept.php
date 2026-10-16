@@ -11,6 +11,7 @@ use App\Exceptions\InvitationNotFoundException;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Support\Locales;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Auth\HostLoginRule;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -127,7 +128,8 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
     }
 
     /**
-     * Send the invitation again from the expired state (INV-11); RemindInvitation authorises.
+     * Send the invitation again from the expired state (INV-11); RemindInvitation authorises. The actor's reminder
+     * limit is the pending list's (CD-3): reserved before the send, given back when the action refuses.
      */
     public function resend(RemindInvitation $remindInvitation): void
     {
@@ -137,7 +139,16 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
             abort(403);
         }
 
-        $remindInvitation->handle($actor, $this->invitation());
+        $remindLimit = UserActionLimit::remind();
+        $remindLimit->reserve($actor, 'invitation');
+
+        try {
+            $remindInvitation->handle($actor, $this->invitation());
+        } catch (Throwable $exception) {
+            $remindLimit->release($actor);
+
+            throw $exception;
+        }
 
         Flux::toast(variant: 'success', text: __('Invitation reminder sent.'));
     }

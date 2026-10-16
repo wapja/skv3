@@ -15,6 +15,8 @@
                 <flux:button variant="primary" wire:click="resend" class="w-full" data-test="resend-invitation-button">
                     {{ __('Resend invitation') }}
                 </flux:button>
+
+                <flux:error name="invitation" />
             @endif
             @break
 

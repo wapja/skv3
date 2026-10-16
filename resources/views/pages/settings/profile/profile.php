@@ -7,6 +7,7 @@ use App\Actions\Settings\UpdateLocale;
 use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\Locale;
+use App\Support\RateLimits\UserActionLimit;
 use Flux\Flux;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -38,7 +39,9 @@ new #[Title('Profile settings')] class extends Component
 
     /**
      * Save the name and the language; a new email address only applies after it is confirmed through the
-     * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10).
+     * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10). Sending the
+     * confirmation link is limited per user (CD-3): the slot is reserved before anything is saved, so a refusal
+     * saves nothing, and given back when the request throws.
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
@@ -51,6 +54,13 @@ new #[Title('Profile settings')] class extends Component
             'locale' => ['required', Rule::enum(Locale::class)],
         ]);
 
+        $email = (string) $validated['email'];
+        $emailChangeLimit = UserActionLimit::emailChange();
+
+        if ($email !== $user->email) {
+            $emailChangeLimit->reserve($user, 'email');
+        }
+
         $user->fill(['name' => $validated['name']])->save();
 
         $locale = Locale::from((string) $validated['locale']);
@@ -60,10 +70,15 @@ new #[Title('Profile settings')] class extends Component
             $updateLocale->handle($user, $locale);
         }
 
-        $email = (string) $validated['email'];
-
         if ($email !== $user->email) {
-            $requestEmailChange->handle($user, $email);
+            try {
+                $requestEmailChange->handle($user, $email);
+            } catch (Throwable $exception) {
+                $emailChangeLimit->release($user);
+
+                throw $exception;
+            }
+
             $this->email = $user->email;
 
             Flux::toast(variant: 'success', text: __('We sent a confirmation link to :email.', ['email' => $email]));

@@ -21,10 +21,14 @@ use Illuminate\Validation\ValidationException;
 /**
  * Sends an invitation again (§4.5, C-10): renews the domain expiry, keeps the token, sets
  * reminder_sent_at and queues the reminder after commit. Allowed for an expired invitation,
- * refused once accepted (W5). The mail builds its link in the worker (CV-12).
+ * refused once accepted (W5) and within COOLDOWN_MINUTES of the last reminder (CD-3), decided on
+ * the locked row. The mail builds its link in the worker (CV-12).
  */
 final readonly class RemindInvitation
 {
+    /** One reminder per invitation per this many minutes, whoever sends it (CD-3). */
+    public const int COOLDOWN_MINUTES = 10;
+
     public function __construct(private RecordActivity $recordActivity) {}
 
     /**
@@ -44,6 +48,12 @@ final readonly class RemindInvitation
                 if ($locked->isAccepted()) {
                     throw ValidationException::withMessages([
                         'invitation' => __('This invitation has already been accepted.'),
+                    ]);
+                }
+
+                if ($locked->reminder_sent_at?->isAfter(now()->subMinutes(self::COOLDOWN_MINUTES)) === true) {
+                    throw ValidationException::withMessages([
+                        'invitation' => __('This invitation was sent again less than :minutes minutes ago.', ['minutes' => self::COOLDOWN_MINUTES]),
                     ]);
                 }
 

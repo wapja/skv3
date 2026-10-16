@@ -7,6 +7,7 @@ use App\Concerns\ConfirmsPasswords;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\ActivityEvent;
+use App\Support\RateLimits\UserActionLimit;
 use Flux\Flux;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
@@ -77,11 +78,14 @@ new #[Title('Security settings')] class extends Component
     }
 
     /**
-     * Update the password for the currently authenticated user.
+     * Update the password for the currently authenticated user. Every attempt counts against the user's limit
+     * before the current password is checked (CD-3), so the form cannot be used to guess it.
      */
     public function updatePassword(RecordActivity $recordActivity): void
     {
         try {
+            UserActionLimit::passwordUpdate()->attempt($this->currentUser(), 'current_password');
+
             $validated = $this->validate([
                 'current_password' => $this->currentPasswordRules(),
                 'password' => $this->passwordRules(),
