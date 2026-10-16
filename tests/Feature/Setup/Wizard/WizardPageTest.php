@@ -403,6 +403,16 @@ it('refuses the default demo data next to an own super admin, and adds it when S
     expect(WizardState::load($context->basePath)?->answers->startWith)->toBe('demo');
 });
 
+it('adds the demo data at the first Start when the user picked it next to an own super admin (DEC-30, g4-04, M36)', function () use ($open, $answers): void {
+    // The user clicks the "Demo data" radio: the update for startWith is the pick (updatedStartWith()).
+    $context = useSetupWizard();
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+
+    callPageAction($open($context), 'start', updates: [...$answers, 'startWith' => 'demo'])->assertOk();
+
+    expect(WizardState::load($context->basePath)?->answers->startWith)->toBe('demo');
+});
+
 it('stops polling on a failure, and Try again runs the step again (§5.3.1, g4-13, g4-14)', function () use ($open, $next, $answers): void {
     // Arrange: PostgreSQL chosen while no server answers on this port, so the database step fails.
     $context = useSetupWizard();
