@@ -275,6 +275,30 @@ it('refuses a re-check and finishing while another request holds the lock (§5.3
     flock($lock, LOCK_UN);
 });
 
+/**
+ * A detached step whose log has been quiet for half an hour and whose `<step>.started` holds $pid: the wizard writes it
+ * empty, and a shell that never started leaves it so. 0 would signal this process group, and 1 is launchd or init.
+ */
+$quietFor31Minutes = fn (string $pid): Closure => function (SetupContext $context, $test) use ($pid): void {
+    File::put($context->path(WizardState::STEPS.'/frontend.started'), $pid);
+    File::put($context->path(WizardState::STEPS.'/frontend.log'), 'npm ci');
+    $test->travel(31)->minutes();
+};
+
+/** How a detached step's files say that its process ended without a usable result. */
+$diedSteps = [
+    'an unreadable result' => [function (SetupContext $context): void {
+        File::put($context->path(WizardState::STEPS.'/frontend.json'), 'not json');
+    }],
+    'an exit file without a result' => [function (SetupContext $context): void {
+        File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
+        File::put($context->path(WizardState::STEPS.'/frontend.exit'), "137\n");
+    }],
+    'no activity for half an hour, no pid' => [$quietFor31Minutes('')],
+    'no activity for half an hour, pid 0' => [$quietFor31Minutes("0\n")],
+    'no activity for half an hour, pid 1' => [$quietFor31Minutes("1\n")],
+];
+
 it('records a detached step that died as its manual command (§5.3.1, RL-4)', function (Closure $died): void {
     // Arrange: steps 1–4 are done, so the frontend step comes next and its files say how its process ended.
     $context = useSetupWizard();
@@ -292,20 +316,7 @@ it('records a detached step that died as its manual command (§5.3.1, RL-4)', fu
     expect($outcome['key'] ?? null)->toBe('frontend')
         ->and($runner->state()?->results['frontend']->toArray() ?? [])->toMatchArray(['status' => 'manual', 'command' => 'npm ci && npm run build'])
         ->and($launcher->started)->toBe([]);
-})->with([
-    'an unreadable result' => [function (SetupContext $context): void {
-        File::put($context->path(WizardState::STEPS.'/frontend.json'), 'not json');
-    }],
-    'an exit file without a result' => [function (SetupContext $context): void {
-        File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
-        File::put($context->path(WizardState::STEPS.'/frontend.exit'), "137\n");
-    }],
-    'no activity for half an hour' => [function (SetupContext $context, $test): void {
-        File::put($context->path(WizardState::STEPS.'/frontend.started'), (string) time());
-        File::put($context->path(WizardState::STEPS.'/frontend.log'), 'npm ci');
-        $test->travel(31)->minutes();
-    }],
-]);
+})->with($diedSteps);
 
 it('keeps polling a detached step that shows activity within half an hour (RL-4)', function (): void {
     $context = useSetupWizard();
@@ -386,6 +397,23 @@ it('refuses a re-check while the step\'s process lives, so no second one starts 
         ->and($steps.'/frontend.started')->toBeFile()
         ->and($steps.'/frontend.log')->toBeFile()
         ->and(app(WizardRunner::class)->state()->results)->toHaveKey('frontend');
+});
+
+it('re-checks a step that wrote its exit file, even while another process has its pid (RL-8)', function () use ($beforeFrontend): void {
+    // Arrange: the step's shell wrote its exit code, and its pid now belongs to a live process (this test's own).
+    $context = useSetupWizard();
+    $steps = $beforeFrontend($context);
+    $state = app(WizardRunner::class)->state() ?? throw new LogicException('No setup state.');
+    $state->results['frontend'] = StepResult::manual('npm ci && npm run build', 'The step stopped without a result.');
+    $state->save($context->basePath);
+    File::put($steps.'/frontend.started', getmypid()."\n");
+    File::put($steps.'/frontend.exit', "137\n");
+
+    app(WizardRunner::class)->recheck('frontend');
+
+    expect($steps.'/frontend.started')->not->toBeFile()
+        ->and($steps.'/frontend.exit')->not->toBeFile()
+        ->and(app(WizardRunner::class)->state()?->results)->not->toHaveKey('frontend');
 });
 
 it('stops trusting the pid four hours after the step started, so a reused pid never wedges the step (RL-8)', function () use ($beforeFrontend): void {
