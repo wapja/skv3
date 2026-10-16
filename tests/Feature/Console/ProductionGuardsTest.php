@@ -83,8 +83,8 @@ it('lets a staging install with its own super admin past the guards (CD-3, CD-9,
         ->not->toContain(__('skv:install runs only in the local, testing and staging environments (APP_ENV=:env).', ['env' => 'staging']));
 });
 
-it('only prepares .env, the key and the generated secrets when the target is a production install (CD-9, CD-10, A58)', function (): void {
-    new EnvFile($this->sandbox->path('.env'))->set(['APP_ENV' => 'production', 'APP_KEY' => '', 'HEALTH_CHECK_KEY' => '', 'BACKUP_ARCHIVE_PASSWORD' => '']);
+it('only prepares .env, the key and the generated secrets when the target is outside local, testing and staging (CD-3, CD-9, CD-10, A58)', function (string $environment): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['APP_ENV' => $environment, 'APP_KEY' => '', 'HEALTH_CHECK_KEY' => '', 'BACKUP_ARCHIVE_PASSWORD' => '']);
     $bootstrap = new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home')));
 
     $actions = $bootstrap->run();
@@ -106,7 +106,7 @@ it('only prepares .env, the key and the generated secrets when the target is a p
         ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse()
         ->and(is_file($this->sandbox->path('database/database.sqlite')))->toBeFalse();
     Process::assertNothingRan();
-});
+})->with(['production', 'prod', 'live']);
 
 it('takes the production half when the process environment says production, whatever .env says (CD-3, L-60)', function (string $source): void {
     $previousEnv = getenv('APP_ENV');
