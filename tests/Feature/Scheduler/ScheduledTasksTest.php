@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.9, §6.5 */
 
 use App\Support\Scheduler\ScheduledTasks;
+use Illuminate\Console\Application;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -42,4 +43,18 @@ it('reports a backup as active while its overlap lock is held, and leaves that l
         ->and($running->mutex->exists($running))->toBeTrue();
 
     $running->mutex->forget($running);
+});
+
+it('builds its copies without looking up the PHP binary, which forks a shell under php-fpm (CD-8, RL-7)', function (): void {
+    $commands = array_values(array_filter(array_map(
+        fn (Event $event): ?string => $event->command,
+        ScheduledTasks::schedule()->events(),
+    )));
+
+    expect($commands)->toHaveCount(7);
+
+    foreach ($commands as $command) {
+        expect($command)->toStartWith(Application::artisanBinary().' ')
+            ->and(str_contains($command, Application::phpBinary()))->toBeFalse();
+    }
 });
