@@ -26,6 +26,11 @@ final readonly class PrivateBackupTemp
     /** Files older than this are left over from a killed run: a running backup keeps writing its own. */
     public const int STALE_AFTER_HOURS = 6;
 
+    /**
+     * @param  ?string  $systemTemp  the system temporary directory; null for sys_get_temp_dir() (tests pass a sandbox)
+     */
+    public function __construct(private ?string $systemTemp = null) {}
+
     public function __invoke(CommandStarting $event): void
     {
         if ($event->command === 'backup:run') {
@@ -110,7 +115,7 @@ final readonly class PrivateBackupTemp
         return $mode !== null
             && ($mode & 01000) === 0
             && $real !== false
-            && $real !== realpath(sys_get_temp_dir());
+            && $real !== realpath($this->systemTemp ?? sys_get_temp_dir());
     }
 
     /** Whether neither the group nor others may write the directory, read past PHP's stat cache. */

@@ -93,6 +93,33 @@ it('never changes or empties a shared sticky directory (CD-10)', function () use
         ->and(is_file($this->temp.'/temp/someone-else.sql'))->toBeTrue();
 });
 
+it('never changes or empties a directory another account owns (CD-10)', function () use ($starting, $mode): void {
+    // root owns /usr/share, so this account can change nothing there even if the guard were gone (chmod() would throw).
+    config(['backup.backup.temporary_directory' => '/usr/share']);
+    $before = $mode('/usr/share');
+
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:run'));
+
+    expect($mode('/usr/share'))->toBe($before)
+        ->and(new PrivateBackupTemp()->removeStale())->toBe(0);
+})->skip(fn (): bool => posix_geteuid() === 0, 'root owns /usr/share');
+
+it('never changes or empties the system temporary directory (CD-10)', function () use ($mode): void {
+    // The sandbox stands in for it: on macOS $TMPDIR belongs to this account and is not sticky.
+    File::ensureDirectoryExists($this->temp.'/temp');
+    chmod($this->temp, 0755);
+    File::put($this->temp.'/temp/another-program.tmp', 'theirs');
+    touch($this->temp.'/temp/another-program.tmp', now()->subDay()->getTimestamp());
+    $temp = new PrivateBackupTemp(systemTemp: $this->temp);
+
+    $temp->secure();
+
+    expect($mode($this->temp))->toBe(0755)
+        ->and($temp->removeStale())->toBe(0)
+        ->and(is_file($this->temp.'/temp/another-program.tmp'))->toBeTrue();
+});
+
 it('never follows a temp/ that is a symbolic link (CD-10)', function () use ($mode): void {
     // Someone who could write the temporary directory once planted temp/ -> a directory of the application.
     $victim = $this->sandbox->path('victim');
