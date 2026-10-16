@@ -22,14 +22,21 @@ it('has no debugging leftovers in tests and migrations', function (): void {
 });
 
 it('formats sizes without ext-intl: no Illuminate\Support\Number in app code or views (CD-9, F20)', function (): void {
-    expect(filesMatching(kitSourceFiles('app', 'resources/views'), '/Illuminate\\\\Support\\\\Number\b|(?<![\w\\\\$>:])Number::/'))->toBe([]);
+    // The class name, a Number:: call, and the global alias `\Number::`, which a namespaced class reaches (M24).
+    expect(filesMatching(kitSourceFiles('app', 'resources/views'), '/Illuminate\\\\Support\\\\Number\b|(?<![\w\\\\$>:])\\\\?Number::/'))->toBe([]);
 });
 
 it('starts external commands only through Process: no exec() and friends, no backticks (F19)', function (): void {
     $banned = ['exec', 'shell_exec', 'system', 'passthru', 'proc_open', 'popen', 'pcntl_exec'];
     $offenders = [];
 
-    foreach (kitSourceFiles('app', 'tests', 'routes', 'database', 'config') as $path) {
+    // resources/views holds the multi-file components' classes, the System page's among them (M3); Blade is no PHP.
+    $files = array_filter(
+        kitSourceFiles('app', 'tests', 'routes', 'database', 'config', 'resources/views'),
+        fn (string $path): bool => ! str_ends_with($path, '.blade.php'),
+    );
+
+    foreach ($files as $path) {
         // Tokens, not text: comments, strings and docblocks may name these functions and use backticks.
         $tokens = array_values(array_filter(
             PhpToken::tokenize((string) file_get_contents(base_path($path))),
@@ -64,8 +71,9 @@ it('starts external commands only through Process: no exec() and friends, no bac
 it('fakes processes by name, never with a catch-all, so the stray-process guard stays on (g2-10, RL-12)', function (): void {
     $files = array_values(array_diff(kitSourceFiles('tests'), ['tests/Arch/KitRulesTest.php']));
 
-    // Factory::fake() fakes every command for no argument, a closure, a '*' key or a list value (a numeric key is '*'),
-    // or a '*' key anywhere in the array.
+    // Factory::fake() fakes every command for no argument, a closure, a '*' key or a list value (a numeric key is '*').
+    // This catches the literal forms only: a bare call, a closure, an array that starts with a list value, and a
+    // literal '*' key before the statement's first ';' (.ai/guidelines/skv3.md names what passes, M2).
     expect(filesMatching($files, '/Process::fake\(\s*(?:\)|(?:static\s+)?(?:fn|function)\b|\[\s*(?:([\'"])\*\1|Process::|(?:static\s+)?(?:fn|function)\b))|Process::fake\(\s*\[[^;]*?([\'"])\*\2\s*=>/s'))->toBe([]);
 });
 
