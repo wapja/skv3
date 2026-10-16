@@ -112,3 +112,14 @@ it('has a Dutch translation for every navigation label (FU4-6)', function (): vo
         expect($dutch)->toContain($item->label);
     }
 });
+
+it('hides System status from a super admin on a tenant host (§6.2, F26)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    asSuperAdmin();
+    onTenant($organisation);
+
+    $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+    preg_match_all('/data-test="nav-([a-z.]+)"/', $html, $matches);
+
+    expect($matches[1])->toContain('dashboard')->not->toContain('system.index');
+});

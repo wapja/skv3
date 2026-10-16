@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+/** covers §4.9, §6.5 */
+
+use App\Support\Scheduler\ScheduledTasks;
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
+
+it('lists the ops schedule from its own copy, not from the scheduler\'s instance (CD-8, L-39)', function (): void {
+    // A web request has not loaded routes/console.php: an empty bound schedule stands in for that.
+    app()->instance(Schedule::class, new Schedule);
+
+    $tasks = ScheduledTasks::all();
+
+    expect($tasks)->toHaveCount(8)
+        ->and(array_column($tasks, 'expression', 'task'))->toBe([
+            'activitylog:clean --force' => '0 1 * * *',
+            'backup:clean' => '30 1 * * *',
+            'backup:run --only-db' => '0 2 * * *',
+            'backup:monitor' => '0 3 * * *',
+            'queue:prune-failed' => '30 3 * * *',
+            'model:prune' => '0 4 * * *',
+            'auth:clear-resets' => '*/15 * * * *',
+            'scheduler-heartbeat' => '* * * * *',
+        ]);
+});
+
+it('reports a backup as active while its overlap lock is held, and leaves that lock alone (CD-8, F1)', function (): void {
+    useBackupsModule(true);
+    $running = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event): bool => str_contains((string) $event->command, 'backup:run'))
+        ?? throw new LogicException('backup:run is not scheduled.');
+
+    // The scheduler holds this lock (default cache store) while the nightly backup runs.
+    expect($running->mutex->create($running))->toBeTrue();
+
+    $active = array_column(ScheduledTasks::all(), 'active', 'task');
+
+    expect($active['backup:run --only-db'])->toBeTrue()
+        ->and($running->mutex->exists($running))->toBeTrue();
+
+    $running->mutex->forget($running);
+});

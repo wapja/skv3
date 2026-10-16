@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.9 */
 
 use App\Support\Scheduler\Heartbeat;
+use App\Support\Scheduler\ScheduledTasks;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Carbon;
@@ -23,11 +24,21 @@ $events = fn (): array => collect(app(Schedule::class)->events())
     ])
     ->all();
 
-it('schedules exactly the ops jobs of §4.9 (DEC-28)', function () use ($events): void {
-    expect(array_keys($events()))->toEqualCanonicalizing([
+/** @return list<string> every scheduled event's identifier, duplicates kept (L-31) */
+$identifiers = fn (): array => array_values(array_map(
+    fn (Event $event): string => $event->command !== null ? Str::after($event->command, "'artisan' ") : (string) $event->description,
+    app(Schedule::class)->events(),
+));
+
+it('schedules exactly the ops jobs of §4.9, each once (DEC-28, L-31)', function () use ($identifiers): void {
+    expect($identifiers())->toHaveCount(8)->toEqualCanonicalizing([
         'activitylog:clean --force', 'backup:clean', 'backup:run --only-db', 'backup:monitor',
         'queue:prune-failed', 'model:prune', 'auth:clear-resets', 'scheduler-heartbeat',
     ]);
+});
+
+it('lists on the System page exactly what the scheduler runs, in its order (CD-8)', function () use ($identifiers): void {
+    expect(array_column(ScheduledTasks::all(), 'task'))->toBe($identifiers());
 });
 
 it('runs each job at its time, on one server, never twice at once (§4.9)', function (string $job, string $expression, bool $overlapGuard) use ($events): void {
@@ -73,12 +84,17 @@ it('never runs an unencrypted backup, but keeps cleaning and monitoring (CD-10)'
     'unknown encryption' => [['backup.backup.encryption' => 'aes-256']],
 ]);
 
-it('records a heartbeat every minute (RL-8)', function () use ($events): void {
+it('records a heartbeat every minute and keeps it until the next one (RL-8, L-32)', function () use ($events): void {
     $this->travelTo(Carbon::parse('2026-10-15 12:34:00'));
 
     expect(app(Heartbeat::class)->last())->toBeNull();
 
     $events()['scheduler-heartbeat']->run(app());
+
+    expect(app(Heartbeat::class)->last()?->toIso8601String())->toBe(Carbon::parse('2026-10-15 12:34:00')->toIso8601String());
+
+    // Stored forever: a missing cron entry shows the old beat, never "has not run yet".
+    $this->travel(10)->years();
 
     expect(app(Heartbeat::class)->last()?->toIso8601String())->toBe(Carbon::parse('2026-10-15 12:34:00')->toIso8601String());
 });
