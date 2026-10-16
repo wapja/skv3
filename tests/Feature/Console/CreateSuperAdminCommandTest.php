@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.12 */
 
 use App\Authorization\Role;
+use App\Console\Support\StreamTerminal;
 use App\Console\Support\Terminal;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
@@ -167,4 +168,15 @@ it('refuses --password-stdin on a terminal, where the password would show, befor
         ->and($output)->toContain(__('Standard input is a terminal, where the password would show. Pipe it in: printf \'%s\n\' "$PASSWORD" | php artisan skv:create-super-admin you@example.com --password-stdin'))
         ->not->toContain('correct-horse-battery')
         ->and(Tenant::bypass(fn (): bool => User::query()->where('email', 'owner@example.com')->exists()))->toBeFalse();
+});
+
+it('binds the real terminal check, which an in-memory stream passes (L-54, M20)', function (): void {
+    $memory = fopen('php://memory', 'r+') ?: throw new LogicException('No memory stream.');
+
+    $terminal = app(Terminal::class);
+
+    expect($terminal::class)->toBe(StreamTerminal::class)
+        ->and($terminal->isTerminal($memory))->toBeFalse();
+
+    fclose($memory);
 });
