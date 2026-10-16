@@ -14,6 +14,8 @@ use App\Setup\SetupContext;
 use App\Setup\SetupMode;
 use App\Setup\SetupToken;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\WizardRunner;
+use App\Setup\Wizard\WizardState;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Cache\FileStore;
 use Illuminate\Session\FileSessionHandler;
@@ -153,6 +155,23 @@ it('hands the token out only on a host the wizard can pin (RL-5, g3-25)', functi
 
     expect($refused)->not->toContain('token=');
     $this->get('http://acme.localhost/')->assertRedirectContains('/welcome-setup?token='.$token);
+});
+
+it('hands the token out on / only on the pinned host and its admin host once the wizard has begun (RL-5)', function (): void {
+    $context = useSetupWizard();
+    $token = (string) new SetupToken($context->basePath)->value();
+    app(WizardRunner::class)->begin([
+        'app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'],
+        'https' => false, 'playwright' => false, 'claude' => false,
+    ], 'myapp.test');
+
+    // evil.test is a local name the guard allows before begin(): only the pin keeps the token from it.
+    $refused = (string) $this->get('http://evil.test/')->assertRedirect(route('login'))->headers->get('Location');
+
+    expect(WizardState::load($context->basePath)?->host)->toBe('myapp.test')
+        ->and($refused)->not->toContain($token);
+    $this->get('http://myapp.test/')->assertRedirect('/welcome-setup?token='.$token);
+    $this->get('http://admin.myapp.test/')->assertRedirect('/welcome-setup?token='.$token);
 });
 
 it('sends / on a host the wizard refuses to the address to use, without the token (§5.3.4, g3-34)', function (): void {
