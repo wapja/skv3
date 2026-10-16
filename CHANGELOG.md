@@ -131,6 +131,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `/health-check` still answers with the real report when the ops store can be read but not written.
 - The System page no longer answers 500 when the ops store or a backup disk fails, no longer needs ext-intl for its sizes, no longer boots the console kernel or looks up the PHP binary on every render, and no longer takes the backup lock to show whether a job is on.
 - The backups' source connection defaults to the app's default database (`sqlite`), like `config/database.php`.
+- The test suite flushes Livewire's per-request state before every test, so an asset one test's page registers no longer shows up in the next test's page.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
