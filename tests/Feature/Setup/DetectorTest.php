@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Setup\Detector;
 use App\Setup\Support\Toolchain;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -50,6 +51,9 @@ it('reads Herd Pro from the services JSON and the mail service from herd.json, n
         ->and($detection->herdMail)->toBeTrue()
         ->and($detection->herdSmtpPort)->toBe(2525)
         ->and($detection->host)->toBe(basename(base_path()).'.test');
+    // Both Herd probes give up after 5 s, so a hung Herd never stalls detection (A5, A18).
+    Process::assertRan(fn (PendingProcess $process): bool => in_array('services:list', (array) $process->command, true) && $process->timeout === 5);
+    Process::assertRan(fn (PendingProcess $process): bool => in_array('tld', (array) $process->command, true) && $process->timeout === 5);
 });
 
 it('treats unparsable Herd output as "no Herd Pro" (§13)', function () use ($detector): void {
@@ -101,8 +105,11 @@ it('treats a Herd that hangs as no Herd Pro and falls back to the APP_URL host (
     chmod($herd, 0755);
     config(['app.url' => 'http://fallback.test']);
 
-    // A handler that throws stands in for a timeout: Detector must catch every process failure.
-    Process::fake(['*' => fn () => throw new RuntimeException('timed out')]);
+    // A handler that throws stands in for each Herd probe timing out: Detector must catch every process failure.
+    Process::fake([
+        "*herd' 'services:list'*" => fn () => throw new RuntimeException('timed out'),
+        "*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'),
+    ]);
 
     $detection = $detector(new Toolchain($this->home))->detect();
 

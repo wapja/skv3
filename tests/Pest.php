@@ -75,6 +75,16 @@ pest()->extend(TestCase::class)
 
 pest()->extend(TestCase::class)->in('Arch');
 
+/*
+| RL-12: every setup, console, backup, health and System-page test refuses a process it did not fake. Recording starts
+| with fake([]): preventStrayProcesses() alone guards nothing until a fake is recording. A file's own
+| Process::fake([...]) adds its named patterns; catch-alls are banned (tests/Arch/KitRulesTest.php).
+*/
+pest()->beforeEach(function (): void {
+    Process::preventStrayProcesses();
+    Process::fake([]);
+})->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System');
+
 // §7.2: browser tests serve the app in-process; RefreshDatabase on in-memory SQLite works because the
 // server shares the test's container and connection. The group keeps them out of composer check.
 pest()->extend(TestCase::class)

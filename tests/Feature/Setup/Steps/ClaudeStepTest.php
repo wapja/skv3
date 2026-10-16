@@ -44,7 +44,6 @@ it('installs Boost, registers the Herd MCP server as herd and adds boost:update 
     Process::fake([
         "*'artisan' 'boost:install'*" => Process::result('Boost installed'),
         "*claude' 'plugin'*" => Process::result('installed'),
-        "*composer' 'require' '--dev' 'laravel/boost'*" => Process::result(''),
     ]);
 
     expect(new ClaudeStep()->run($context)->status)->toBe('done');
@@ -117,9 +116,9 @@ it('is complete once Boost, the MCP servers and boost:update are in place (§5.3
 it('hands over the Boost command when the address is not a .test site (§5.3.3 step 7)', function (): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['claude' => true], $context->detection, $context->folderName());
-    Process::fake();
 
     $result = new ClaudeStep()->run($context);
+    Process::assertNothingRan();
 
     expect($result->isManual())->toBeTrue()->and($result->command)->toBe('php artisan boost:install');
 });
@@ -133,7 +132,7 @@ it('restores the Boost constraint the installer lowered, also when Claude was no
 
     expect(new ClaudeStep()->isComplete($context))->toBeFalse();
 
-    Process::fake(['*' => Process::result('')]);
+    Process::fake(["*composer' 'require' '--dev' 'laravel/boost:^2.10'*" => Process::result('')]);
 
     expect(new ClaudeStep()->run($context)->status)->toBe('skipped');
 

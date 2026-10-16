@@ -18,6 +18,7 @@ use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\StepLauncher;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
+use Illuminate\Process\FakeProcessResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -37,6 +38,19 @@ $holdLock = function (string $basePath) {
 
     return $handle;
 };
+
+/**
+ * The commands a wizard run without Herd starts (§5.3.3): Node answers no version, so the frontend step ends manual
+ * before npm; git init and the hooks path; composer's Flux Pro credentials where Pro is installed (the doctor step).
+ *
+ * @return array<string, FakeProcessResult>
+ */
+$wizardCommands = fn (): array => [
+    "*node' '-v'*" => Process::result(''),
+    "*git' 'init'*" => Process::result(''),
+    "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+    "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+];
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -71,13 +85,13 @@ it('stores the answers with the password hash only (RL-5)', function (): void {
         ->and((string) file_get_contents($context->path(WizardState::PATH)))->not->toContain('correct-horse-battery');
 });
 
-it('runs steps 1 to 8 one call at a time, the long ones detached (§5.3.4, RL-4)', function (): void {
+it('runs steps 1 to 8 one call at a time, the long ones detached (§5.3.4, RL-4)', function () use ($wizardCommands): void {
     $context = useSetupWizard();
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
     $runner = app(WizardRunner::class);
     $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     $keys = [];
 
@@ -128,14 +142,14 @@ it('reports a failing step without losing the earlier results, then retries it (
         ->and(WizardState::load($context->basePath)->results)->toHaveKeys(['environment', 'database']);
 });
 
-it('marks a detached step that could not start as a manual command (RL-4)', function (): void {
+it('marks a detached step that could not start as a manual command (RL-4)', function () use ($wizardCommands): void {
     useSetupWizard();
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
     $launcher->refuses = true;
     $runner = app(WizardRunner::class);
     $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     for ($i = 0; $i < 50 && ($outcome = $runner->advance()) !== null && $outcome['key'] !== 'frontend'; $i++) {
     }
@@ -144,13 +158,13 @@ it('marks a detached step that could not start as a manual command (RL-4)', func
         ->and($runner->state()?->results['frontend']->status ?? null)->toBe('manual');
 });
 
-it('finishes with the marker, a Herd state holding the secret\'s hash and the Herd step started (RL-6)', function (): void {
+it('finishes with the marker, a Herd state holding the secret\'s hash and the Herd step started (RL-6)', function () use ($wizardCommands): void {
     $context = useSetupWizard();
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
     $runner = app(WizardRunner::class);
     $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'playwright' => false, 'claude' => false], 'localhost');
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     for ($i = 0; $i < 50 && $runner->advance() !== null; $i++) {
     }

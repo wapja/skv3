@@ -28,8 +28,10 @@ $usablePgDump = function (): ?string {
         return null;
     }
 
-    // F19: through Process with the toolchain's environment, never exec(). This file fakes no process, so the probe
-    // and the package's pg_dump run for real.
+    // The one test that runs a real pg_dump (AGENTS.md › Ops): its version probe runs for real, not faked (RL-12).
+    Process::preventStrayProcesses(false);
+    // F19: through Process with the toolchain's environment, never exec(). The package's pg_dump runs through Symfony's
+    // Process directly, so the facade's fake never touches it.
     preg_match('/(\d+)(?:\.\d+)?/', Process::env($toolchain->environment())->run([$path, '--version'])->output(), $client);
     preg_match('/^(\d+)/', DB::connection()->getServerVersion(), $server);
 

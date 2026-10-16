@@ -90,8 +90,6 @@ it('leaves a non-default APP_URL and a non-sqlite database alone (§5.2)', funct
     $env = new EnvFile($this->context->path('.env'));
     $env->set(['APP_URL' => 'https://my-app.example', 'DB_CONNECTION' => 'pgsql']);
 
-    Process::fake();
-
     new Bootstrap($this->context->basePath, $this->toolchain)->run();
 
     expect($env->get('APP_URL'))->toBe('https://my-app.example')
@@ -148,7 +146,7 @@ it('survives a herd tld that times out (A5)', function (): void {
     File::put($herd, "#!/bin/sh\n");
     chmod($herd, 0755);
 
-    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), '*' => Process::result('')]);
+    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), "*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
 
     $actions = new Bootstrap($this->context->basePath, $this->toolchain)->run();
 

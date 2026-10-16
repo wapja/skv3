@@ -60,3 +60,22 @@ it('starts external commands only through Process: no exec() and friends, no bac
 
     expect(array_values(array_unique($offenders)))->toBe([]);
 });
+
+it('fakes processes by name, never with a catch-all, so the stray-process guard stays on (g2-10, RL-12)', function (): void {
+    $files = array_values(array_diff(kitSourceFiles('tests'), ['tests/Arch/KitRulesTest.php']));
+
+    // Factory::fake() fakes every command for no argument, a closure, a '*' key or a list value (a numeric key is '*'),
+    // or a '*' key anywhere in the array.
+    expect(filesMatching($files, '/Process::fake\(\s*(?:\)|(?:static\s+)?(?:fn|function)\b|\[\s*(?:([\'"])\*\1|Process::|(?:static\s+)?(?:fn|function)\b))|Process::fake\(\s*\[[^;]*?([\'"])\*\2\s*=>/s'))->toBe([]);
+});
+
+it('guards the setup, console, backup, health and System-page tests against stray processes (RL-12)', function (): void {
+    expect((string) file_get_contents(base_path('tests/Pest.php')))
+        ->toContain("->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System')");
+});
+
+it('keeps Vite, public/build, web fonts and Flux Pro out of the setup pages, which render before the first build (§5.3.4, M55)', function (): void {
+    $files = ['resources/views/layouts/setup.blade.php', ...kitSourceFiles('resources/views/pages/setup', 'resources/views/setup')];
+
+    expect(filesMatching($files, '#@vite|Vite::|/build/|@fonts|hasFluxPro#'))->toBe([]);
+});

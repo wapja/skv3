@@ -24,9 +24,11 @@ use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use App\Tenancy\Hosts;
 use Dom\HTMLDocument;
+use Illuminate\Process\FakeProcessResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Fixtures\FixedStatusCheck;
@@ -103,6 +105,19 @@ $until = function (array $snapshot, string $html, string $marker, bool $finish =
 /** @var array<string, mixed> $answers */
 $answers = ['appName' => 'Acme', 'database' => 'sqlite', 'startWith' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'claude' => false];
 
+/**
+ * The commands a wizard run without Herd starts (§5.3.3): Node answers no version, so the frontend step ends manual
+ * before npm; git init and the hooks path; composer's Flux Pro credentials where Pro is installed (the doctor step).
+ *
+ * @return array<string, FakeProcessResult>
+ */
+$wizardCommands = fn (): array => [
+    "*node' '-v'*" => Process::result(''),
+    "*git' 'init'*" => Process::result(''),
+    "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+    "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+];
+
 it('pre-fills the §5.3.2 questions (§5.3.2)', function (): void {
     $context = useSetupWizard();
     $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
@@ -128,20 +143,21 @@ it('shows the validation errors of the answers (A15)', function () use ($open, $
         ->and($context->path(WizardState::PATH))->not->toBeFile();
 });
 
-it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', function () use ($open, $next): void {
+it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', function () use ($open, $next, $wizardCommands): void {
     $context = useSetupWizard();
     new EnvFile($context->path('.env'))->set(['QUEUE_CONNECTION' => 'database']);
     // The process boots as the project's .env makes it (.env.example), not with phpunit's sync queue and array
     // session: setup mode must replace them for the run, and the doctor must check the project's database queue.
     config(['queue.default' => 'database', 'session.driver' => 'database']);
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: [
         'appName' => 'Acme', 'database' => 'sqlite', 'startWith' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'claude' => false,
     ])->assertOk());
 
-    // The page polls advance() every 2 s; the test calls it until the Herd stage renders. The sandbox has no node, so
-    // the frontend step ends manual and the page stops at the review: the user clicks "Finish setup" there.
+    // The page polls advance() every 2 s; the test calls it until the Herd stage renders. Node answers no version
+    // ($wizardCommands), so the frontend step ends manual and the page stops at the review: the user clicks "Finish
+    // setup" there.
     for ($i = 0; $i < 20 && ! str_contains($html, 'data-test="setup-herd-stage"'); $i++) {
         $action = str_contains($html, 'data-test="setup-complete"') ? 'complete' : 'advance';
         [$snapshot, $nextHtml] = $next(callPageAction($snapshot, $action)->assertOk());
@@ -154,9 +170,9 @@ it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', f
         ->and(config('setup.replaced.queue'))->toBe('database');
 });
 
-it('keeps the session across the environment step, so a new APP_NAME causes no 419 (§7.2)', function () use ($open, $next, $answers): void {
+it('keeps the session across the environment step, so a new APP_NAME causes no 419 (§7.2)', function () use ($open, $next, $answers, $wizardCommands): void {
     $context = useSetupWizard();
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     $env = new EnvFile($context->path('.env'));
     $cookie = $env->get('SESSION_COOKIE');
 
@@ -172,7 +188,7 @@ it('keeps the session across the environment step, so a new APP_NAME causes no 4
         ->and($env->get('SESSION_COOKIE'))->toBe($cookie);
 });
 
-it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($open, $next, $until, $answers, $postgres): void {
+it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($open, $next, $until, $answers, $postgres, $wizardCommands): void {
     $context = useSetupWizard(setupSandbox(prefix: 'setup_probe_'));
     $name = DatabaseStep::databaseName($context);
     $admin = $postgres();
@@ -182,7 +198,7 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
             $admin->exec('DROP DATABASE IF EXISTS "'.$database.'" WITH (FORCE)');
         }
     });
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: [...$answers, 'database' => 'pgsql'])->assertOk());
     [, $html] = $until($snapshot, $html, 'data-test="setup-herd-stage"', finish: true);
@@ -192,10 +208,10 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
         ->and(new EnvFile($context->path('.env'))->get('DB_DATABASE'))->toBe($name);
 })->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');
 
-it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers): void {
+it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers, $wizardCommands): void {
     $context = useSetupWizard();
     // Node answers no version, so the frontend step returns its command as manual.
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
     [$snapshot, $html] = $until($snapshot, $html, 'data-test="setup-manual-frontend"');
@@ -260,9 +276,9 @@ it('never stores the plaintext password (RL-5)', function () use ($open, $next, 
         ->and($snapshot['data']['superAdminPassword'] ?? null)->toBe('');
 });
 
-it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)', function () use ($open, $next, $until, $answers): void {
+it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)', function () use ($open, $next, $until, $answers, $wizardCommands): void {
     $context = useSetupWizard();
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
     [$snapshot] = $until($snapshot, $html, 'data-test="setup-manual-frontend"');
     // Another request holds the setup lock (flock() on its own handle conflicts with this process's too).
@@ -277,14 +293,14 @@ it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)',
     flock($lock, LOCK_UN);
 });
 
-it('goes straight on to the Herd stage when no step ended manual (§5.3.1, §5.3.4)', function () use ($open, $next, $answers): void {
-    // Arrange: every page step ends done or skipped: the frontend is already built (the sandbox has no node) and the
-    // doctor finds nothing to fail (in the sandbox it misses node and more).
+it('goes straight on to the Herd stage when no step ended manual (§5.3.1, §5.3.4)', function () use ($open, $next, $answers, $wizardCommands): void {
+    // Arrange: every page step ends done or skipped: the frontend is already built, so the step is complete before it
+    // reaches Node, and the doctor finds nothing to fail (in the sandbox it misses node and more).
     $context = useSetupWizard();
     File::ensureDirectoryExists($context->path('public/build'));
     File::put($context->path('public/build/manifest.json'), '{}');
     app()->instance(Doctor::class, new Doctor([new FixedStatusCheck(CheckStatus::Pass, 'php')]));
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
 
     // Only the poll's advance(), never "Finish setup".
@@ -442,4 +458,14 @@ it('offers the login page instead of Try again when the Herd stage cannot start 
         ->toContain('href="'.Hosts::url(Hosts::apex(), '/login').'"')
         ->not->toContain('wire:click="retry"')
         ->and(Marker::exists($context))->toBeTrue();
+});
+
+it('renders the wizard without a Vite manifest (§5.3.4, M55)', function (): void {
+    $context = useSetupWizard();
+    Vite::useManifestFilename('missing-'.Str::uuid().'.json');
+
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+    $html = (string) $this->get('/welcome-setup')->assertOk()->getContent();
+
+    expect($html)->toContain('data-test="setup-wizard"')->not->toContain('/build/');
 });

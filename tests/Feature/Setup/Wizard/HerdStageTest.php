@@ -27,6 +27,7 @@ use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Laravel\Boost\Middleware\InjectBoost;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -441,3 +442,20 @@ it('leaves a Herd state that changed after this request loaded it on the server-
     expect((string) file_get_contents($context->path(HerdState::PATH)))->toBe($before)
         ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->not->toStartWith('https://');
 })->with($movedOn);
+
+it('renders the Herd-stage pages without a Vite manifest (§5.3.4, M55)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+    Vite::useManifestFilename('missing-'.Str::uuid().'.json');
+
+    $finishing = $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Refresh', '2');
+    $manual = $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertOk()->assertHeaderMissing('Refresh');
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+    $summary = $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertSee('data-test="setup-summary"', false);
+
+    foreach ([$finishing, $manual, $summary] as $response) {
+        expect((string) $response->getContent())->not->toContain('/build/');
+    }
+});

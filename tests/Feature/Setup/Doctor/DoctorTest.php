@@ -16,6 +16,7 @@ use App\Setup\Doctor\DoctorContext;
 use App\Setup\Marker;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -25,9 +26,14 @@ use Tests\Fixtures\ThrowingCheck;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
-    // A catch-all is fine here: these tests assert statuses, not commands. ChecksTest must NOT copy it,
-    // because the first matching handler wins and a catch-all would shadow its specific fakes.
-    Process::fake(['*' => Process::result('')]);
+    // The commands the checks and repairs start here: Node's version (it answers none, so the assets repair stops
+    // before npm), the storage-link repair, and composer's Flux Pro credentials where Pro is installed (CI's main job).
+    // The sandbox has no .git and no marker, so the git-hooks and superpowers checks start nothing.
+    Process::fake([
+        "*node' '-v'*" => Process::result(''),
+        "*'artisan' 'storage:link'*" => Process::result(''),
+        "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+    ]);
     $this->sandbox = setupSandbox();
     $this->context = new DoctorContext($this->sandbox->basePath, new Toolchain($this->sandbox->path('home')), Detection::none(), null);
 });
@@ -71,6 +77,8 @@ it('reports drift without repairing it, and repairs it with --fix (DEC-26, DEC-2
         ->and($stillDrifting)->toBe(1)
         ->and($after['super-admin-badges']->status)->toBe(CheckStatus::Pass)
         ->and($badge->fresh()?->permissions()->count())->toBe(0);
+    // The sandbox has no public/storage, so --fix runs the storage-link repair (a safe repair, §5.4).
+    Process::assertRan(fn (PendingProcess $process): bool => str_contains(implode(' ', (array) $process->command), 'artisan storage:link'));
 });
 
 it('names only the exception class of a check or a fix that throws, never its message (§5.4, RL-11)', function (bool $fix): void {

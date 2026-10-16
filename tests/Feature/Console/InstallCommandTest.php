@@ -28,7 +28,22 @@ use Tests\Fixtures\QueryFailingSetupStep;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
-    Process::fake(['*' => Process::result('')]);
+    // The commands a sandbox install starts (§5.3.3):
+    // - the bootstrap's migration
+    // - Node's version (it answers none, so the frontend step ends manual before npm)
+    // - git init and the hooks path
+    // - where Claude Code is on the system PATH (the claude answer then defaults to true): Boost and the plugin on a
+    //   .test address, and the doctor's plugin list
+    // - composer's Flux Pro credentials where Pro is installed
+    Process::fake([
+        "*'artisan' 'migrate'*" => Process::result(''),
+        "*node' '-v'*" => Process::result(''),
+        "*git' 'init'*" => Process::result(''),
+        "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+        "*'artisan' 'boost:install'*" => Process::result(''),
+        "*claude' 'plugin'*" => Process::result('[]'),
+        "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+    ]);
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     app()->instance(SetupContext::class, $this->sandbox);

@@ -17,7 +17,11 @@ use Tests\Fixtures\FixedStatusCheck;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
-    Process::fake(['*' => Process::result('')]);
+    Process::fake([
+        "*node' '-v'*" => Process::result(''),
+        "*'artisan' 'storage:link'*" => Process::result(''),
+        "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+    ]);
     // Never the repository's own .env, marker or .mcp.json: every DoctorCommand test runs on a sandbox.
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
