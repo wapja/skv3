@@ -7,11 +7,18 @@ namespace App\Support\Backups;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Doctor\PostgresBinaries;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\ConfigurationUrlParser;
 
 /**
- * Before backup:run, fills an empty `database.connections.pgsql.dump.dump_binary_path` with the directory of the
- * pg_dump the doctor finds (RL-4): PG_DUMP_BINARY_PATH, the toolchain PATH, then Herd's newest PostgreSQL service.
- * A cron job has no Herd PATH, so without this the nightly backup would not find Herd's pg_dump.
+ * Before backup:run, prepares pg_dump.
+ *
+ * It fills an empty `database.connections.pgsql.dump.dump_binary_path` with the directory of the pg_dump the doctor
+ * finds (RL-4, CD-6): PG_DUMP_BINARY_PATH, then for a server on this machine Herd's newest trusted PostgreSQL service
+ * before the toolchain PATH, else the PATH first (PostgresBinaries). A cron job has no Herd PATH, so without this the
+ * nightly backup would not find Herd's pg_dump.
+ *
+ * It also passes the source connection's sslmode as PGSSLMODE (L-05), because pg_dump reads its TLS mode from the
+ * environment, not from the Laravel connection.
  */
 final readonly class ConfigurePgDump
 {
@@ -23,7 +30,13 @@ final readonly class ConfigurePgDump
 
     public function __invoke(CommandStarting $event): void
     {
-        if ($event->command !== 'backup:run' || (string) config('database.connections.pgsql.dump.dump_binary_path', '') !== '') {
+        if ($event->command !== 'backup:run') {
+            return;
+        }
+
+        $this->passSslMode();
+
+        if ((string) config('database.connections.pgsql.dump.dump_binary_path', '') !== '') {
             return;
         }
 
@@ -31,6 +44,40 @@ final readonly class ConfigurePgDump
 
         if ($path !== null) {
             config(['database.connections.pgsql.dump.dump_binary_path' => dirname($path)]);
+        }
+    }
+
+    /**
+     * L-05: the first PostgreSQL backup source's sslmode, as the app's own connection uses it: a url's query overrides
+     * the sslmode key, so the connection is read through ConfigurationUrlParser, as DatabaseManager and the package's
+     * DbDumperFactory read it. The package's Symfony Process inherits the getenv() keys that $_SERVER also holds, plus
+     * every $_ENV key, so all three are set.
+     */
+    private function passSslMode(): void
+    {
+        $sources = config('backup.backup.source.databases', []);
+
+        foreach (is_array($sources) ? $sources : [] as $connection) {
+            $settings = is_string($connection) ? config('database.connections.'.$connection) : null;
+
+            if (! is_array($settings)) {
+                continue;
+            }
+
+            $settings = new ConfigurationUrlParser()->parseConfiguration($settings);
+
+            if (($settings['driver'] ?? null) !== 'pgsql') {
+                continue;
+            }
+
+            $mode = $settings['sslmode'] ?? null;
+
+            if (is_string($mode) && $mode !== '') {
+                putenv('PGSSLMODE='.$mode);
+                $_SERVER['PGSSLMODE'] = $_ENV['PGSSLMODE'] = $mode;
+            }
+
+            return;
         }
     }
 }

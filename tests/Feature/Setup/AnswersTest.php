@@ -10,6 +10,7 @@ use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 beforeEach(function (): void {
@@ -140,3 +141,14 @@ it('refuses a state with a missing or wrongly typed key (A11)', function (string
     'https' => ['https', 'yes'],
     'start_with' => ['start_with', null],
 ]);
+
+it('applies the app\'s password defaults to the super admin password (§5.3.2, g1-32)', function (): void {
+    // AppServiceProvider sets the defaults again when the next test boots the app.
+    Password::defaults(fn (): Password => Password::min(12));
+    $answers = fn (string $password): Answers => Answers::fromArray([
+        'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => $password,
+    ], Detection::none(), 'my-app');
+
+    expect(fn (): Answers => $answers('abcdefgh'))->toThrow(ValidationException::class, 'at least 12 characters')
+        ->and($answers('abcdefghijkl')->superAdminPasswordHash)->not->toBeNull();
+});

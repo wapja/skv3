@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
-/** §5.4: the default queue connection resolves and, for the database driver, its jobs table exists. */
+/** §5.4, F2: the default queue connection resolves and, for the database driver, its jobs table exists; skipped while that table's connection is the default one and the database is down. */
 final readonly class QueueCheck implements Check
 {
     public function key(): string
@@ -41,9 +41,15 @@ final readonly class QueueCheck implements Check
 
         $table = (string) (config("queue.connections.{$name}.table") ?? 'jobs');
         $connection = config("queue.connections.{$name}.connection");
+        $connection = is_string($connection) ? $connection : null;
+
+        // F2: an outage is the database check's failure; a "missing table" with a migrate fix would mislead.
+        if ($context->defaultConnectionDown($connection)) {
+            return CheckResult::skipped(__('The database is not reachable'));
+        }
 
         try {
-            $exists = Schema::connection(is_string($connection) ? $connection : null)->hasTable($table);
+            $exists = Schema::connection($connection)->hasTable($table);
         } catch (Throwable) {
             $exists = false;
         }

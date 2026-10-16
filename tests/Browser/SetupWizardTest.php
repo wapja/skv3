@@ -10,10 +10,19 @@ use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Pest\Browser\Api\PendingAwaitablePage;
+use Pest\Browser\Playwright\Playwright;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
-    Process::fake(['*' => Process::result('')]);
+    // The commands a wizard run without Herd starts: Node answers no version, so the frontend step ends manual and the
+    // page stops at the review; git init and the hooks path; composer's Flux Pro credentials where Pro is installed.
+    Process::fake([
+        "*node' '-v'*" => Process::result(''),
+        "*git' 'init'*" => Process::result(''),
+        "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+        "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+    ]);
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
     $this->previousConnection = config('database.default');
 });
@@ -24,7 +33,23 @@ afterEach(function (): void {
     config(['database.default' => $this->previousConnection]);
 });
 
-it('sets a demo install up on SQLite in the browser and signs in with the quick login (§7.2)', function (): void {
+/**
+ * Waits up to two minutes for $selector while the in-process server answers the page's polls. The plugin retries an
+ * assertion for Playwright::timeout() milliseconds (5 s by default), so the timeout is raised for this one wait and
+ * restored after it. Playwright::usingTimeout() would not do: it changes only each request's timeout, not the retries.
+ */
+$waitFor = function (PendingAwaitablePage $page, string $selector): void {
+    $previous = Playwright::timeout();
+    Playwright::setTimeout(120_000);
+
+    try {
+        $page->assertPresent($selector);
+    } finally {
+        Playwright::setTimeout($previous);
+    }
+};
+
+it('sets a demo install up on SQLite in the browser and signs in with the quick login (§7.2)', function () use ($waitFor): void {
     useSetupWizard();
 
     $page = visit('/')->withHost('localhost');
@@ -34,19 +59,15 @@ it('sets a demo install up on SQLite in the browser and signs in with the quick 
         ->click('@setup-database-sqlite')
         ->click('@setup-start-button');
 
-    // waitForText() takes no timeout: it retries for Playwright's 5 s. The wizard needs about ten polls, so wait in
-    // steps while the in-process server answers them. The sandbox has no node: the page stops at the review.
-    for ($i = 0; $i < 45 && ! str_contains($page->content(), 'data-test="setup-summary"'); $i++) {
-        if (str_contains($page->content(), 'data-test="setup-complete"')) {
-            $page->click('@setup-complete');
-        }
-
-        $page->wait(2);
-    }
+    // The frontend step ends manual, so the page stops at the review. Click "Finish setup" once, after it shows: a
+    // second click would reach the gate the marker closed.
+    $waitFor($page, '@setup-complete');
+    $page->click('@setup-complete');
+    $waitFor($page, '@setup-summary');
 
     $page->assertSee(__('Setup is done.'))
         ->assertSee('admin@demo1.localhost')
-        ->click(__('Go to the login page'))
+        ->click('@setup-login')
         ->assertSee(__('Quick login (local only)'))
         // GuessLocator strips every '@', so the selector holds none after the first.
         ->press('@quick-login-admin-demo1-localhost')
@@ -54,7 +75,7 @@ it('sets a demo install up on SQLite in the browser and signs in with the quick 
         ->assertNoJavaScriptErrors();
 });
 
-it('sets a super-admin install up on PostgreSQL and signs the owner in once (§7.2)', function (): void {
+it('sets a super-admin install up on PostgreSQL and signs the owner in once (§7.2)', function () use ($waitFor): void {
     $context = useSetupWizard(setupSandbox(prefix: 'setup_probe_'));
     $name = DatabaseStep::databaseName($context);
     /** @var array{host: string, port: string|int, username: string, password: string} $server */
@@ -78,19 +99,14 @@ it('sets a super-admin install up on PostgreSQL and signs the owner in once (§7
         ->fill('superAdminPassword', 'correct-horse-battery')
         ->click('@setup-start-button');
 
-    for ($i = 0; $i < 60 && ! str_contains($page->content(), 'data-test="setup-summary"'); $i++) {
-        if (str_contains($page->content(), 'data-test="setup-complete"')) {
-            $page->click('@setup-complete');
-        }
+    $waitFor($page, '@setup-complete');
+    $page->click('@setup-complete');
+    $waitFor($page, '@setup-summary');
 
-        $page->wait(2);
-    }
-
-    // A text with an '@' counts as a CSS selector for the plugin: click the button by its data-test. The handoff lands
-    // on the admin host's '/', which sends a super admin to the organisations index (TEN-1).
+    // The handoff lands on the admin host's '/', which sends a super admin to the organisations index (TEN-1).
     $page->assertSee(__('Setup is done.'))
         ->assertSee(__('Log in as :email', ['email' => 'owner@example.com']))
         ->click('@setup-login')
         ->assertPathIs('/organisations')
         ->assertNoJavaScriptErrors();
-})->skip(fn (): bool => ! app(Detector::class)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');

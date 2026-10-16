@@ -14,6 +14,7 @@
 #   --phase1-only  stop after phase 1, leaving the site as phase 1 left it (token present, no marker)
 #
 # Every entry but herd serves the app with php artisan serve on a free port of 127.0.0.1 for the wizard check, and
+# reaches it under the host the wizard pins (RL-5): {name}.{tld} where Herd is installed, else localhost. Each entry
 # ends after phase 1. Only the committed state of the current branch is installed (as dev-<branch>). Composer runs
 # with a temporary COMPOSER_HOME, so the global Composer configuration and credentials are never read or changed.
 # The setup token is never printed.
@@ -80,7 +81,8 @@ PACKAGE="$(php -r 'echo json_decode(file_get_contents($argv[1]), true, flags: JS
 
 # The real cache dir is read before COMPOSER_HOME moves, otherwise it would point into the temporary home.
 CACHE_DIR="$(composer config --global cache-dir)"
-export COMPOSER_HOME="$(mktemp -d)"
+COMPOSER_HOME="$(mktemp -d)"
+export COMPOSER_HOME
 export COMPOSER_CACHE_DIR="$CACHE_DIR"
 WORK="$(mktemp -d)"
 SERVE_PID=""
@@ -161,16 +163,19 @@ JAR="$WORK/cookies.txt"
 token_path() { (cd "$TARGET" && php -r 'require "vendor/autoload.php"; echo App\Setup\SetupToken::PATH;'); }
 # Env::writeVariables quotes the key skv:bootstrap writes (composer, clone); the installer's key:generate does not.
 has_app_key() { grep -qE '^APP_KEY="?base64:' "$TARGET/.env"; }
+# RL-5: curl reaches artisan serve under the host the wizard pins, whatever that name resolves to (empty: no override).
+RESOLVE=""
+web() { if [ -n "$RESOLVE" ]; then curl --resolve "$RESOLVE" "$@"; else curl "$@"; fi; }
 home_redirects() {
     local location
-    location="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/")" && [ -n "$TOKEN" ] && [[ "$location" == *"/welcome-setup?token=$TOKEN" ]]
+    location="$(web -s -o /dev/null -w '%{redirect_url}' "$BASE/")" && [ -n "$TOKEN" ] && [[ "$location" == *"/welcome-setup?token=$TOKEN" ]]
 }
 token_accepted() {
-    [ "$(printf 'url = "%s"\n' "$BASE/welcome-setup?token=$TOKEN" | curl -s -K - -c "$JAR" -b "$JAR" -o /dev/null -w '%{http_code}')" = 302 ]
+    [ "$(printf 'url = "%s"\n' "$BASE/welcome-setup?token=$TOKEN" | web -s -K - -c "$JAR" -b "$JAR" -o /dev/null -w '%{http_code}')" = 302 ]
 }
 wizard_renders() {
     local code
-    code="$(curl -s -c "$JAR" -b "$JAR" -o "$WORK/wizard.html" -w '%{http_code}' "$BASE/welcome-setup")" \
+    code="$(web -s -c "$JAR" -b "$JAR" -o "$WORK/wizard.html" -w '%{http_code}' "$BASE/welcome-setup")" \
         && [ "$code" = 200 ] && grep -q 'data-test="setup-wizard"' "$WORK/wizard.html"
 }
 
@@ -192,7 +197,7 @@ wizard_check() {
 }
 
 free_port() { php -r '$s=stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s,false))[1];'; }
-serving() { curl -s -o /dev/null "$1/favicon.ico"; }
+serving() { web -s -o /dev/null "$1/favicon.ico"; }
 wait_until_serving() {
     for _ in $(seq 1 60); do
         if serving "$1"; then return 0; fi
@@ -222,7 +227,16 @@ else
     echo
     echo "Phase 1 (§7.2): $ENTRY"
     PORT="$(free_port)"
-    URL="http://127.0.0.1:$PORT"
+    # RL-5, g3-34: the wizard gives its token only on a host it can pin. Where Herd is installed that is {name}.{tld},
+    # also for a site Herd does not serve; elsewhere localhost. `herd tld` only reads Herd's configuration.
+    HERD_BIN="$HOME/Library/Application Support/Herd/bin/herd"
+    if [ -x "$HERD_BIN" ]; then
+        SETUP_HOST="$(printf '%s' "$NAME" | tr '[:upper:]' '[:lower:]').$("$HERD_BIN" tld)"
+    else
+        SETUP_HOST=localhost
+    fi
+    RESOLVE="$SETUP_HOST:$PORT:127.0.0.1"
+    URL="http://$SETUP_HOST:$PORT"
     (cd "$TARGET" && exec php artisan serve --host=127.0.0.1 --port="$PORT" > /dev/null 2>&1) &
     SERVE_PID=$!
     check "php artisan serve answers on $URL" wait_until_serving "$URL"
@@ -268,12 +282,13 @@ if [ "$FAILED" = 0 ]; then echo "Summary: every check passed."; else echo "Summa
 
 echo
 echo "Clean up when you are done (this script runs none of these):"
+# %q quotes a name or path the shell would split or expand, so every printed line runs as it is (RL-6).
 if [ "$ENTRY" = herd ]; then
-    echo "  herd unsecure $NAME"
-    if herd_lists isolated; then echo "  herd unisolate --site=$NAME"; fi
-    if [ "$LINKED_BEFORE" = false ] && herd_lists links; then echo "  herd unlink $NAME"; fi
+    printf '  herd unsecure %q\n' "$NAME"
+    if herd_lists isolated; then printf '  herd unisolate %q\n' "--site=$NAME"; fi
+    if [ "$LINKED_BEFORE" = false ] && herd_lists links; then printf '  herd unlink %q\n' "$NAME"; fi
 fi
-echo "  rm -rf \"$TARGET\""
-echo "  rm -rf \"$WORK\""
+printf '  rm -rf %q\n' "$TARGET"
+printf '  rm -rf %q\n' "$WORK"
 
 exit "$FAILED"

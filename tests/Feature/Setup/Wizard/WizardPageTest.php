@@ -5,23 +5,36 @@ declare(strict_types=1);
 /** covers §5.3.1, §5.3.2, §5.3.4, §7.2 */
 
 use App\Enums\CheckStatus;
+use App\Models\User;
+use App\Setup\Answers;
+use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupToken;
+use App\Setup\StepResult;
 use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\HerdState;
 use App\Setup\Wizard\SetupLock;
+use App\Setup\Wizard\StepLauncher;
+use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
+use App\Tenancy\Hosts;
+use Dom\HTMLDocument;
+use Illuminate\Process\FakeProcessResult;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Fixtures\FixedStatusCheck;
+use Tests\Fixtures\InlineStepLauncher;
 
 use function Pest\Laravel\get;
 use function Pest\Laravel\withHeader;
@@ -95,6 +108,19 @@ $until = function (array $snapshot, string $html, string $marker, bool $finish =
 /** @var array<string, mixed> $answers */
 $answers = ['appName' => 'Acme', 'database' => 'sqlite', 'startWith' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'claude' => false];
 
+/**
+ * The commands a wizard run without Herd starts (§5.3.3): Node answers no version, so the frontend step ends manual
+ * before npm; git init and the hooks path; composer's Flux Pro credentials where Pro is installed (the doctor step).
+ *
+ * @return array<string, FakeProcessResult>
+ */
+$wizardCommands = fn (): array => [
+    "*node' '-v'*" => Process::result(''),
+    "*git' 'init'*" => Process::result(''),
+    "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+    "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+];
+
 it('pre-fills the §5.3.2 questions (§5.3.2)', function (): void {
     $context = useSetupWizard();
     $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
@@ -120,20 +146,21 @@ it('shows the validation errors of the answers (A15)', function () use ($open, $
         ->and($context->path(WizardState::PATH))->not->toBeFile();
 });
 
-it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', function () use ($open, $next): void {
+it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', function () use ($open, $next, $wizardCommands): void {
     $context = useSetupWizard();
     new EnvFile($context->path('.env'))->set(['QUEUE_CONNECTION' => 'database']);
     // The process boots as the project's .env makes it (.env.example), not with phpunit's sync queue and array
     // session: setup mode must replace them for the run, and the doctor must check the project's database queue.
     config(['queue.default' => 'database', 'session.driver' => 'database']);
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: [
         'appName' => 'Acme', 'database' => 'sqlite', 'startWith' => 'demo', 'modules' => ['impersonation'], 'https' => false, 'claude' => false,
     ])->assertOk());
 
-    // The page polls advance() every 2 s; the test calls it until the Herd stage renders. The sandbox has no node, so
-    // the frontend step ends manual and the page stops at the review: the user clicks "Finish setup" there.
+    // The page polls advance() every 2 s; the test calls it until the Herd stage renders. Node answers no version
+    // ($wizardCommands), so the frontend step ends manual and the page stops at the review: the user clicks "Finish
+    // setup" there.
     for ($i = 0; $i < 20 && ! str_contains($html, 'data-test="setup-herd-stage"'); $i++) {
         $action = str_contains($html, 'data-test="setup-complete"') ? 'complete' : 'advance';
         [$snapshot, $nextHtml] = $next(callPageAction($snapshot, $action)->assertOk());
@@ -146,9 +173,9 @@ it('completes on SQLite with QUEUE_CONNECTION=database and no worker (§7.2)', f
         ->and(config('setup.replaced.queue'))->toBe('database');
 });
 
-it('keeps the session across the environment step, so a new APP_NAME causes no 419 (§7.2)', function () use ($open, $next, $answers): void {
+it('keeps the session across the environment step, so a new APP_NAME causes no 419 (§7.2)', function () use ($open, $next, $answers, $wizardCommands): void {
     $context = useSetupWizard();
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     $env = new EnvFile($context->path('.env'));
     $cookie = $env->get('SESSION_COOKIE');
 
@@ -164,7 +191,7 @@ it('keeps the session across the environment step, so a new APP_NAME causes no 4
         ->and($env->get('SESSION_COOKIE'))->toBe($cookie);
 });
 
-it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($open, $next, $until, $answers, $postgres): void {
+it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($open, $next, $until, $answers, $postgres, $wizardCommands): void {
     $context = useSetupWizard(setupSandbox(prefix: 'setup_probe_'));
     $name = DatabaseStep::databaseName($context);
     $admin = $postgres();
@@ -174,7 +201,7 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
             $admin->exec('DROP DATABASE IF EXISTS "'.$database.'" WITH (FORCE)');
         }
     });
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: [...$answers, 'database' => 'pgsql'])->assertOk());
     [, $html] = $until($snapshot, $html, 'data-test="setup-herd-stage"', finish: true);
@@ -182,12 +209,12 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
     expect($html)->toContain('data-test="setup-herd-stage"')
         ->and(Marker::exists($context))->toBeTrue()
         ->and(new EnvFile($context->path('.env'))->get('DB_DATABASE'))->toBe($name);
-})->skip(fn (): bool => ! app(Detector::class)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');
 
-it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers): void {
+it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers, $wizardCommands): void {
     $context = useSetupWizard();
     // Node answers no version, so the frontend step returns its command as manual.
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
 
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
     [$snapshot, $html] = $until($snapshot, $html, 'data-test="setup-manual-frontend"');
@@ -252,9 +279,9 @@ it('never stores the plaintext password (RL-5)', function () use ($open, $next, 
         ->and($snapshot['data']['superAdminPassword'] ?? null)->toBe('');
 });
 
-it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)', function () use ($open, $next, $until, $answers): void {
+it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)', function () use ($open, $next, $until, $answers, $wizardCommands): void {
     $context = useSetupWizard();
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
     [$snapshot] = $until($snapshot, $html, 'data-test="setup-manual-frontend"');
     // Another request holds the setup lock (flock() on its own handle conflicts with this process's too).
@@ -269,14 +296,14 @@ it('shows a re-check that another tab blocks as a failure, not a 500 (§5.3.4)',
     flock($lock, LOCK_UN);
 });
 
-it('goes straight on to the Herd stage when no step ended manual (§5.3.1, §5.3.4)', function () use ($open, $next, $answers): void {
-    // Arrange: every page step ends done or skipped: the frontend is already built (the sandbox has no node) and the
-    // doctor finds nothing to fail (in the sandbox it misses node and more).
+it('goes straight on to the Herd stage when no step ended manual (§5.3.1, §5.3.4)', function () use ($open, $next, $answers, $wizardCommands): void {
+    // Arrange: every page step ends done or skipped: the frontend is already built, so the step is complete before it
+    // reaches Node, and the doctor finds nothing to fail (in the sandbox it misses node and more).
     $context = useSetupWizard();
     File::ensureDirectoryExists($context->path('public/build'));
     File::put($context->path('public/build/manifest.json'), '{}');
     app()->instance(Doctor::class, new Doctor([new FixedStatusCheck(CheckStatus::Pass, 'php')]));
-    Process::fake(['*' => Process::result('')]);
+    Process::fake($wizardCommands());
     [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $answers)->assertOk());
 
     // Only the poll's advance(), never "Finish setup".
@@ -297,4 +324,180 @@ it('resumes at the steps after a reload, never at the questions (§5.3.4)', func
     $this->get('/welcome-setup')->assertOk()
         ->assertSee('data-test="setup-step-environment"', false)
         ->assertDontSee('data-test="setup-questions"', false);
+});
+
+it('titles the page once (g3-33)', function (): void {
+    $context = useSetupWizard();
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('/welcome-setup')->assertOk()->assertSee('<title>'.__('Setup').'</title>', false);
+});
+
+it('names the address to use and disables the start on a host the wizard refuses (§5.3.4, g4-15)', function (): void {
+    $context = useSetupWizard();
+    $this->get('http://example.com/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $html = (string) $this->get('http://example.com/welcome-setup')->assertOk()
+        ->assertSee(__('Open the setup on :url.', ['url' => 'http://localhost']))
+        ->getContent();
+    $button = HTMLDocument::createFromString($html, LIBXML_NOERROR)->querySelector('[data-test="setup-start-button"]');
+
+    expect($button?->hasAttribute('disabled'))->toBeTrue();
+});
+
+it('refuses 127.0.0.1 without Herd and suggests localhost on the same port (g3-34)', function (): void {
+    $context = useSetupWizard();
+    $this->get('http://127.0.0.1:8000/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('http://127.0.0.1:8000/welcome-setup')->assertOk()
+        ->assertSee(__('Open the setup on :url.', ['url' => 'http://localhost:8000']));
+});
+
+it('asks to rename a folder that can be no Herd address, instead of suggesting one (g3-10)', function (): void {
+    $context = useSetupWizard(setupSandbox(prefix: 'my_app_'));
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home'), $context->basePath));
+    Process::fake([
+        "*herd' 'tld'*" => Process::result("test\n"),
+        "*herd' 'services:list' '--json'*" => Process::result(''),
+    ]);
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+
+    $this->get('/welcome-setup')->assertOk()
+        ->assertSee(__('The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.', [
+            'folder' => $context->folderName(),
+            'name' => Str::slug($context->folderName()),
+        ]))
+        ->assertDontSee('http://'.Str::lower($context->folderName()).'.test');
+});
+
+it('turns a start that cannot take the setup lock into an error on the form, not a 500 (g3-30)', function () use ($open, $next, $answers): void {
+    // Arrange: a directory stands where the setup lock goes, so opening it fails as a read-only disk would.
+    $context = useSetupWizard();
+    $snapshot = $open($context);
+    File::ensureDirectoryExists($context->path(SetupLock::PATH));
+
+    [, $html] = $next(callPageAction($snapshot, 'start', updates: $answers)->assertOk());
+
+    expect($html)->toContain('data-test="setup-questions"')
+        ->toContain(__('Could not write :file.', ['file' => basename(SetupLock::PATH)]))
+        ->and($context->path(WizardState::PATH))->not->toBeFile();
+});
+
+it('refuses the default demo data next to an own super admin, and adds it when Start is clicked again (DEC-30, g4-04)', function () use ($open, $next, $answers): void {
+    $context = useSetupWizard();
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+    // The user leaves the "Start with" radio alone: no update for startWith, so the page sends no start_with.
+    $untouched = array_diff_key($answers, ['startWith' => true]);
+
+    [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $untouched)->assertOk());
+
+    expect($html)->toContain(__('A super admin already exists, so setup does not add the demo data by default. Click Start setup again to add it anyway, or choose My own super admin.'))
+        ->and($context->path(WizardState::PATH))->not->toBeFile();
+
+    callPageAction($snapshot, 'start')->assertOk();
+
+    expect(WizardState::load($context->basePath)?->answers->startWith)->toBe('demo');
+});
+
+it('adds the demo data at the first Start when the user picked it next to an own super admin (DEC-30, g4-04, M36)', function () use ($open, $answers): void {
+    // The user clicks the "Demo data" radio: the update for startWith is the pick (updatedStartWith()).
+    $context = useSetupWizard();
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+
+    callPageAction($open($context), 'start', updates: [...$answers, 'startWith' => 'demo'])->assertOk();
+
+    expect(WizardState::load($context->basePath)?->answers->startWith)->toBe('demo');
+});
+
+it('stops polling on a failure, and Try again runs the step again (§5.3.1, g4-13, g4-14)', function () use ($open, $next, $answers): void {
+    // Arrange: PostgreSQL chosen while no server answers on this port, so the database step fails.
+    $context = useSetupWizard();
+    config(['database.connections.pgsql.port' => 1]);
+    [$snapshot] = $next(callPageAction($open($context), 'start', updates: [...$answers, 'database' => 'pgsql'])->assertOk());
+    [$snapshot] = $next(callPageAction($snapshot, 'advance')->assertOk());
+    [$snapshot, $html] = $next(callPageAction($snapshot, 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-failure"')->toContain('wire:click="retry"')->not->toContain('wire:poll');
+
+    // Act: the cause is fixed (SQLite instead) and the user clicks Try again.
+    $state = WizardState::load($context->basePath) ?? throw new LogicException('No setup state.');
+    $state->answers = Answers::fromState([...$state->answers->toState(), 'database' => 'sqlite']);
+    $state->save($context->basePath);
+    [, $html] = $next(callPageAction($snapshot, 'retry')->assertOk());
+
+    expect($html)->not->toContain('data-test="setup-failure"')->toContain('wire:poll')
+        ->and(WizardState::load($context->basePath)->results)->toHaveKey('database');
+});
+
+it('runs Finish setup again from the review when Try again is clicked (§5.3.1, g4-13)', function () use ($open, $next): void {
+    // Arrange: steps 1–8 have results, one of them a manual command, so the page stops at the review.
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    $results = [...array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')), 'frontend' => StepResult::manual('npm ci && npm run build', 'node is missing')];
+    new WizardState('localhost', $answers, Detection::none(), $results)->save($context->basePath);
+    [$snapshot, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-review"');
+
+    // Another request holds the setup lock, so the first Finish setup fails before the marker.
+    $lock = fopen($context->path(SetupLock::PATH), 'c') ?: throw new LogicException('No lock file.');
+    flock($lock, LOCK_EX);
+    [$snapshot, $html] = $next(callPageAction($snapshot, 'complete')->assertOk());
+    flock($lock, LOCK_UN);
+
+    expect($html)->toContain('data-test="setup-failure"')->toContain(__('Setup is busy in another tab.'))
+        ->and(Marker::exists($context))->toBeFalse();
+
+    [, $html] = $next(callPageAction($snapshot, 'retry')->assertOk());
+
+    expect($html)->toContain('data-test="setup-herd-stage"')
+        ->and(Marker::exists($context))->toBeTrue();
+});
+
+it('offers the login page instead of Try again when the Herd stage cannot start after step 9 (g3-32)', function () use ($open, $next): void {
+    // Arrange: steps 1–8 are done, and a directory stands where the Herd state goes, so finishing fails after the marker.
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, Detection::none(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    File::ensureDirectoryExists($context->path(HerdState::PATH));
+
+    [, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-stranded"')
+        ->toContain('href="'.Hosts::url(Hosts::apex(), '/login').'"')
+        ->not->toContain('wire:click="retry"')
+        ->and(Marker::exists($context))->toBeTrue();
+});
+
+it('logs an unexpected error behind the message it shows, but not a failure the page explains (M8)', function (Throwable $exception, bool $reported) use ($open, $next): void {
+    // Arrange: steps 1–8 are done, and the Herd step's launcher throws, so finishing fails after the marker.
+    Exceptions::fake();
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, Detection::none(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->throws = $exception;
+
+    [, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-stranded"')->toContain(e($exception->getMessage()));
+    $reported ? Exceptions::assertReported($exception::class) : Exceptions::assertNotReported($exception::class);
+})->with([
+    'a type error' => [fn (): Throwable => new TypeError('Unexpected type.'), true],
+    'a runtime exception' => [fn (): Throwable => new RuntimeException('Herd is not there.'), false],
+]);
+
+it('renders the wizard without a Vite manifest (§5.3.4, M55)', function (): void {
+    $context = useSetupWizard();
+    Vite::useManifestFilename('missing-'.Str::uuid().'.json');
+
+    $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value());
+    $html = (string) $this->get('/welcome-setup')->assertOk()->getContent();
+
+    expect($html)->toContain('data-test="setup-wizard"')->not->toContain('/build/');
 });

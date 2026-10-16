@@ -16,6 +16,7 @@ use App\Notifications\ConfirmEmailChange;
 use App\Providers\FortifyServiceProvider;
 use App\Setup\Answers;
 use App\Setup\Detection;
+use App\Setup\Detector;
 use App\Setup\SetupContext;
 use App\Setup\SetupMode;
 use App\Setup\SetupToken;
@@ -73,6 +74,16 @@ pest()->extend(TestCase::class)
     ->in('Feature');
 
 pest()->extend(TestCase::class)->in('Arch');
+
+/*
+| RL-12: every setup, console, backup, health and System-page test refuses a process it did not fake. Recording starts
+| with fake([]): preventStrayProcesses() alone guards nothing until a fake is recording. A file's own
+| Process::fake([...]) adds its named patterns; catch-alls are banned (tests/Arch/KitRulesTest.php).
+*/
+pest()->beforeEach(function (): void {
+    Process::preventStrayProcesses();
+    Process::fake([]);
+})->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System');
 
 // §7.2: browser tests serve the app in-process; RefreshDatabase on in-memory SQLite works because the
 // server shares the test's container and connection. The group keeps them out of composer check.
@@ -471,10 +482,21 @@ function setupSandbox(?Detection $detection = null, string $prefix = ''): SetupC
 }
 
 /**
+ * Pins the PostgreSQL probe (RL-3): every Detector the container builds answers $reachable instead of opening a
+ * connection to 127.0.0.1:5432. Bound lazily, so the Detector uses whichever Toolchain the test binds afterwards; the
+ * probe goes by name, so a Detector without the seam fails loudly instead of probing the machine.
+ */
+function withoutPostgresProbe(bool $reachable = false): void
+{
+    app()->bind(Detector::class, fn (): Detector => new Detector(app(Toolchain::class), postgresProbe: fn (): bool => $reachable));
+}
+
+/**
  * Puts the app into setup mode on a sandbox (M6b, RL-1): the local environment, a setup token in the sandbox, and the
- * setup services bound to it. Processes are faked, so the wizard's Herd and database probes never reach the
- * developer's machine. The session and cache files go into the sandbox too, and the wizard's detached steps run
- * in-process through the inline step launcher (RL-4). Returns the sandbox context.
+ * setup services bound to it. Processes are faked and the PostgreSQL probe answers "unreachable" (withoutPostgresProbe(),
+ * RL-3), so the wizard's Herd and database probes never start a process or open a connection on the developer's
+ * machine; a PostgreSQL case answers database=pgsql itself. The session and cache files go into the sandbox too, and
+ * the wizard's detached steps run in-process through the inline step launcher (RL-4). Returns the sandbox context.
  */
 function useSetupWizard(?SetupContext $context = null): SetupContext
 {
@@ -483,6 +505,7 @@ function useSetupWizard(?SetupContext $context = null): SetupContext
     Process::preventStrayProcesses();
     Process::fake([]);
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid()), $context->basePath));
+    withoutPostgresProbe();
     app()->detectEnvironment(fn (): string => 'local');
     app()->instance(SetupContext::class, $context);
     app()->instance(SetupMode::class, new SetupMode($context->basePath));

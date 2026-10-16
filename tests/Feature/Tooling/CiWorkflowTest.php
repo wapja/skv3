@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §8 */
 
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -33,18 +34,58 @@ $committedFile = function (string $repository, string $file): string {
         : (string) file_get_contents($repository.'/'.$file);
 };
 
+/** Whether a composer.json carries skv:flux-pro's mark (CD-13): an app that commits Flux Pro on purpose carries it. */
+$commitsFluxPro = function (string $composerJson): bool {
+    $composer = json_decode($composerJson, true);
+
+    return is_array($composer) && data_get($composer, 'extra.skv.flux-pro') === true;
+};
+
+/**
+ * git in a throwaway repository, without the developer's global or system configuration (M33): a core.fsmonitor
+ * there would start a daemon, and an init.templateDir would copy its hooks into the repository.
+ */
+$sandboxGit = fn (string $repository): PendingProcess => Process::path($repository)->env(['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1']);
+
+/** A composer.json whose mark is $flag (data_set keeps the kit's namespace in one allowed form, NameLeakTest). */
+$withFluxProMark = function (mixed $flag): string {
+    $composer = ['name' => 'acme/app', 'require' => ['livewire/flux-pro' => '^2.0']];
+    data_set($composer, 'extra.skv.flux-pro', $flag);
+
+    return json_encode($composer, JSON_THROW_ON_ERROR);
+};
+
 it('never references Flux Pro in the committed composer files (committed)', function () use ($committedFile): void {
     expect($committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
         ->and($committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
+})->skip(fn (): bool => $commitsFluxPro($committedFile(base_path(), 'composer.json')), 'this app committed Flux Pro on purpose with skv:flux-pro');
+
+it('skips the committed-files check only for a commit that skv:flux-pro marked (CD-13)', function () use ($commitsFluxPro, $committedFile, $withFluxProMark, $sandboxGit): void {
+    $repository = storage_path('framework/testing/ci-flux-pro-'.Str::uuid());
+    File::ensureDirectoryExists($repository);
+    File::put($repository.'/composer.json', $withFluxProMark(true));
+
+    try {
+        $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($repository)->run(['git', 'add', 'composer.json'])->throw();
+        $sandboxGit($repository)->run(['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'Add Flux Pro'])->throw();
+
+        expect($commitsFluxPro($committedFile($repository, 'composer.json')))->toBeTrue()
+            ->and($commitsFluxPro($withFluxProMark('true')))->toBeFalse()
+            ->and($commitsFluxPro((string) json_encode(['require' => ['livewire/flux-pro' => '^2.0']])))->toBeFalse()
+            ->and($commitsFluxPro('{'))->toBeFalse();
+    } finally {
+        File::deleteDirectory($repository);
+    }
 });
 
-it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile): void {
+it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile, $sandboxGit): void {
     $repository = storage_path('framework/testing/ci-unborn-'.Str::uuid());
     File::ensureDirectoryExists($repository);
     File::put($repository.'/composer.json', '{"name": "acme/app"}');
 
     try {
-        Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
 
         expect($committedFile($repository, 'composer.json'))->toBe('{"name": "acme/app"}');
     } finally {
@@ -207,9 +248,24 @@ it('ships a local e2e script that never touches global Composer config (OD-3)', 
         ->and($script)->not->toContain('composer config --global --list');
 });
 
-it('checks in CI that the setup stylesheet is current (OD-1)', function (): void {
+it('quotes the names in the cleanup commands the local e2e script prints (RL-6, g2-05)', function (): void {
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+    $cleanup = Str::after($script, 'Clean up when you are done');
+
+    expect($cleanup)->toContain("printf '  herd unsecure %q\\n' \"\$NAME\"")
+        ->toContain("printf '  herd unisolate %q\\n' \"--site=\$NAME\"")
+        ->toContain("printf '  herd unlink %q\\n' \"\$NAME\"")
+        ->toContain("printf '  rm -rf %q\\n' \"\$TARGET\"")
+        // An echo would print the name as it is, so a folder with a space or a quote gives a broken command.
+        ->and(preg_match('/echo "  (herd|rm) /', $cleanup))->toBe(0);
+});
+
+it('checks in CI that the setup stylesheet is current, and names the dependencies that change it (OD-1, g4-07)', function (): void {
     expect((string) file_get_contents(base_path('.github/workflows/tests.yml')))
-        ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css');
+        ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css')
+        // A Dependabot update of these changes the built stylesheet too, so the guideline names them.
+        ->and((string) file_get_contents(base_path('.ai/guidelines/skv3.md')))
+        ->toContain('`tailwindcss`')->toContain('`@tailwindcss/vite`')->toContain('`vite`')->toContain('`livewire/flux`');
 });
 
 it('checks the wizard after every entry point in the phase-1 job (§7.2, OD-3)', function (): void {
@@ -225,4 +281,13 @@ it('checks the wizard after every entry point in the phase-1 job (§7.2, OD-3)',
         ->toContain('/welcome-setup')
         ->toContain('SetupToken::PATH')
         ->not->toContain('composer config --global --list');
+});
+
+it('never hides a failed command substitution behind export or local in the shell scripts (g1-14)', function (): void {
+    $scripts = [...(glob(base_path('scripts/*.sh')) ?: []), ...(glob(base_path('.githooks/*')) ?: [])];
+    // `export X="$(cmd)"` returns export's status, so set -e never sees a failing cmd; assign first, then export.
+    $masked = array_values(array_filter($scripts, fn (string $path): bool => preg_match('/^\s*(?:export|local|readonly|declare)\s+(?:-\w+\s+)*[A-Za-z_]\w*="?\$\(/m', (string) file_get_contents($path)) === 1));
+
+    expect($scripts)->not->toBeEmpty()
+        ->and($masked)->toBe([]);
 });

@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Date;
 
 /**
  * §4.9, CD-4: every backup destination is reachable and holds a backup newer than the monitor's maximum age, plus
- * skv.health_check.backup_grace_minutes: an archive is named after the time its job starts, so while tonight's
+ * config('skv.health_check.backup_grace_minutes'): an archive is named after the time its job starts, so while tonight's
  * backup runs, last night's is just over a day old.
  * Skipped while the backups module is off (§6.8, never a 503). A health check, not a doctor check: a fresh install
  * has no backup until the first night. Fails while the backups would be written unencrypted (CD-10): the package

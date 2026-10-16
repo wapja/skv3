@@ -8,6 +8,7 @@ use App\Setup\Doctor\Check;
 use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Steps\HerdSiteStep;
+use App\Setup\Support\ShellArgument;
 
 /** §5.4: with HTTPS chosen, `herd secured` lists the site. Herd's exit codes say nothing (§13), so its listing decides. */
 final readonly class HerdSecuredCheck implements Check
@@ -32,7 +33,7 @@ final readonly class HerdSecuredCheck implements Check
             return CheckResult::skipped(__('HTTPS was not chosen'));
         }
 
-        $command = 'herd secure '.$context->folderName();
+        $command = 'herd secure '.ShellArgument::quote($context->folderName());
 
         if ($context->toolchain->herd() === null) {
             return CheckResult::fail(__('The herd command was not found.'), $command);

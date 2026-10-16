@@ -96,11 +96,8 @@ final class DemoSeeder extends Seeder
             return $existing;
         }
 
-        $user = User::factory()->superAdmin()->create(['name' => 'Demo super admin', 'email' => $email, 'password' => self::PASSWORD]);
-        // Inserted with the flag (W8): handleCreated() attaches the badge and records the grant (§4.8).
-        $setSuperAdmin->handleCreated($user);
-
-        return $user;
+        // One transaction with the badge and the grant (DEC-30 (21), RL-9): a failed grant leaves no half super admin.
+        return $setSuperAdmin->createNew(['name' => 'Demo super admin', 'email' => $email, 'password' => self::PASSWORD]);
     }
 
     private function openInvitationFor(string $email): Invitation

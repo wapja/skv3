@@ -8,6 +8,7 @@ use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Steps\HerdManifestStep;
 use App\Setup\Support\Toolchain;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Symfony\Component\Yaml\Yaml;
@@ -65,4 +66,16 @@ it('keeps the top-level keys it does not write, such as a Forge link (§5.3.3 st
         ->and($manifest['aliases'])->toBe(['legacy'])
         ->and($manifest['integrations']['forge'] ?? null)->toBe(['server-id' => 123, 'site-id' => 456])
         ->and($step->isComplete($context))->toBeTrue();
+});
+
+it('replaces a symlinked herd.yml instead of writing through it (RL-1, g2-07)', function (): void {
+    $context = setupSandbox();
+    File::put($context->path('elsewhere.yml'), 'keep');
+    symlink($context->path('elsewhere.yml'), $context->path('herd.yml'));
+
+    new HerdManifestStep()->run($context);
+
+    expect(file_get_contents($context->path('elsewhere.yml')))->toBe('keep')
+        ->and(is_link($context->path('herd.yml')))->toBeFalse()
+        ->and(new HerdManifestStep()->isComplete($context))->toBeTrue();
 });

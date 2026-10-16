@@ -44,7 +44,6 @@ it('installs Boost, registers the Herd MCP server as herd and adds boost:update 
     Process::fake([
         "*'artisan' 'boost:install'*" => Process::result('Boost installed'),
         "*claude' 'plugin'*" => Process::result('installed'),
-        "*composer' 'require' '--dev' 'laravel/boost'*" => Process::result(''),
     ]);
 
     expect(new ClaudeStep()->run($context)->status)->toBe('done');
@@ -117,9 +116,9 @@ it('is complete once Boost, the MCP servers and boost:update are in place (§5.3
 it('hands over the Boost command when the address is not a .test site (§5.3.3 step 7)', function (): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['claude' => true], $context->detection, $context->folderName());
-    Process::fake();
 
     $result = new ClaudeStep()->run($context);
+    Process::assertNothingRan();
 
     expect($result->isManual())->toBeTrue()->and($result->command)->toBe('php artisan boost:install');
 });
@@ -133,9 +132,38 @@ it('restores the Boost constraint the installer lowered, also when Claude was no
 
     expect(new ClaudeStep()->isComplete($context))->toBeFalse();
 
-    Process::fake(['*' => Process::result('')]);
+    Process::fake(["*composer' 'require' '--dev' 'laravel/boost:^2.10'*" => Process::result('')]);
 
     expect(new ClaudeStep()->run($context)->status)->toBe('skipped');
 
     Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), 'require --dev laravel/boost:^2.10'));
+});
+
+it('replaces symlinked project files instead of writing through them (RL-1, g2-07)', function (): void {
+    $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: true, host: 'my-app.test', scheme: 'http');
+    $context = setupSandbox($detection);
+    $context->answers = Answers::fromArray(['claude' => true], $detection, $context->folderName());
+    new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://my-app.test']);
+    $outside = $this->home.'/outside';
+    File::ensureDirectoryExists($outside);
+    File::copy(base_path('composer.json'), $outside.'/composer.json');
+    File::put($outside.'/mcp.json', '{"mcpServers":{}}');
+    File::ensureDirectoryExists($context->path('.claude'));
+    symlink($outside.'/composer.json', $context->path('composer.json'));
+    symlink($outside.'/mcp.json', $context->path('.mcp.json'));
+    // Dangling: the step creates settings.local.json when it is missing.
+    symlink($outside.'/settings.local.json', $context->path('.claude/settings.local.json'));
+    $composer = (string) file_get_contents($outside.'/composer.json');
+
+    Process::fake([
+        "*'artisan' 'boost:install'*" => Process::result('Boost installed'),
+        "*claude' 'plugin'*" => Process::result('installed'),
+    ]);
+
+    expect(new ClaudeStep()->run($context)->status)->toBe('done')
+        ->and(file_get_contents($outside.'/composer.json'))->toBe($composer)
+        ->and(file_get_contents($outside.'/mcp.json'))->toBe('{"mcpServers":{}}')
+        ->and($outside.'/settings.local.json')->not->toBeFile()
+        ->and(array_filter(['composer.json', '.mcp.json', '.claude/settings.local.json'], fn (string $file): bool => is_link($context->path($file))))->toBe([])
+        ->and((string) file_get_contents($context->path('composer.json')))->toContain('boost:update');
 });

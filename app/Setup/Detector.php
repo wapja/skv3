@@ -7,6 +7,7 @@ namespace App\Setup;
 use App\Setup\Support\HerdTld;
 use App\Setup\Support\Toolchain;
 use App\Support\Skv;
+use Closure;
 use Illuminate\Support\Facades\Process;
 use PDO;
 use PDOException;
@@ -18,14 +19,20 @@ use Throwable;
  */
 final readonly class Detector
 {
-    public function __construct(private Toolchain $toolchain) {}
+    /**
+     * @param  (Closure(string, int): bool)|null  $postgresProbe  replaces the PDO probe (RL-3): tests pass one, so no
+     *                                                            test opens a connection to the developer's PostgreSQL
+     */
+    public function __construct(private Toolchain $toolchain, private ?Closure $postgresProbe = null) {}
 
     /**
      * @param  string|null  $requestHost  the host of the current request, when there is one (the browser wizard); one
      *                                    that fails SetupHost::normalise() falls back to the CLI host (A4)
      * @param  string  $scheme  the scheme the site is served over now
+     * @param  int|null  $requestPort  the port of the current request; kept without Herd unless it is the scheme's
+     *                                 default (CD-15, g1-17)
      */
-    public function detect(?string $requestHost = null, string $scheme = 'http'): Detection
+    public function detect(?string $requestHost = null, string $scheme = 'http', ?int $requestPort = null): Detection
     {
         $herd = $this->toolchain->herd();
         [$herdMail, $herdSmtpPort] = $this->herdMail();
@@ -40,12 +47,17 @@ final readonly class Detector
             claude: $this->toolchain->which('claude') !== null,
             host: ($requestHost !== null ? SetupHost::normalise($requestHost) : null) ?? $this->cliHost(),
             scheme: $scheme,
+            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) ? $requestPort : null,
         );
     }
 
     /** Whether Postgres answers with Herd's known credentials: user root, empty password, database postgres. */
     public function postgresReachable(string $host = '127.0.0.1', int $port = 5432): bool
     {
+        if ($this->postgresProbe instanceof Closure) {
+            return ($this->postgresProbe)($host, $port);
+        }
+
         try {
             new PDO("pgsql:host={$host};port={$port};dbname=postgres", 'root', '', [
                 PDO::ATTR_TIMEOUT => 2,

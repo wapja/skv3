@@ -89,3 +89,14 @@ it('writes quotes, backslashes and variable references that read back', function
         ->and($env->get('NEW_PATH'))->toBe('C:\\shop')
         ->and($env->get('MAIL_USERNAME'))->toBe('Bob\'s Shop');
 });
+
+it('words its refusals in the active language (g2-15)', function (string $file, array $variables, string $dutch): void {
+    $path = setupSandbox()->path($file);
+    app()->setLocale('nl');
+
+    expect(fn () => new EnvFile($path)->set($variables))->toThrow(RuntimeException::class, str_replace('{path}', $path, $dutch));
+})->with([
+    'a missing file' => ['missing.env', ['APP_NAME' => 'x'], 'Het omgevingsbestand [{path}] bestaat niet.'],
+    'a bad name' => ['.env', ['app_name' => 'x'], 'De naam van een omgevingsvariabele mag alleen hoofdletters, cijfers en underscores bevatten.'],
+    'a line break' => ['.env', ['APP_NAME' => "Shop\nX"], 'De waarde voor [APP_NAME] bevat een regeleinde of een NUL-byte.'],
+]);

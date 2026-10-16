@@ -9,6 +9,7 @@
 /vendor
 .env*
 !.env.example
+.state-*
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -16,6 +17,7 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 /auth.json
+/answers.json
 /.fleet
 /.idea
 /.nova

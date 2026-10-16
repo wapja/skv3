@@ -9,7 +9,6 @@ use App\Authorization\SetSuperAdmin;
 use App\Concerns\ProfileValidationRules;
 use App\Console\Concerns\ReadsStandardInput;
 use App\Enums\ActivityEvent;
-use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Tenancy\Facades\Tenant;
@@ -56,6 +55,13 @@ final class CreateSuperAdminCommand extends Command
             return self::FAILURE;
         }
 
+        // Reading a terminal would block, and what the owner types would show (L-54).
+        if ($this->option('password-stdin') && $this->standardInputIsTerminal()) {
+            $this->components->error(__('Standard input is a terminal, where the password would show. Pipe it in: printf \'%s\n\' "$PASSWORD" | php artisan skv:create-super-admin you@example.com --password-stdin'));
+
+            return self::FAILURE;
+        }
+
         if ($this->option('password-stdin') && $this->givenPassword() === null) {
             $this->components->error(__('No password on standard input.'));
 
@@ -76,8 +82,7 @@ final class CreateSuperAdminCommand extends Command
             if ($existing instanceof User) {
                 $this->promote($setSuperAdmin, $existing);
             } else {
-                // One transaction: a new user never exists without the badge and the audit entry.
-                DB::transaction(fn () => $setSuperAdmin->handleCreated($this->createUser($email)));
+                $setSuperAdmin->createNew($this->newUserAttributes($email));
             }
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $messages) {
@@ -129,12 +134,14 @@ final class CreateSuperAdminCommand extends Command
     }
 
     /**
-     * A new user carries the flag at insert: BelongsToOrganisation refuses a user without an organisation otherwise.
-     * SetSuperAdmin::handleCreated() then attaches the badge and records the grant.
+     * The name, address and password of a new super admin, validated before anything is written.
+     * SetSuperAdmin::createNew() inserts the user with the flag and completes it in one transaction (RL-9).
+     *
+     * @return array{email: string, name: string, password: string}
      *
      * @throws ValidationException
      */
-    private function createUser(string $email): User
+    private function newUserAttributes(string $email): array
     {
         $name = $this->option('name') ?? ($this->input->isInteractive() ? text(__('Name'), required: true) : 'Super admin');
         $password = $this->givenPassword() ?? ($this->input->isInteractive() ? password(__('Password'), required: true) : null);
@@ -146,18 +153,7 @@ final class CreateSuperAdminCommand extends Command
             'password' => ['required', 'string', Password::default()],
         ])->validate();
 
-        $user = new User;
-        $user->forceFill([
-            'organisation_id' => null,
-            'is_super_admin' => true,
-            'status' => UserStatus::Active,
-            'locale' => Locale::default(),
-            'name' => $valid['name'],
-            'email' => $valid['email'],
-            'password' => $valid['password'],
-        ])->save();
-
-        return $user;
+        return $valid;
     }
 
     /** The password given on standard input with --password-stdin (CD-8), read once; null without the flag. */

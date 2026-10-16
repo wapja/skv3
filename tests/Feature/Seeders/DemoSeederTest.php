@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Enums\ActivityEvent;
 use App\Enums\Locale;
 use App\Enums\UserStatus;
+use App\Models\Activity;
 use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
@@ -127,4 +128,17 @@ it('creates the demo accounts in the app\'s default language (A64)', function ()
 
     expect($locale("admin@demo1.{$apex}"))->toBe(Locale::English)
         ->and($locale("user@demo1.{$apex}"))->toBe(Locale::English);
+});
+
+it('creates the demo super admin with its badge and grant, or not at all (DEC-30 (21), RL-9, g2-11)', function (): void {
+    Activity::creating(function (Activity $activity): void {
+        if ($activity->event === ActivityEvent::SuperAdminGranted->value) {
+            throw new RuntimeException('The audit log is unavailable.');
+        }
+    });
+    $apex = config('tenancy.apex_domain');
+
+    expect(fn (): int => Artisan::call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]))
+        ->toThrow(RuntimeException::class, 'The audit log is unavailable.');
+    expect(Tenant::bypass(fn (): bool => User::query()->where('email', "superadmin@{$apex}")->exists()))->toBeFalse();
 });

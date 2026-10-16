@@ -5,7 +5,6 @@ declare(strict_types=1);
 /** covers §5.3.3, §5.3.2 */
 
 use App\Models\User;
-use App\Setup\Detector;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
@@ -18,6 +17,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -28,13 +28,28 @@ use Tests\Fixtures\QueryFailingSetupStep;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
-    Process::fake(['*' => Process::result('')]);
+    // The commands a sandbox install starts (§5.3.3):
+    // - the bootstrap's migration
+    // - Node's version (it answers none, so the frontend step ends manual before npm)
+    // - git init and the hooks path
+    // - where Claude Code is on the system PATH (the claude answer then defaults to true): Boost and the plugin on a
+    //   .test address, and the doctor's plugin list
+    // - composer's Flux Pro credentials where Pro is installed
+    Process::fake([
+        "*'artisan' 'migrate'*" => Process::result(''),
+        "*node' '-v'*" => Process::result(''),
+        "*git' 'init'*" => Process::result(''),
+        "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result(''),
+        "*'artisan' 'boost:install'*" => Process::result(''),
+        "*claude' 'plugin'*" => Process::result('[]'),
+        "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('', exitCode: 1),
+    ]);
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     app()->instance(SetupContext::class, $this->sandbox);
     app()->instance(Bootstrap::class, new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home'))));
     app()->instance(BootstrapRunner::class, app(Bootstrap::class));
-    app()->instance(Detector::class, new Detector(new Toolchain($this->sandbox->path('home'))));
+    withoutPostgresProbe();
     $this->previousConnection = config('database.default');
 });
 
@@ -289,13 +304,64 @@ it('reads the answers from a file with --answers=@path (RL-11)', function () use
     [$exit, $output] = $install(['--answers' => '@'.$file, '--no-interaction' => true]);
 
     // The file was read: its value reaches validation.
-    expect($exit)->toBe(1)->and($output)->toContain('database');
+    expect($exit)->toBe(1)->and($output)->toContain(__('validation.in', ['attribute' => 'database']));
 });
 
 it('reads the answers from standard input with --answers=- (RL-11)', function () use ($withStdin): void {
     [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], (string) json_encode(['database' => 'oracle']));
 
-    expect($exit)->toBe(1)->and($output)->toContain('database');
+    expect($exit)->toBe(1)->and($output)->toContain(__('validation.in', ['attribute' => 'database']));
+});
+
+it('rejects an empty standard input for --answers=- as no JSON (RL-11, L-52)', function () use ($withStdin): void {
+    $before = (string) file_get_contents($this->sandbox->path('.env'));
+
+    [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], '');
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('The --answers value is not valid JSON.'))
+        ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+});
+
+it('refuses a password of any type inside an inline --answers (CD-8, L-55)', function (mixed $password) use ($install): void {
+    $before = (string) file_get_contents($this->sandbox->path('.env'));
+
+    [$exit, $output] = $install(['--answers' => json_encode(['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => $password], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'))
+        ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+})->with([
+    'a number' => [12345678],
+    'a list' => [['correct-horse-battery']],
+    'true' => [true],
+]);
+
+it('takes the super admin password from standard input with --answers=- (CD-8, RL-11, F25)', function () use ($withStdin): void {
+    [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR));
+
+    $owner = DB::connection(DatabaseStep::CONNECTION)->table('users')->where('email', 'owner@example.com')->sole();
+
+    expect($exit)->toBe(0)
+        ->and($output)->not->toContain(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'))
+        ->not->toContain('correct-horse-battery')
+        ->and(Hash::check('correct-horse-battery', (string) $owner->password))->toBeTrue();
+});
+
+it('re-runs a complete step only with --force (RL-6, g2-21)', function () use ($install): void {
+    $answers = (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json'));
+    // The herd.yml step's line in the non-interactive output: "herd.yml ....... <status>".
+    $status = fn (string $output): ?string => preg_match('/^\s*'.preg_quote(__('herd.yml'), '/').'\s+\.+\s+(\S+)\s*$/m', $output, $match) === 1 ? $match[1] : null;
+
+    [$firstExit, $first] = $install(['--answers' => $answers, '--no-interaction' => true]);
+    [$plainExit, $plain] = $install(['--no-interaction' => true]);
+    [$forcedExit, $forced] = $install(['--no-interaction' => true, '--force' => true]);
+
+    expect([$firstExit, $plainExit, $forcedExit])->toBe([0, 0, 0])
+        ->and([$status($first), $status($plain), $status($forced)])->toBe([__('done'), __('skipped'), __('done')]);
 });
 
 it('names an unreadable answers file (RL-11)', function () use ($install): void {
@@ -303,4 +369,33 @@ it('names an unreadable answers file (RL-11)', function () use ($install): void 
 
     // The console components print paths inside the project relative to it (EnsureRelativePaths).
     expect($exit)->toBe(1)->and($output)->toContain(__('The answers file :path cannot be read.', ['path' => Str::after($this->sandbox->path('missing.json'), base_path().'/')]));
+});
+
+it('defaults to SQLite whatever PostgreSQL the machine runs (g1-13, RL-3)', function () use ($install): void {
+    /** @var array<string, mixed> $answers */
+    $answers = json_decode((string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), true, flags: JSON_THROW_ON_ERROR);
+    unset($answers['database']);
+
+    [$exitCode] = $install(['--answers' => json_encode($answers, JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('DB_CONNECTION'))->toBe('sqlite');
+});
+
+it('refuses a folder name that can be no Herd address before anything runs (g3-10)', function () use ($install): void {
+    $sandbox = setupSandbox(prefix: 'my_app_');
+    $herd = $sandbox->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($sandbox->path('home')));
+    app()->instance(SetupContext::class, $sandbox);
+    $before = (string) file_get_contents($sandbox->path('.env'));
+
+    [$exitCode, $output] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain(Str::slug($sandbox->folderName()))
+        ->and(Marker::exists($sandbox))->toBeFalse()
+        ->and(file_get_contents($sandbox->path('.env')))->toBe($before);
 });

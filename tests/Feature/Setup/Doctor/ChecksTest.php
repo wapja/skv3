@@ -55,6 +55,7 @@ use App\Setup\SetupToken;
 use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Support\Health\HealthCheckKey;
 use App\Support\Skv;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Support\Facades\DB;
@@ -213,6 +214,21 @@ it('checks the certificate only when HTTPS was chosen (§5.4)', function () use 
         ->and($unsecured->fix)->toBe("herd secure {$name}");
 });
 
+it('quotes a folder name with a space in the Herd fix commands (RL-6, g2-05)', function () use ($stub, $withMarker): void {
+    $stub($this->home.'/Library/Application Support/Herd/bin/herd');
+    $spaced = setupSandbox(prefix: 'my app ');
+    $name = $spaced->folderName();
+    $context = $withMarker(new DoctorContext($spaced->basePath, $this->context->toolchain, $this->herd, null), ['https' => true]);
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),
+        "*herd' 'secured'*" => Process::result(''),
+    ]);
+
+    expect(new HerdSiteCheck()->run($context)->fix)->toBe("herd link '{$name}'")
+        ->and(new HerdSecuredCheck()->run($context)->fix)->toBe("herd secure '{$name}'");
+});
+
 it('prints the /etc/hosts lines when subdomains do not resolve without Herd (§5.4)', function (): void {
     Organisation::factory()->create(['slug' => 'acme']);
     config(['tenancy.apex_domain' => 'unresolvable.invalid']);
@@ -317,7 +333,8 @@ it('finds the PostgreSQL test database, or names the command that creates it (§
 })->skip(fn (): bool => DB::connection()->getDriverName() !== 'pgsql', 'Runs under composer test:pgsql only.');
 
 it('warns when a schema dump exists and the PostgreSQL tools are missing (§5.4, §7.3)', function () use ($stub): void {
-    $herdServices = $this->sandbox->path('herd-services');
+    // Herd's layout: the trust rule walks up to the root two levels above the services (CD-6).
+    $herdServices = $this->sandbox->path('herd/services/postgresql');
     $check = new SchemaToolsCheck($herdServices);
 
     expect($check->run($this->context)->status)->toBe(CheckStatus::Skipped);
@@ -409,22 +426,48 @@ it('needs AuthenticateSession in the web group (§5.4)', function (): void {
         ->and($missing->fix)->toBeNull();
 });
 
-it('writes a health-check key with --fix (§5.4)', function (): void {
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => '']);
+it('fails a blank or short health-check key and writes a new one with --fix (§5.4, CD-4, F15)', function (string $key, string $message): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => $key]);
 
-    $missing = new HealthCheckKeyCheck()->run($this->context);
+    $before = new HealthCheckKeyCheck()->run($this->context);
+    $result = new HealthCheckKeyCheck()->fix($this->context);
+    $written = (string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY');
+
+    expect($before->status)->toBe(CheckStatus::Fail)
+        ->and($before->message)->toBe(__($message))
+        ->and($before->fix)->toBe('php artisan skv:doctor --fix')
+        ->and($result->status)->toBe(CheckStatus::Pass)
+        ->and($result->message)->not->toContain($written)
+        ->and(strlen($written))->toBe(40);
+})->with([
+    'blank' => ['', 'HEALTH_CHECK_KEY is empty'],
+    'one short of the minimum' => [str_repeat('k', 31), 'HEALTH_CHECK_KEY is too short'],
+]);
+
+it('keeps a health-check key of the minimum length, which a monitor may use (§5.4, CD-4)', function (): void {
+    $key = str_repeat('k', HealthCheckKey::MIN_LENGTH);
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => $key]);
+
     $result = new HealthCheckKeyCheck()->fix($this->context);
 
-    expect($missing->status)->toBe(CheckStatus::Fail)
-        ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
-        ->and($result->status)->toBe(CheckStatus::Pass)
-        ->and($result->message)->not->toContain((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))
-        ->and(strlen((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))->toBe($key);
+});
+
+it('judges the running configuration\'s health-check key in a runtime context, and .env otherwise (CD-5)', function (): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => str_repeat('k', 40)]);
+    config(['skv.health_check.key' => 'short']);
+
+    $runtime = new HealthCheckKeyCheck()->run(DoctorContext::withoutDetection($this->sandbox->basePath));
+
+    expect(new HealthCheckKeyCheck()->run($this->context)->status)->toBe(CheckStatus::Pass)
+        ->and($runtime->status)->toBe(CheckStatus::Fail)
+        ->and($runtime->message)->toBe(__('HEALTH_CHECK_KEY is too short'));
 });
 
 it('needs an archive password while the backups module is on, and writes one with --fix (CD-10)', function (): void {
     useBackupsModule(false);
-    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '', 'HEALTH_CHECK_KEY' => '']);
 
     $off = new BackupPasswordCheck()->run($this->context);
 
@@ -438,7 +481,8 @@ it('needs an archive password while the backups module is on, and writes one wit
         ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
         ->and($result->status)->toBe(CheckStatus::Pass)
         ->and(strlen($written))->toBe(32)
-        ->and($result->message)->not->toContain($written);
+        ->and($result->message)->not->toContain($written)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))->toBe('');
 });
 
 it('fails while .env has an archive password that the running configuration lacks (CD-10)', function (): void {
@@ -536,7 +580,8 @@ it('probes the SMTP port and accepts the log mailer (§5.4)', function (): void 
 });
 
 it('looks for pg_dump only while the backups module is on (§5.4, RL-11)', function () use ($stub): void {
-    $herdServices = $this->sandbox->path('herd-services');
+    // Herd's layout: the trust rule walks up to the root two levels above the services (CD-6).
+    $herdServices = $this->sandbox->path('herd/services/postgresql');
     config(['skv.modules.backups' => false]);
     $off = new PgDumpCheck($herdServices)->run($this->context);
     config(['skv.modules.backups' => true]);
@@ -670,18 +715,53 @@ it('only warns when the superpowers plugin is not installed (§5.4)', function (
         ->and(new SuperpowersCheck()->run($chosen)->status)->toBe(CheckStatus::Pass);
 });
 
-it('warns about a leftover setup token and deletes it with --fix (§5.4)', function () use ($withMarker): void {
-    $installed = $withMarker($this->context, []);
+it('warns about a leftover setup token and deletes it with --fix (§5.4)', function (): void {
     File::put($this->sandbox->path(SetupToken::PATH), Str::random(64));
-    $leftover = new SetupTokenCheck()->run($installed);
-    $fixed = new SetupTokenCheck()->fix($installed);
+    $before = new SetupTokenCheck()->run($this->context);
 
-    expect(new SetupTokenCheck()->run($this->context)->status)->toBe(CheckStatus::Skipped)
+    Marker::write($this->sandbox, []);
+    $leftover = new SetupTokenCheck()->run($this->context);
+    $fixed = new SetupTokenCheck()->fix($this->context);
+
+    expect($before->status)->toBe(CheckStatus::Skipped)
         ->and($leftover->status)->toBe(CheckStatus::Warn)
         ->and($leftover->fix)->toBe('php artisan skv:doctor --fix')
         ->and($fixed?->status)->toBe(CheckStatus::Pass)
         ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse();
 });
+
+it('checks the setup token whenever the marker file exists, also when it does not read back (L-13)', function (): void {
+    File::put($this->sandbox->path(Marker::FILE), '{"answers":');
+    File::put($this->sandbox->path(SetupToken::PATH), Str::random(64));
+
+    $leftover = new SetupTokenCheck()->run($this->context);
+    $fixed = new SetupTokenCheck()->fix($this->context);
+
+    expect($leftover->status)->toBe(CheckStatus::Warn)
+        ->and($fixed?->status)->toBe(CheckStatus::Pass)
+        ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse();
+});
+
+it('fails the marker row for a marker that is a symlink or cannot be read (F3, L-09, RL-2)', function (): void {
+    $file = $this->sandbox->path(Marker::FILE);
+    Marker::write($this->sandbox, []);
+    rename($file, $file.'.real');
+    symlink($file.'.real', $file);
+    $linked = new MarkerCheck()->run($this->context);
+
+    unlink($file);
+    rename($file.'.real', $file);
+    chmod($file, 0000);
+    $unreadable = new MarkerCheck()->run($this->context);
+    chmod($file, 0600);
+
+    $message = __('The install marker :file cannot be read', ['file' => Marker::FILE]);
+
+    expect($linked->status)->toBe(CheckStatus::Fail)
+        ->and($linked->message)->toBe($message)
+        ->and($unreadable->status)->toBe(CheckStatus::Fail)
+        ->and($unreadable->message)->toBe($message);
+})->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');
 
 it('warns without public/storage and runs storage:link with --fix (§5.4)', function (): void {
     Process::fake(["*'artisan' 'storage:link'*" => Process::result('')]);

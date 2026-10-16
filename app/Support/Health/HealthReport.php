@@ -12,14 +12,15 @@ use App\Setup\Doctor\Checks\MailCheck;
 use App\Setup\Doctor\Checks\QueueCheck;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
+use Throwable;
 
 /**
  * The health results of §4.9 (RL-1, RL-3): the doctor's database, queue, failed-jobs and mail checks plus the last
- * backup, run against a context without detection (RL-2) and cached briefly on the ops store (CD-5), once per locale
- * because labels and messages are translated when it runs. /health-check and the System page show the same report.
- * No fix commands: the report leaves the server.
+ * backup, run against a runtime context without detection (RL-2, CD-5) and cached briefly on the ops store
+ * (OpsCache), once per locale because labels and messages are translated when it runs. /health-check and the System
+ * page show the same report. It leaves the server, so it carries no fix commands. Its messages stay: the mail row
+ * names the SMTP host and port, which only a holder of the key or a super admin sees (DEC-32 RL-5; O2 kept, CD-2).
  *
  * @phpstan-type Report array{checked_at: string, healthy: bool, checks: array<string, array{label: string, status: string, message: string}>}
  */
@@ -58,10 +59,10 @@ final readonly class HealthReport
         ];
     }
 
-    /** @return Report the cached report, or a fresh one that is then cached */
+    /** @return Report the cached report, or a fresh one that is then cached; throws when the store cannot be read */
     public function cached(): array
     {
-        $cached = Cache::store($this->store())->get($this->key());
+        $cached = OpsCache::store()->get($this->key());
 
         if (is_array($cached) && isset($cached['checked_at'], $cached['healthy'], $cached['checks'])) {
             /** @var Report $cached */
@@ -71,11 +72,20 @@ final readonly class HealthReport
         return $this->refresh();
     }
 
-    /** @return Report a fresh report, cached for the next requests */
+    /**
+     * @return Report a fresh report, cached for the next requests. A store that cannot be written (a full disk, a
+     *                read-only replica) is reported and the report still returned (L-30), so key holders get the
+     *                real 200 or 503; the checks then run on each such request.
+     */
     public function refresh(): array
     {
         $report = $this->run();
-        Cache::store($this->store())->put($this->key(), $report, max(1, (int) config('skv.health_check.cache_seconds', 30)));
+
+        try {
+            OpsCache::store()->put($this->key(), $report, max(1, (int) config('skv.health_check.cache_seconds', 30)));
+        } catch (Throwable $exception) {
+            report($exception);
+        }
 
         return $report;
     }
@@ -84,10 +94,5 @@ final readonly class HealthReport
     public function key(): string
     {
         return self::CACHE_KEY.':'.app()->getLocale();
-    }
-
-    private function store(): string
-    {
-        return (string) config('skv.ops_cache_store', 'file');
     }
 }

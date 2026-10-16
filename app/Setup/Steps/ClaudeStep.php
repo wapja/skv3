@@ -8,6 +8,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\ProjectFile;
 use App\Setup\Support\Toolchain;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\PendingProcess;
@@ -114,7 +115,7 @@ final readonly class ClaudeStep implements SetupStep
                 mkdir($context->path('.claude'), 0755, true);
             }
 
-            file_put_contents($context->path('.claude/settings.local.json'), "{}\n");
+            ProjectFile::write($context->path('.claude/settings.local.json'), "{}\n");
         }
 
         $claude = $this->toolchain->which('claude');
@@ -171,7 +172,7 @@ final readonly class ClaudeStep implements SetupStep
         $servers->herd = ['command' => 'php', 'args' => [$phar]];
         $config->mcpServers = $servers;
 
-        file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+        ProjectFile::write($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
     }
 
     /** The mcpServers object of .mcp.json, or an empty one. */
@@ -200,7 +201,7 @@ final readonly class ClaudeStep implements SetupStep
         $scripts['post-update-cmd'] = $postUpdate;
         $composer['scripts'] = $scripts;
 
-        file_put_contents($context->path('composer.json'), json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
+        ProjectFile::write($context->path('composer.json'), json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
     }
 
     /** @param  array<mixed>  $composer */

@@ -10,6 +10,8 @@ use App\Setup\Doctor\Checks\FailedJobsCheck;
 use App\Setup\Doctor\Checks\LastBackupCheck;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
+use App\Support\Health\HealthReport;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
@@ -22,6 +24,13 @@ beforeEach(function (): void {
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     $this->context = new DoctorContext($this->sandbox->basePath, new Toolchain($this->sandbox->path('home')), Detection::none(), null);
+    $this->defaultConnection = config('database.default');
+});
+
+afterEach(function (): void {
+    // RefreshDatabase rolls back the default connection: give it back before the application is torn down.
+    config(['database.default' => $this->defaultConnection]);
+    DB::purge('health_unreachable');
 });
 
 $failedJob = fn (): bool => DB::table('failed_jobs')->insert([
@@ -101,6 +110,8 @@ it('fails without a backup or with one older than a day, and passes with a fresh
     expect($none->status)->toBe(CheckStatus::Fail)
         ->and($none->fix)->toBe('php artisan backup:run --only-db')
         ->and($stale->status)->toBe(CheckStatus::Fail)
+        ->and($stale->message)->toBe(__('The last backup on :disk is from :time', ['disk' => 'backups', 'time' => Carbon::parse('2026-10-13 02:00:00')->diffForHumans()]))
+        ->and($stale->fix)->toBe('php artisan backup:run --only-db')
         ->and($fresh->status)->toBe(CheckStatus::Pass)
         // diffForHumans() follows the app locale, so the expectation is computed the same way.
         ->and($fresh->message)->toContain(Carbon::parse('2026-10-15 02:00:00')->diffForHumans());
@@ -119,4 +130,92 @@ it('passes while tonight\'s backup is still running, and fails once its two-hour
 
     expect($running->status)->toBe(CheckStatus::Pass)
         ->and($missed->status)->toBe(CheckStatus::Fail);
+});
+
+it('skips the queue and failed-jobs checks while the default database is down, so only the database check fails (F2)', function (): void {
+    useBackupsModule(false);
+    config([
+        'database.connections.health_unreachable' => ['driver' => 'sqlite', 'database' => '/nonexistent/'.Str::uuid().'/database.sqlite', 'prefix' => ''],
+        'database.default' => 'health_unreachable',
+        'queue.default' => 'database',
+        'queue.connections.database.connection' => null,
+        'queue.failed.driver' => 'database-uuids',
+        'queue.failed.database' => 'health_unreachable',
+    ]);
+
+    $report = new HealthReport(basePath: $this->sandbox->basePath)->run();
+    $skipped = ['status' => CheckStatus::Skipped->value, 'message' => __('The database is not reachable')];
+
+    expect($report['healthy'])->toBeFalse()
+        ->and($report['checks']['database']['status'])->toBe(CheckStatus::Fail->value)
+        ->and(Arr::only($report['checks']['queue'], ['status', 'message']))->toBe($skipped)
+        ->and(Arr::only($report['checks']['failed-jobs'], ['status', 'message']))->toBe($skipped);
+});
+
+it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seconds by default and never under 1 (F2)', function (): void {
+    $original = [
+        'getenv' => getenv('DB_CONNECT_TIMEOUT'),
+        'server' => $_SERVER['DB_CONNECT_TIMEOUT'] ?? null,
+        'env' => $_ENV['DB_CONNECT_TIMEOUT'] ?? null,
+    ];
+    $timeout = function (?string $value): mixed {
+        putenv($value === null ? 'DB_CONNECT_TIMEOUT' : 'DB_CONNECT_TIMEOUT='.$value);
+        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
+
+        if ($value !== null) {
+            $_SERVER['DB_CONNECT_TIMEOUT'] = $_ENV['DB_CONNECT_TIMEOUT'] = $value;
+        }
+
+        /** @var array{connections: array{pgsql: array<string, mixed>}} $config */
+        $config = require config_path('database.php');
+        $options = $config['connections']['pgsql']['options'] ?? [];
+
+        return is_array($options) ? ($options[PDO::ATTR_TIMEOUT] ?? null) : null;
+    };
+
+    try {
+        $default = $timeout(null);
+        $configured = $timeout('2');
+        // libpq reads connect_timeout=0 as "wait forever", the hang F2 bounds (M6).
+        $floored = [$timeout(''), $timeout('0'), $timeout('-3')];
+    } finally {
+        putenv($original['getenv'] === false ? 'DB_CONNECT_TIMEOUT' : 'DB_CONNECT_TIMEOUT='.$original['getenv']);
+        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
+
+        if ($original['server'] !== null) {
+            $_SERVER['DB_CONNECT_TIMEOUT'] = $original['server'];
+        }
+
+        if ($original['env'] !== null) {
+            $_ENV['DB_CONNECT_TIMEOUT'] = $original['env'];
+        }
+    }
+
+    expect($default)->toBe(5)
+        ->and($configured)->toBe(2)
+        ->and($floored)->toBe([1, 1, 1])
+        ->and((string) file_get_contents(base_path('.env.example')))->toMatch('/^DB_CONNECT_TIMEOUT=5$/m');
+});
+
+it('fails without a configured backup disk (CD-4, L-17)', function (): void {
+    useBackupsModule(true);
+    config(['backup.backup.destination.disks' => []]);
+
+    $result = new LastBackupCheck()->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('No backup disk is configured'))
+        ->and($result->fix)->toBe('config/backup.php');
+});
+
+it('fails while a backup disk cannot be reached (CD-4, L-17)', function (): void {
+    useBackupsModule(true);
+    // An undefined disk: BackupDestination::create() catches the filesystem error and the destination is unreachable.
+    config(['backup.backup.destination.disks' => ['no-such-disk']]);
+
+    $result = new LastBackupCheck()->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('The backup disk :disk cannot be reached', ['disk' => 'no-such-disk']))
+        ->and($result->fix)->toBe('config/filesystems.php');
 });

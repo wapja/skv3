@@ -16,6 +16,7 @@ use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Steps\MarkerStep;
 use App\Setup\Steps\SummaryStep;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\ShellArgument;
 use Closure;
 use Illuminate\Support\Str;
 
@@ -133,7 +134,7 @@ final readonly class SetupRunner
             return;
         }
 
-        $name = $context->folderName();
+        $name = ShellArgument::quote($context->folderName());
 
         if ($context->answers->moduleEnabled('passkeys')) {
             new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => false]);

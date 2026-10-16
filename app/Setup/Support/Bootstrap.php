@@ -8,16 +8,18 @@ use App\Setup\SetupToken;
 use App\Setup\Steps\EnvironmentStep;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Process;
-use Illuminate\Support\Str;
 
 /**
  * The non-interactive first run (§5.2, RL-1): .env, APP_KEY, the Herd APP_URL, the SQLite file plus migrate and the
- * one-time setup token (RL-10). In production it only creates `.env`, `APP_KEY` and the blank
- * `EnvironmentStep::GENERATED` secrets (CD-9, CD-10).
+ * one-time setup token (RL-10). In production (an APP_ENV outside local, testing and staging) it only creates
+ * `.env`, `APP_KEY` and the blank `EnvironmentStep::GENERATED` secrets (CD-3, CD-9, CD-10).
  * Never chooses a database, never prompts, never caches config or routes. skv:install runs it as its step 0.
  */
 final readonly class Bootstrap implements BootstrapRunner
 {
+    /** The environments that get the development half; skv:install runs only in these (CD-3). */
+    private const array DEVELOPMENT = ['local', 'testing', 'staging'];
+
     public function __construct(private string $basePath, private Toolchain $toolchain) {}
 
     /** @return list<string> the human-readable actions it took */
@@ -27,7 +29,9 @@ final readonly class Bootstrap implements BootstrapRunner
         $env = new EnvFile($this->basePath.'/.env');
 
         if (! $env->exists() && is_file($this->basePath.'/.env.example')) {
-            copy($this->basePath.'/.env.example', $this->basePath.'/.env');
+            $example = $this->basePath.'/.env.example';
+            // Atomically, with the example's mode: a symlinked .env is replaced, never written through (RL-1).
+            StateFile::write($this->basePath.'/.env', (string) file_get_contents($example), fileperms($example) & 0777);
             $actions[] = __('Created .env from .env.example');
         }
 
@@ -40,11 +44,14 @@ final readonly class Bootstrap implements BootstrapRunner
         // CD-10: it does get the secrets setup would generate, because a blank BACKUP_ARCHIVE_PASSWORD means
         // unencrypted backups. Only the key names are reported, never the values.
         if ($this->isProduction()) {
-            foreach (EnvironmentStep::GENERATED as $key => $length) {
-                if (($env->get($key) ?? '') === '') {
-                    $env->set([$key => Str::random($length)]);
-                    $actions[] = __('Generated :key', ['key' => $key]);
-                }
+            $secrets = EnvironmentStep::missingSecrets($env);
+
+            if ($secrets !== []) {
+                $env->set($secrets);
+            }
+
+            foreach (array_keys($secrets) as $key) {
+                $actions[] = __('Generated :key', ['key' => $key]);
             }
 
             return $actions;
@@ -80,10 +87,16 @@ final readonly class Bootstrap implements BootstrapRunner
         return $actions;
     }
 
-    /** Whether the project this Bootstrap prepares is a production install (its .env says APP_ENV=production). */
+    /**
+     * Whether the project this Bootstrap prepares is a production install (CD-3): its .env, or the process environment,
+     * names an APP_ENV outside local, testing and staging, the environments skv:install runs in (`prod` and `live`
+     * count too). A server's own APP_ENV overrides the file, and the running app's loaded .env shows there too.
+     */
     public function isProduction(): bool
     {
-        return new EnvFile($this->basePath.'/.env')->get('APP_ENV') === 'production';
+        $environments = [new EnvFile($this->basePath.'/.env')->get('APP_ENV'), getenv('APP_ENV'), $_SERVER['APP_ENV'] ?? null];
+
+        return array_any($environments, fn ($environment): bool => is_string($environment) && $environment !== '' && ! in_array($environment, self::DEVELOPMENT, true));
     }
 
     /** The `APP_URL` of the project this Bootstrap prepares (RL-10), never the running app's own `.env`. */

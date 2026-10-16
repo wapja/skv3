@@ -206,6 +206,37 @@ it('declares which steps run detached in the browser (A25, §5.3.1)', function (
     ['git', false], ['claude', true], ['doctor', false], ['marker', false], ['herd-site', false], ['summary', false],
 ]);
 
+it('gives every step a key a step file may carry and a translated label (§5.3.1, g1-23)', function (string $key): void {
+    /** @var array<string, string> $dutch */
+    $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
+    $step = collect(app(SetupRunner::class)->steps())->firstOrFail(fn (SetupStep $step): bool => $step->key() === $key);
+
+    app()->setLocale('en');
+    $english = $step->label();
+    app()->setLocale('nl');
+
+    // WizardRunner names a step's files after its key and refuses anything else (stepFile()).
+    expect($step->key())->toMatch('/^[a-z][a-z-]*$/')
+        ->and(array_key_exists($english, $dutch))->toBeTrue()
+        ->and($step->label())->toBe($dutch[$english] ?? null);
+})->with(['environment', 'database', 'herd-manifest', 'branding', 'frontend', 'git', 'claude', 'doctor', 'marker', 'herd-site', 'summary']);
+
+it('is complete right after a run that returned done, so a re-run skips it (§5.3.1, g1-23)', function (string $key): void {
+    $context = setupSandbox();
+    $step = collect(app(SetupRunner::class)->steps())->firstOrFail(fn (SetupStep $step): bool => $step->key() === $key);
+
+    $result = $step->run($context);
+
+    expect($result->status)->toBe('done')
+        ->and($step->isComplete($context))->toBeTrue();
+})->with(['environment', 'herd-manifest', 'branding', 'marker']);
+
+it('never counts the doctor and the summary as complete: they report on every run (§5.3.1, g1-23)', function (string $key): void {
+    $step = collect(app(SetupRunner::class)->steps())->firstOrFail(fn (SetupStep $step): bool => $step->key() === $key);
+
+    expect($step->isComplete(setupSandbox()))->toBeFalse();
+})->with(['doctor', 'summary']);
+
 it('records an unsecured site as http even without passkeys (OD-2)', function (): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
@@ -219,6 +250,16 @@ it('records an unsecured site as http even without passkeys (OD-2)', function ()
         ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->not->toBe('false')
         ->and(implode(' ', $context->notes))->toContain('herd secure '.$context->folderName());
 });
+
+it('quotes a folder name with a space in the commands of the HTTPS notes (RL-6, g2-05)', function (array $modules): void {
+    $context = setupSandbox(prefix: 'my app ');
+    $context->answers = Answers::fromArray(['modules' => $modules, 'https' => true], Detection::none(), $context->folderName());
+    $context->results['herd-site'] = StepResult::manual('herd secure x', 'not confirmed');
+
+    new SetupRunner([])->applyHttpsConsequence($context);
+
+    expect(implode(' ', $context->notes))->toContain("herd secure '{$context->folderName()}'");
+})->with(['with passkeys' => [['passkeys', 'impersonation']], 'without passkeys' => [['impersonation']]]);
 
 it('names a re-run that turns https back on over the marker answers (OD-2)', function (): void {
     $context = setupSandbox();

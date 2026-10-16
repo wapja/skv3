@@ -39,3 +39,13 @@ it('refuses the built-in demo default next to an own super admin (DEC-30 (29))',
     expect($preflight->refusesDemoDefault($answers, [], [], Detection::none()))->toBeTrue()
         ->and($preflight->refusesDemoDefault($answers, ['start_with' => 'demo'], [], Detection::none()))->toBeFalse();
 });
+
+it('never refuses the demo start an earlier install chose (DEC-30, g2-28)', function (): void {
+    $context = setupSandbox();
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+    $installed = ['start_with' => 'demo'];
+    $answers = Answers::fromArray([], Detection::none(), $context->folderName(), $installed);
+
+    expect($answers->startWith)->toBe('demo')
+        ->and(new InstallPreflight($context)->refusesDemoDefault($answers, [], $installed, Detection::none()))->toBeFalse();
+});

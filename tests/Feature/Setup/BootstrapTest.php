@@ -90,8 +90,6 @@ it('leaves a non-default APP_URL and a non-sqlite database alone (§5.2)', funct
     $env = new EnvFile($this->context->path('.env'));
     $env->set(['APP_URL' => 'https://my-app.example', 'DB_CONNECTION' => 'pgsql']);
 
-    Process::fake();
-
     new Bootstrap($this->context->basePath, $this->toolchain)->run();
 
     expect($env->get('APP_URL'))->toBe('https://my-app.example')
@@ -148,7 +146,7 @@ it('survives a herd tld that times out (A5)', function (): void {
     File::put($herd, "#!/bin/sh\n");
     chmod($herd, 0755);
 
-    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), '*' => Process::result('')]);
+    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), "*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
 
     $actions = new Bootstrap($this->context->basePath, $this->toolchain)->run();
 
@@ -165,4 +163,18 @@ it('creates the one-time setup token (§5.2 point 5, RL-10)', function (): void 
 
     expect($actions)->toContain(__('Created the one-time setup token'))
         ->and(new SetupToken($context->basePath)->value())->toMatch('/^[0-9a-f]{64}$/');
+});
+
+it('copies .env.example atomically with its mode, replacing a symlinked .env (RL-1, g2-08)', function (): void {
+    Process::fake(["*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
+    chmod($this->context->path('.env.example'), 0640);
+    // Dangling: Bootstrap sees no .env and copies the example.
+    symlink($this->context->path('elsewhere.env'), $this->context->path('.env'));
+
+    new Bootstrap($this->context->basePath, $this->toolchain)->run();
+
+    expect($this->context->path('elsewhere.env'))->not->toBeFile()
+        ->and(is_link($this->context->path('.env')))->toBeFalse()
+        ->and(fileperms($this->context->path('.env')) & 0777)->toBe(0640)
+        ->and(new EnvFile($this->context->path('.env'))->get('APP_KEY'))->toStartWith('base64:');
 });

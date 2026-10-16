@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Concerns;
 
+use App\Console\Support\Terminal;
 use Symfony\Component\Console\Input\StreamableInputInterface;
 
 /**
@@ -34,6 +35,14 @@ trait ReadsStandardInput
         $contents = $stream === null ? false : stream_get_contents($stream);
 
         return is_string($contents) && trim($contents) !== '' ? $contents : null;
+    }
+
+    /** Whether standard input is a terminal (L-54): what someone types there shows on the screen. */
+    protected function standardInputIsTerminal(): bool
+    {
+        $stream = $this->standardInput();
+
+        return $stream !== null && app(Terminal::class)->isTerminal($stream);
     }
 
     /** @return resource|null */

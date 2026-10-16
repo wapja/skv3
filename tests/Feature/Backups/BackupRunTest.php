@@ -10,6 +10,7 @@ use App\Setup\Doctor\PostgresBinaries;
 use App\Setup\Support\Toolchain;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\BackupDestination\BackupDestination;
 use Spatie\Backup\Config\Config;
@@ -20,18 +21,21 @@ $usablePgDump = function (): ?string {
         return null;
     }
 
-    $path = new PostgresBinaries()->find(new DoctorContext(storage_path('framework/testing'), new Toolchain(storage_path('framework/testing/home')), Detection::none(), null), 'pg_dump');
+    $toolchain = new Toolchain(storage_path('framework/testing/home'));
+    $path = new PostgresBinaries()->find(new DoctorContext(storage_path('framework/testing'), $toolchain, Detection::none(), null), 'pg_dump');
 
     if ($path === null) {
         return null;
     }
 
-    exec(escapeshellarg($path).' --version', $output);
-    preg_match('/(\d+)(?:\.\d+)?/', implode(' ', $output), $client);
-    $row = DB::selectOne('show server_version_num');
-    $server = intdiv((int) ($row->server_version_num ?? 0), 10000);
+    // The one test that runs a real pg_dump (AGENTS.md › Ops): its version probe runs for real, not faked (RL-12).
+    Process::preventStrayProcesses(false);
+    // F19: through Process with the toolchain's environment, never exec(). The package's pg_dump runs through Symfony's
+    // Process directly, so the facade's fake never touches it.
+    preg_match('/(\d+)(?:\.\d+)?/', Process::env($toolchain->environment())->run([$path, '--version'])->output(), $client);
+    preg_match('/^(\d+)/', DB::connection()->getServerVersion(), $server);
 
-    return isset($client[1]) && (int) $client[1] >= $server ? dirname($path) : null;
+    return isset($client[1], $server[1]) && (int) $client[1] >= (int) $server[1] ? dirname($path) : null;
 };
 
 it('backs up the database into an encrypted archive on the backups disk (§4.9)', function () use ($usablePgDump): void {
@@ -46,10 +50,12 @@ it('backs up the database into an encrypted archive on the backups disk (§4.9)'
     Config::rebind();
 
     $exit = Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true]);
+    // F23: Artisan::output() empties its buffer, so it is read once and checked twice.
+    $output = Artisan::output();
     $name = (string) config('backup.backup.name');
     $newest = BackupDestination::create('backups', $name)->newestBackup();
 
-    expect($exit)->toBe(0, Artisan::output())
+    expect($exit)->toBe(0, $output)
         ->and($newest)->not->toBeNull();
 
     $zip = new ZipArchive;
@@ -59,5 +65,5 @@ it('backs up the database into an encrypted archive on the backups disk (§4.9)'
 
     expect($entry)->toBeArray()
         ->and($entry['encryption_method'] ?? 0)->not->toBe(0)
-        ->and(Artisan::output())->not->toContain('correct-horse-battery');
+        ->and($output)->not->toContain('correct-horse-battery');
 })->skip(fn (): bool => $usablePgDump() === null, 'needs PostgreSQL and a pg_dump at least as new as the server');

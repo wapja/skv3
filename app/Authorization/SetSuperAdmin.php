@@ -6,8 +6,11 @@ namespace App\Authorization;
 
 use App\Actions\Audit\RecordActivity;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
+use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -20,8 +23,8 @@ use LogicException;
  * no organisation (W8) or whose organisation is archived (FU3-4). Records user.super_admin_granted /
  * user.super_admin_revoked when the flag changes (§4.8). Authorization is the caller's job (policy ability
  * updateSuperAdmin); console commands and seeders call it directly, so their entries have no causer.
- * A user without an organisation carries the flag at insert (W8), so handle() sees no change for it:
- * handleCreated() attaches that new user's badge and records the grant.
+ * A user without an organisation carries the flag at insert (W8), so handle() sees no change for it: createNew()
+ * inserts a new super admin and completes it through handleCreated(), which attaches the badge and records the grant.
  */
 final readonly class SetSuperAdmin
 {
@@ -53,6 +56,32 @@ final readonly class SetSuperAdmin
                     $user,
                 );
             }
+        });
+    }
+
+    /**
+     * Inserts a new super admin and completes it (RL-9, DEC-30 (21)). The flag, no organisation (W8) and the Active
+     * status are forced, the locale defaults to the app's, and every other attribute is dropped. The insert and
+     * handleCreated() run in one transaction, so the user never exists without the badge and the audit entry. The
+     * password may be plain or a hash already; the hashed cast keeps a hash.
+     *
+     * @param  array{name: string, email: string, password: string, locale?: Locale}  $attributes
+     */
+    public function createNew(array $attributes): User
+    {
+        return DB::transaction(function () use ($attributes): User {
+            $user = new User;
+            $user->forceFill([
+                'locale' => Locale::default(),
+                ...Arr::only($attributes, ['name', 'email', 'password', 'locale']),
+                'organisation_id' => null,
+                'is_super_admin' => true,
+                'status' => UserStatus::Active,
+            ])->save();
+
+            $this->handleCreated($user);
+
+            return $user;
         });
     }
 

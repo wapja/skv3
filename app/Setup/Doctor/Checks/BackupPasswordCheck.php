@@ -9,7 +9,6 @@ use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Steps\EnvironmentStep;
 use App\Support\Skv;
-use Illuminate\Support\Str;
 
 /**
  * §4.9, CD-10: while the backups module is on, `.env` has a BACKUP_ARCHIVE_PASSWORD and the running configuration
@@ -59,8 +58,10 @@ final readonly class BackupPasswordCheck implements Check
      */
     public function fix(DoctorContext $context): CheckResult
     {
-        if (($context->env()->get('BACKUP_ARCHIVE_PASSWORD') ?? '') === '') {
-            $password = Str::random(EnvironmentStep::GENERATED['BACKUP_ARCHIVE_PASSWORD']);
+        // Only the archive password: this repair never writes the other generated secrets.
+        $password = EnvironmentStep::missingSecrets($context->env())['BACKUP_ARCHIVE_PASSWORD'] ?? null;
+
+        if ($password !== null) {
             $context->env()->set(['BACKUP_ARCHIVE_PASSWORD' => $password]);
 
             if (! app()->configurationIsCached()) {

@@ -6,6 +6,8 @@ namespace App\Providers;
 
 use App\Actions\Audit\ConsoleOrigin;
 use App\Authorization\SuperAdminGate;
+use App\Console\Support\StreamTerminal;
+use App\Console\Support\Terminal;
 use App\Policies\RolePolicy;
 use App\Setup\Answers;
 use App\Setup\Detection;
@@ -21,6 +23,7 @@ use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
 use App\Setup\Wizard\StepLauncher;
 use App\Support\Backups\ConfigurePgDump;
+use App\Support\Backups\PrivateBackupTemp;
 use App\Support\Backups\RefuseUnencryptedBackups;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
@@ -70,6 +73,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SetupToken::class, fn (): SetupToken => new SetupToken(base_path()));
         // The wizard's long steps and the Herd step run detached (RL-4); tests bind an inline launcher.
         $this->app->bind(StepLauncher::class, DetachedStepLauncher::class);
+        // --password-stdin refuses a terminal (L-54); tests bind one that always is.
+        $this->app->bind(Terminal::class, StreamTerminal::class);
 
         $this->configureModules();
     }
@@ -202,6 +207,8 @@ class AppServiceProvider extends ServiceProvider
         // CD-10: backup:run never writes an unencrypted archive, also when it is started by hand.
         Event::listen(CommandStarting::class, RefuseUnencryptedBackups::class);
         Event::listen(CommandStarting::class, ConfigurePgDump::class);
+        // CD-10, L-07: the plaintext dump's working directory is private to this account.
+        Event::listen(CommandStarting::class, PrivateBackupTemp::class);
         // CD-7, RL-9: audit entries written during a command are tagged with it.
         Event::listen(CommandStarting::class, fn (CommandStarting $event) => ConsoleOrigin::enter($event->command));
         Event::listen(CommandFinished::class, fn (CommandFinished $event) => ConsoleOrigin::leave($event->command));

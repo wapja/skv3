@@ -29,21 +29,29 @@ final class DoctorContext
 
     private ?bool $databaseReachable = null;
 
-    /** @param  array<string, mixed>|null  $marker  the decoded storage/app/skv-installed, or null before setup finished (fromSetup() synthesises one) */
+    /**
+     * @param  array<string, mixed>|null  $marker  the decoded storage/app/skv-installed, or null before setup finished (fromSetup() synthesises one)
+     * @param  bool  $runtime  true only from withoutDetection(): setting() then reads the running configuration (CD-5)
+     */
     public function __construct(
         public readonly string $basePath,
         public readonly Toolchain $toolchain,
         public readonly Detection $detection,
         public readonly ?array $marker,
+        public readonly bool $runtime = false,
     ) {}
 
-    /** The context of the running application: base_path(), a fresh detection and its marker. */
-    public static function forApplication(Toolchain $toolchain, Detector $detector): self
+    /**
+     * The context of the running application, or of the project at $basePath (tests pass a sandbox, L-10): a fresh
+     * detection and its marker, which is null when it is absent or unreadable (A8).
+     */
+    public static function forApplication(Toolchain $toolchain, Detector $detector, ?string $basePath = null): self
     {
+        $basePath ??= base_path();
         $detection = $detector->detect();
-        $setup = SetupContext::forApplication(Answers::defaults($detection, basename(base_path())), $detection);
+        $setup = new SetupContext($basePath, Answers::defaults($detection, basename($basePath)), $detection);
 
-        return new self(base_path(), $toolchain, $detection, self::readableMarker($setup));
+        return new self($basePath, $toolchain, $detection, self::readableMarker($setup));
     }
 
     /** The setup's context; before the marker exists, the marker-gated checks read the answers being installed (RL-8). */
@@ -57,11 +65,12 @@ final class DoctorContext
     /**
      * The running application without a detection and without a marker (RL-2): for web requests and console
      * listeners, because forApplication() starts herd processes and probes PostgreSQL. The checks that read the
-     * detection or the marker are not run through it.
+     * detection or the marker are not run through it. It is a runtime context (CD-5): setting() reads the running
+     * configuration, as the request or command that builds it runs with it.
      */
     public static function withoutDetection(?string $basePath = null): self
     {
-        return new self($basePath ?? base_path(), app(Toolchain::class), Detection::none(), null);
+        return new self($basePath ?? base_path(), app(Toolchain::class), Detection::none(), null, runtime: true);
     }
 
     public function path(string $relative = ''): string
@@ -77,6 +86,23 @@ final class DoctorContext
     public function env(): EnvFile
     {
         return new EnvFile($this->path('.env'));
+    }
+
+    /**
+     * A setting as the checks judge it (CD-5, F10): in a runtime context (withoutDetection(): web requests and
+     * console listeners) the running configuration at $configKey, otherwise the project's .env at $envKey, because
+     * skv:doctor and setup judge the file they are about to write. Null when it is unset, blank, or neither a string
+     * nor a number: env() casts HEALTH_CHECK_KEY=true to bool true, which is no value here.
+     */
+    public function setting(string $envKey, string $configKey): ?string
+    {
+        $value = $this->runtime ? config($configKey) : $this->env()->get($envKey);
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /** A marker answer (§5.3.2 keys), or null without a marker or without that answer. */
@@ -112,6 +138,15 @@ final class DoctorContext
         }
 
         return $this->databaseReachable;
+    }
+
+    /**
+     * Whether $connection (null or '' is the default one) is the default connection and that does not open (F2):
+     * the queue and failed-jobs checks then skip, and only the database check reports the outage.
+     */
+    public function defaultConnectionDown(?string $connection): bool
+    {
+        return in_array($connection, [null, '', DB::getDefaultConnection()], true) && ! $this->databaseReachable();
     }
 
     /** This project as a SetupContext with default answers, so a check can reuse a setup step's own logic. */

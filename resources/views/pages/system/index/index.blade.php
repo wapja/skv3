@@ -5,35 +5,51 @@
         <flux:separator variant="subtle" />
     </div>
 
+    @if ($rateLimited)
+        {{-- CD-16: the last refresh or doctor run was refused; the rows below are unchanged. --}}
+        <div data-test="system-rate-limited">
+            <flux:callout variant="warning" icon="clock" heading="{{ __('Too many attempts. Try again in a minute.') }}" />
+        </div>
+    @endif
+
     {{-- §4.9: the same cached report /health-check returns. --}}
     <section class="space-y-3" data-test="system-health">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-3">
                 <flux:heading size="lg" level="2">{{ __('Health') }}</flux:heading>
-                <flux:badge size="sm" :color="$this->health['healthy'] ? 'lime' : 'red'">
-                    {{ $this->health['healthy'] ? __('Healthy') : __('Unhealthy') }}
-                </flux:badge>
-                <flux:text size="sm">{{ __('Checked :time', ['time' => $this->health['checked']]) }}</flux:text>
+                @if ($this->health['available'])
+                    <flux:badge size="sm" :color="$this->health['healthy'] ? 'lime' : 'red'">
+                        {{ $this->health['healthy'] ? __('Healthy') : __('Unhealthy') }}
+                    </flux:badge>
+                    <flux:text size="sm">{{ __('Checked :time', ['time' => $this->health['checked']]) }}</flux:text>
+                @endif
             </div>
             <flux:button size="sm" icon="arrow-path" wire:click="refreshHealth" data-test="system-refresh-health">{{ __('Refresh') }}</flux:button>
         </div>
 
-        <flux:table>
-            <flux:table.columns>
-                <flux:table.column>{{ __('Check') }}</flux:table.column>
-                <flux:table.column>{{ __('Status') }}</flux:table.column>
-                <flux:table.column>{{ __('Details') }}</flux:table.column>
-            </flux:table.columns>
-            <flux:table.rows>
-                @foreach ($this->health['rows'] as $row)
-                    <flux:table.row :key="'health-'.$row['key']" data-test="system-health-row-{{ $row['key'] }}">
-                        <flux:table.cell variant="strong">{{ $row['label'] }}</flux:table.cell>
-                        <flux:table.cell><flux:badge size="sm" :color="$row['color']">{{ $row['status'] }}</flux:badge></flux:table.cell>
-                        <flux:table.cell>{{ $row['message'] }}</flux:table.cell>
-                    </flux:table.row>
-                @endforeach
-            </flux:table.rows>
-        </flux:table>
+        @if (! $this->health['available'])
+            {{-- F4: the ops store cannot be read. --}}
+            <div data-test="system-health-unavailable">
+                <flux:text>{{ __('The health report is not available right now') }}</flux:text>
+            </div>
+        @else
+            <flux:table>
+                <flux:table.columns>
+                    <flux:table.column>{{ __('Check') }}</flux:table.column>
+                    <flux:table.column>{{ __('Status') }}</flux:table.column>
+                    <flux:table.column>{{ __('Details') }}</flux:table.column>
+                </flux:table.columns>
+                <flux:table.rows>
+                    @foreach ($this->health['rows'] as $row)
+                        <flux:table.row :key="'health-'.$row['key']" data-test="system-health-row-{{ $row['key'] }}">
+                            <flux:table.cell variant="strong">{{ $row['label'] }}</flux:table.cell>
+                            <flux:table.cell><flux:badge size="sm" :color="$row['color']">{{ $row['status'] }}</flux:badge></flux:table.cell>
+                            <flux:table.cell>{{ $row['message'] }}</flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
+        @endif
     </section>
 
     <section class="space-y-3" data-test="system-backups">
@@ -57,11 +73,11 @@
                                 @if (! $destination['reachable'])
                                     <flux:badge size="sm" color="red">{{ __('Not reachable') }}</flux:badge>
                                 @else
-                                    {{ $destination['newest'] ?? __('None yet') }}
+                                    <span data-test="system-backup-newest-{{ $destination['disk'] }}">{{ $destination['newest'] ?? __('None yet') }}</span>
                                 @endif
                             </flux:table.cell>
-                            <flux:table.cell>{{ $destination['count'] }}</flux:table.cell>
-                            <flux:table.cell>{{ $destination['size'] ?? '—' }}</flux:table.cell>
+                            <flux:table.cell><span data-test="system-backup-count-{{ $destination['disk'] }}">{{ $destination['count'] ?? '—' }}</span></flux:table.cell>
+                            <flux:table.cell><span data-test="system-backup-size-{{ $destination['disk'] }}">{{ $destination['size'] ?? '—' }}</span></flux:table.cell>
                         </flux:table.row>
                     @endforeach
                 </flux:table.rows>
@@ -73,7 +89,13 @@
         <div class="flex flex-wrap items-center gap-3">
             <flux:heading size="lg" level="2">{{ __('Schedule') }}</flux:heading>
             <flux:text size="sm">
-                {{ $this->schedule['heartbeat'] === null ? __('The scheduler has not run yet') : __('Last heartbeat :time', ['time' => $this->schedule['heartbeat']]) }}
+                @if (! $this->schedule['heartbeatAvailable'])
+                    {{ __('The scheduler heartbeat is not available right now') }}
+                @elseif ($this->schedule['heartbeat'] === null)
+                    {{ __('The scheduler has not run yet') }}
+                @else
+                    {{ __('Last heartbeat :time', ['time' => $this->schedule['heartbeat']]) }}
+                @endif
             </flux:text>
         </div>
 
@@ -84,16 +106,16 @@
                 <flux:table.column>{{ __('Next run') }}</flux:table.column>
             </flux:table.columns>
             <flux:table.rows>
-                @foreach ($this->schedule['tasks'] as $index => $task)
-                    <flux:table.row :key="'task-'.$index">
+                @foreach ($this->schedule['tasks'] as $task)
+                    <flux:table.row :key="'task-'.$task['key']" data-test="system-task-{{ $task['key'] }}">
                         <flux:table.cell variant="strong">
                             <code class="text-sm">{{ $task['task'] }}</code>
                             @if (! $task['active'])
-                                <flux:badge size="sm" color="zinc">{{ __('off') }}</flux:badge>
+                                <span data-test="system-task-off-{{ $task['key'] }}"><flux:badge size="sm" color="zinc">{{ __('off') }}</flux:badge></span>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell><code class="text-sm">{{ $task['expression'] }}</code></flux:table.cell>
-                        <flux:table.cell>{{ $task['next'] }}</flux:table.cell>
+                        <flux:table.cell><code class="text-sm" data-test="system-task-expression-{{ $task['key'] }}">{{ $task['expression'] }}</code></flux:table.cell>
+                        <flux:table.cell><span data-test="system-task-next-{{ $task['key'] }}">{{ $task['next'] }}</span></flux:table.cell>
                     </flux:table.row>
                 @endforeach
             </flux:table.rows>

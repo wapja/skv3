@@ -6,6 +6,8 @@ namespace App\Setup\Support;
 
 use Illuminate\Database\QueryException;
 use Illuminate\Process\Exceptions\ProcessFailedException;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -15,6 +17,19 @@ use Throwable;
  */
 final class SafeMessage
 {
+    /**
+     * of(), after reporting an exception the setup does not expect (a TypeError, an ErrorException), so its trace
+     * reaches the log. A RuntimeException or a ValidationException is a failure the message explains: not reported.
+     */
+    public static function reported(Throwable $exception): string
+    {
+        if (! $exception instanceof RuntimeException && ! $exception instanceof ValidationException) {
+            report($exception);
+        }
+
+        return self::of($exception);
+    }
+
     public static function of(Throwable $exception): string
     {
         if ($exception instanceof QueryException) {

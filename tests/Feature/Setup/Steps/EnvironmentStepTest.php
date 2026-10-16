@@ -51,19 +51,54 @@ it('keeps the health key and APP_KEY it finds (§5.3.3 step 1)', function (): vo
     expect($env->get('HEALTH_CHECK_KEY'))->toBe(str_repeat('k', 40))->and($env->get('APP_KEY'))->toBe('base64:existing');
 });
 
-it('keeps an existing archive password and is incomplete while it is blank (§4.9)', function (): void {
+it('replaces a health key too short for /health-check, and is incomplete until then (§5.3.3 step 1, CD-4)', function (): void {
     $context = setupSandbox();
     $env = new EnvFile($context->path('.env'));
-    $env->set(['BACKUP_ARCHIVE_PASSWORD' => str_repeat('p', 32)]);
+    $env->set(['HEALTH_CHECK_KEY' => str_repeat('k', 10)]);
+
+    $before = new EnvironmentStep()->isComplete($context);
+    new EnvironmentStep()->run($context);
+    $written = (string) $env->get('HEALTH_CHECK_KEY');
+
+    expect($before)->toBeFalse()
+        ->and(strlen($written))->toBe(40)
+        ->and($written)->not->toBe(str_repeat('k', 10))
+        ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
+});
+
+it('keeps an existing generated secret, is incomplete while it is blank and generates it again (§4.9, g2-26)', function (string $key, int $length): void {
+    $context = setupSandbox();
+    $env = new EnvFile($context->path('.env'));
+    $env->set([$key => str_repeat('p', $length)]);
 
     new EnvironmentStep()->run($context);
 
-    expect($env->get('BACKUP_ARCHIVE_PASSWORD'))->toBe(str_repeat('p', 32))
+    expect($env->get($key))->toBe(str_repeat('p', $length))
         ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
 
-    $env->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+    $env->set([$key => '']);
 
     expect(new EnvironmentStep()->isComplete($context))->toBeFalse();
+
+    new EnvironmentStep()->run($context);
+
+    expect(strlen((string) $env->get($key)))->toBe($length)
+        ->and($env->get($key))->not->toBe(str_repeat('p', $length))
+        ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
+})->with(fn (): array => collect(EnvironmentStep::GENERATED)->map(fn (int $length, string $key): array => [$key, $length])->all());
+
+it('generates a value only for the blank secrets, at their length, and writes nothing itself (RL-10, L-56)', function (): void {
+    $env = new EnvFile(setupSandbox()->path('.env'));
+    $env->set(['HEALTH_CHECK_KEY' => str_repeat('k', 40), 'BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    $first = EnvironmentStep::missingSecrets($env);
+    $second = EnvironmentStep::missingSecrets($env);
+
+    expect(array_keys($first))->toBe(['BACKUP_ARCHIVE_PASSWORD'])
+        ->and(strlen($first['BACKUP_ARCHIVE_PASSWORD'] ?? ''))->toBe(32)
+        ->and($second['BACKUP_ARCHIVE_PASSWORD'] ?? null)->not->toBe($first['BACKUP_ARCHIVE_PASSWORD'] ?? null)
+        ->and($env->get('BACKUP_ARCHIVE_PASSWORD'))->toBe('')
+        ->and($env->get('HEALTH_CHECK_KEY'))->toBe(str_repeat('k', 40));
 });
 
 it('uses Herd Pro mail unless the installer already set mail (§5.3.3 step 1)', function (bool $installerSetMail, string $expected): void {
@@ -138,4 +173,13 @@ it('is complete once the file holds the answers (§5.3.1)', function (): void {
 
     new EnvFile($context->path('.env'))->set(['MODULE_IMPERSONATION' => false]);
     expect($step->isComplete($context))->toBeFalse();
+});
+
+it('keeps the port of an APP_URL on the same host without Herd (g1-17)', function (): void {
+    $context = setupSandbox();
+    new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://localhost:8000']);
+
+    new EnvironmentStep()->run($context);
+
+    expect(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('http://localhost:8000');
 });

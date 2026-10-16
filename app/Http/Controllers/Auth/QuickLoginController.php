@@ -14,7 +14,11 @@ final class QuickLoginController extends Controller
 {
     public function __invoke(Request $request, QuickLogin $quickLogin): RedirectResponse
     {
-        $url = $quickLogin->handoffUrl($request->string('email')->toString());
+        // A forged form can send email[]=…: anything but a string is no offered account (g3-14).
+        $email = $request->input('email');
+        abort_unless(is_string($email), 404);
+
+        $url = $quickLogin->handoffUrl($email);
 
         abort_if($url === null, 404);
 

@@ -15,8 +15,9 @@ use JsonException;
 
 /**
  * What the browser wizard knows between requests (RL-5): the pinned host, the answers (with the password's hash,
- * never the password), the results of steps 1–8 and the notes. Step 9 deletes it, together with the per-step files
- * of the detached steps in STEPS.
+ * never the password), the detection snapshot begin() took (CD-15), the results of steps 1–8 and the notes. Step 9
+ * deletes it, together with the per-step files of the detached steps in STEPS. A file without the snapshot (written
+ * before M7b) is not a state this class reads: the runner deletes it and the wizard starts at the questions again.
  */
 final class WizardState
 {
@@ -28,7 +29,7 @@ final class WizardState
      * @param  array<string, StepResult>  $results
      * @param  list<string>  $notes
      */
-    public function __construct(public string $host, public Answers $answers, public array $results = [], public array $notes = []) {}
+    public function __construct(public string $host, public Answers $answers, public Detection $detection, public array $results = [], public array $notes = []) {}
 
     /** @throws JsonException|InvalidArgumentException when the file is not a state this class wrote */
     public static function load(string $basePath): ?self
@@ -39,14 +40,15 @@ final class WizardState
             return null;
         }
 
-        if (! is_string($data['host'] ?? null) || ! is_array($data['answers'] ?? null) || ! is_array($data['results'] ?? null) || ! is_array($data['notes'] ?? null)) {
+        if (! is_string($data['host'] ?? null) || ! is_array($data['answers'] ?? null) || ! is_array($data['detection'] ?? null)
+            || ! is_array($data['results'] ?? null) || ! is_array($data['notes'] ?? null)) {
             throw new InvalidArgumentException('Setup state: unexpected shape.');
         }
 
         /** @var array<string, mixed> $answers */
         $answers = $data['answers'];
 
-        return new self($data['host'], Answers::fromState($answers), self::resultsFromState($data['results']), self::notesFromState($data['notes']));
+        return new self($data['host'], Answers::fromState($answers), Detection::fromArray($data['detection']), self::resultsFromState($data['results']), self::notesFromState($data['notes']));
     }
 
     public static function forget(string $basePath): void
@@ -104,14 +106,16 @@ final class WizardState
         StateFile::writeJson(rtrim($basePath, '/').'/'.self::PATH, [
             'host' => $this->host,
             'answers' => $this->answers->toState(),
+            'detection' => $this->detection->toArray(),
             'results' => array_map(fn (StepResult $result): array => $result->toArray(), $this->results),
             'notes' => $this->notes,
         ]);
     }
 
-    public function context(string $basePath, Detection $detection): SetupContext
+    /** The setup context for the next step, on the snapshot begin() took (CD-15): no step request detects again. */
+    public function context(string $basePath): SetupContext
     {
-        $context = new SetupContext($basePath, $this->answers, $detection);
+        $context = new SetupContext($basePath, $this->answers, $this->detection);
         $context->results = $this->results;
         $context->notes = $this->notes;
 

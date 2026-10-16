@@ -28,8 +28,18 @@ final readonly class MarkerCheck implements Check
 
     public function run(DoctorContext $context): CheckResult
     {
-        if (! is_file($context->path(Marker::FILE))) {
+        $path = $context->path(Marker::FILE);
+
+        if (! is_file($path)) {
             return CheckResult::skipped(__('The app has not been set up yet'));
+        }
+
+        // RL-2: a symlink is refused and an unreadable file is not "not valid JSON" (F3 (4), L-09).
+        if (is_link($path) || ! is_readable($path)) {
+            return CheckResult::fail(
+                __('The install marker :file cannot be read', ['file' => Marker::FILE]),
+                __('Restore it from a backup, or delete it and run php artisan skv:install'),
+            );
         }
 
         try {
