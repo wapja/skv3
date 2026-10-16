@@ -112,7 +112,8 @@ it('runs outside the web group: no session, no cookies, no tenant (RL-5)', funct
 it('throttles the configured key to 60 requests a minute, whatever the address, with a no-store 429 (CD-4, L-27)', function (): void {
     $this->withHeaders([HealthCheckKey::HEADER => $this->key]);
 
-    for ($i = 1; $i <= ThrottleHealthChecks::PER_MINUTE; $i++) {
+    // Literals, not the constants: the title promises 60, so a changed limit fails here (M29).
+    for ($i = 1; $i <= 60; $i++) {
         $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$i])->getJson('/health-check')->assertOk();
     }
 
@@ -137,7 +138,7 @@ it('counts requests without the key in one shared bucket, never one per address 
 it('answers 429 to wrong keys once 300 came in a minute, and still lets the monitor in (CD-4, L-28, L-29)', function (): void {
     $limiter = new RateLimiter(OpsCache::store());
 
-    for ($i = 1; $i < ThrottleHealthChecks::DENIED_PER_MINUTE; $i++) {
+    for ($i = 1; $i < 300; $i++) {
         $limiter->hit(ThrottleHealthChecks::DENIED_BUCKET, 60);
     }
 
@@ -173,13 +174,15 @@ it('still answers 403 to a wrong key while the ops cache store is broken (CD-5)'
         ->assertExactJson(['message' => 'Forbidden.']);
 });
 
-it('answers with the fresh report while the ops store reads but cannot be written (L-30)', function (): void {
+it('answers with the fresh report while the ops store reads but cannot be written, and reports the failed write (L-30)', function (): void {
     Exceptions::fake();
     Cache::extend('unwritable', fn (): Repository => Cache::repository(new UnwritableCacheStore));
     config(['skv.ops_cache_store' => 'unwritable']);
     config(['cache.stores.unwritable' => ['driver' => 'unwritable']]);
 
-    $this->withHeaders([HealthCheckKey::HEADER => $this->key])->getJson('/health-check')
+    // Without the throttle, which reports its own failed write: the report must be HealthReport::refresh()'s (M34).
+    $this->withoutMiddleware(ThrottleHealthChecks::class)
+        ->withHeaders([HealthCheckKey::HEADER => $this->key])->getJson('/health-check')
         ->assertOk()
         ->assertJsonPath('healthy', true)
         ->assertJsonPath('checks.database.status', 'pass');
