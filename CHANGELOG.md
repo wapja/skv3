@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A collapsible sidebar with three groups (Overzicht, Beheer, Systeem), driven by one navigation definition that hides what you may not open.
 - One user menu with settings, language, appearance and log out.
 - Dutch and English on every screen and page title: your language is saved in your profile, guests follow their browser and get a language toggle on the sign-in pages.
-- Friendly, self-contained error pages (403, 404, 419, 429, 500, 503) in the visitor's language, and a clear page for an invitation link that is no longer valid.
+- Friendly, self-contained error pages (401, 402, 403, 404, 419, 429, 500, 503, and one for every other 4xx and 5xx status, such as 405 when a POST-only address is opened or 502 from a proxy) in the visitor's language, and a clear page for an invitation link that is no longer valid.
 - A dashboard with your organisation and roles, counts for users, pending invitations and organisations, recent activity and a getting-started checklist for administrators.
 - Optional passkeys module (`MODULE_PASSKEYS`): when it is off, passkey routes, buttons and the settings section are gone.
 - An optional Flux Pro layer: with `livewire/flux-pro` installed you get a listbox for roles, tabs, date pickers, a ⌘K command palette and a sign-in chart; without it everything works on free Flux.
@@ -150,6 +150,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The message after you are signed out on an address you may not use, after an impersonation ends by itself and after *Stop impersonating* is worded in the language of the page that shows it, no longer in the server's default or the impersonated user's language.
 - The email-change mails (the confirmation link and the notice to the old address) and the notice after an administrator changed your address are written in the account's language, also when a queue worker sends them; the email-change mails are queued only once the surrounding transaction commits.
 - Changing the language on the profile page shows its confirmation after the reload, in the new language.
+- *Try again* on the 429, 500 and 503 pages keeps the address's query string, reloads the page behind Livewire's error dialog, and after a refused form post goes back to the page you came from instead of opening an address that only accepts POST. *Back* on the 403 page only leads to a page on the same host.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

@@ -18,7 +18,8 @@
 @section('title', __('No access'))
 @section('message', __('You do not have permission to open this page.'))
 @section('actions')
-    <a href="{{ url()->previous() }}">{{ __('Back') }}</a>
+    {{-- Only back to a page on this host (G2-02): url()->previous() would follow any Referer. --}}
+    <a href="{{ \App\Http\Support\ReturnUrl::previous(request(), '/') }}">{{ __('Back') }}</a>
     @if ($home !== null)
         <a href="{{ $home }}">{{ __('Go to your organisation') }}</a>
     @elseif (! $user)
