@@ -17,7 +17,9 @@ use Illuminate\Support\Str;
 /**
  * Installs the optional Flux Pro layer (§6.7, RL-12): adds the composer.fluxui.dev repository and requires
  * livewire/flux-pro with the credentials Composer already has, then clears compiled views, because Pro branches are
- * stripped at compile time while Pro is missing (DEC-29). It never writes credentials and never prints them.
+ * stripped at compile time while Pro is missing (DEC-29). It marks composer.json with extra.skv.flux-pro first, so an
+ * app that commits Pro on purpose skips the kit's committed-files test (CD-13); Composer's lock hash covers `extra`,
+ * so the mark goes in before the require. It never writes credentials and never prints them.
  */
 #[Description('Install Flux Pro with your Composer credentials (§6.7)')]
 #[Signature('skv:flux-pro')]
@@ -44,12 +46,15 @@ final class FluxProCommand extends Command
         }
 
         foreach ([
+            [$composer, 'config', 'extra.skv.flux-pro', 'true', '--json'],
             [$composer, 'config', 'repositories.flux-pro', 'composer', 'https://composer.fluxui.dev'],
             [$composer, 'require', 'livewire/flux-pro', '--no-interaction'],
         ] as $command) {
             $result = $this->process($toolchain, 900)->run($command);
 
             if ($result->failed()) {
+                // An install that did not finish must not mark the app as committing Flux Pro (CD-13).
+                $this->process($toolchain, 60)->run([$composer, 'config', '--unset', 'extra.skv']);
                 $this->components->error($this->lastLine($result));
 
                 return self::FAILURE;

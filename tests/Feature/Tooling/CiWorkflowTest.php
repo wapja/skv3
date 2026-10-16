@@ -33,9 +33,43 @@ $committedFile = function (string $repository, string $file): string {
         : (string) file_get_contents($repository.'/'.$file);
 };
 
+/** Whether a composer.json carries skv:flux-pro's mark (CD-13): an app that commits Flux Pro on purpose carries it. */
+$commitsFluxPro = function (string $composerJson): bool {
+    $composer = json_decode($composerJson, true);
+
+    return is_array($composer) && data_get($composer, 'extra.skv.flux-pro') === true;
+};
+
+/** A composer.json whose mark is $flag (data_set keeps the kit's namespace in one allowed form, NameLeakTest). */
+$withFluxProMark = function (mixed $flag): string {
+    $composer = ['name' => 'acme/app', 'require' => ['livewire/flux-pro' => '^2.0']];
+    data_set($composer, 'extra.skv.flux-pro', $flag);
+
+    return json_encode($composer, JSON_THROW_ON_ERROR);
+};
+
 it('never references Flux Pro in the committed composer files (committed)', function () use ($committedFile): void {
     expect($committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
         ->and($committedFile(base_path(), 'composer.lock'))->toContain('"packages"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev');
+})->skip(fn (): bool => $commitsFluxPro($committedFile(base_path(), 'composer.json')), 'this app committed Flux Pro on purpose with skv:flux-pro');
+
+it('skips the committed-files check only for a commit that skv:flux-pro marked (CD-13)', function () use ($commitsFluxPro, $committedFile, $withFluxProMark): void {
+    $repository = storage_path('framework/testing/ci-flux-pro-'.Str::uuid());
+    File::ensureDirectoryExists($repository);
+    File::put($repository.'/composer.json', $withFluxProMark(true));
+
+    try {
+        Process::path($repository)->run(['git', 'init', '--quiet'])->throw();
+        Process::path($repository)->run(['git', 'add', 'composer.json'])->throw();
+        Process::path($repository)->run(['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'Add Flux Pro'])->throw();
+
+        expect($commitsFluxPro($committedFile($repository, 'composer.json')))->toBeTrue()
+            ->and($commitsFluxPro($withFluxProMark('true')))->toBeFalse()
+            ->and($commitsFluxPro((string) json_encode(['require' => ['livewire/flux-pro' => '^2.0']])))->toBeFalse()
+            ->and($commitsFluxPro('{'))->toBeFalse();
+    } finally {
+        File::deleteDirectory($repository);
+    }
 });
 
 it('reads the working-tree composer files in a repository without a commit yet (§6.7)', function () use ($committedFile): void {

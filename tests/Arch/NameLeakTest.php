@@ -21,6 +21,7 @@ $allowed = [
     '/App\\\\Support\\\\Skv\b/',         // the Skv support class name (RL-1)
     '/\bfinal class Skv\b|alias `Skv`/', // its declaration and its docblock
     '#skv-(?:installed|setup-token|setup\.(?:json|lock)|setup|herd\.(?:json|exit|log))(?![\w.-])#', // the setup's state files (RL-5); tests use the constants
+    '/\bextra\.skv(?:\.flux-pro)?(?![\w.-])/', // skv:flux-pro's composer.json mark (CD-13)
     '/\.ai\/guidelines\/skv3\.md/',
 ];
 
