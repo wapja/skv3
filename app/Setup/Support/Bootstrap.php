@@ -96,13 +96,7 @@ final readonly class Bootstrap implements BootstrapRunner
     {
         $environments = [new EnvFile($this->basePath.'/.env')->get('APP_ENV'), getenv('APP_ENV'), $_SERVER['APP_ENV'] ?? null];
 
-        foreach ($environments as $environment) {
-            if (is_string($environment) && $environment !== '' && ! in_array($environment, self::DEVELOPMENT, true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($environments, fn ($environment): bool => is_string($environment) && $environment !== '' && ! in_array($environment, self::DEVELOPMENT, true));
     }
 
     /** The `APP_URL` of the project this Bootstrap prepares (RL-10), never the running app's own `.env`. */
