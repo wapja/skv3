@@ -99,6 +99,11 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // F2: pdo_pgsql's connect_timeout (30 s by default). A blackholed host then costs /health-check and the
+            // System page DB_CONNECT_TIMEOUT seconds once per run, because DoctorContext caches the probe.
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ],
             // §4.9, RL-4: the directory holding pg_dump for the backups module; empty lets ConfigurePgDump find it.
             'dump' => [
                 'dump_binary_path' => env('PG_DUMP_BINARY_PATH', ''),

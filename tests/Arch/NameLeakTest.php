@@ -10,6 +10,7 @@ it('hard-codes no kit or site name in app-identity values', function (): void {
     $allowed = [
         '/skv:[a-z-]+/',            // artisan command namespace
         "/config\\(\\[?['\"]skv\\./",    // config('skv.…') keys, read or set
+        "/->setting\\('[A-Z_]+', 'skv\\./", // DoctorContext::setting()'s config key (CD-5)
         '/config\/skv\.php/',
         '/\bSkv::/',
         '/App\\\\Support\\\\Skv\b/', // the Skv support class name (RL-1)

@@ -10,6 +10,8 @@ use App\Setup\Doctor\Checks\FailedJobsCheck;
 use App\Setup\Doctor\Checks\LastBackupCheck;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
+use App\Support\Health\HealthReport;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
@@ -22,6 +24,13 @@ beforeEach(function (): void {
     $this->sandbox = setupSandbox();
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     $this->context = new DoctorContext($this->sandbox->basePath, new Toolchain($this->sandbox->path('home')), Detection::none(), null);
+    $this->defaultConnection = config('database.default');
+});
+
+afterEach(function (): void {
+    // RefreshDatabase rolls back the default connection: give it back before the application is torn down.
+    config(['database.default' => $this->defaultConnection]);
+    DB::purge('health_unreachable');
 });
 
 $failedJob = fn (): bool => DB::table('failed_jobs')->insert([
@@ -119,4 +128,64 @@ it('passes while tonight\'s backup is still running, and fails once its two-hour
 
     expect($running->status)->toBe(CheckStatus::Pass)
         ->and($missed->status)->toBe(CheckStatus::Fail);
+});
+
+it('skips the queue and failed-jobs checks while the default database is down, so only the database check fails (F2)', function (): void {
+    useBackupsModule(false);
+    config([
+        'database.connections.health_unreachable' => ['driver' => 'sqlite', 'database' => '/nonexistent/'.Str::uuid().'/database.sqlite', 'prefix' => ''],
+        'database.default' => 'health_unreachable',
+        'queue.default' => 'database',
+        'queue.connections.database.connection' => null,
+        'queue.failed.driver' => 'database-uuids',
+        'queue.failed.database' => 'health_unreachable',
+    ]);
+
+    $report = new HealthReport(basePath: $this->sandbox->basePath)->run();
+    $skipped = ['status' => CheckStatus::Skipped->value, 'message' => __('The database is not reachable')];
+
+    expect($report['healthy'])->toBeFalse()
+        ->and($report['checks']['database']['status'])->toBe(CheckStatus::Fail->value)
+        ->and(Arr::only($report['checks']['queue'], ['status', 'message']))->toBe($skipped)
+        ->and(Arr::only($report['checks']['failed-jobs'], ['status', 'message']))->toBe($skipped);
+});
+
+it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seconds by default (F2)', function (): void {
+    $original = [
+        'getenv' => getenv('DB_CONNECT_TIMEOUT'),
+        'server' => $_SERVER['DB_CONNECT_TIMEOUT'] ?? null,
+        'env' => $_ENV['DB_CONNECT_TIMEOUT'] ?? null,
+    ];
+    $timeout = function (): mixed {
+        /** @var array{connections: array{pgsql: array<string, mixed>}} $config */
+        $config = require config_path('database.php');
+        $options = $config['connections']['pgsql']['options'] ?? [];
+
+        return is_array($options) ? ($options[PDO::ATTR_TIMEOUT] ?? null) : null;
+    };
+
+    try {
+        putenv('DB_CONNECT_TIMEOUT');
+        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
+        $default = $timeout();
+
+        putenv('DB_CONNECT_TIMEOUT=2');
+        $_SERVER['DB_CONNECT_TIMEOUT'] = $_ENV['DB_CONNECT_TIMEOUT'] = '2';
+        $configured = $timeout();
+    } finally {
+        putenv($original['getenv'] === false ? 'DB_CONNECT_TIMEOUT' : 'DB_CONNECT_TIMEOUT='.$original['getenv']);
+        unset($_SERVER['DB_CONNECT_TIMEOUT'], $_ENV['DB_CONNECT_TIMEOUT']);
+
+        if ($original['server'] !== null) {
+            $_SERVER['DB_CONNECT_TIMEOUT'] = $original['server'];
+        }
+
+        if ($original['env'] !== null) {
+            $_ENV['DB_CONNECT_TIMEOUT'] = $original['env'];
+        }
+    }
+
+    expect($default)->toBe(5)
+        ->and($configured)->toBe(2)
+        ->and((string) file_get_contents(base_path('.env.example')))->toMatch('/^DB_CONNECT_TIMEOUT=5$/m');
 });

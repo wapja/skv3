@@ -239,6 +239,7 @@
     "Go to…": "Ga naar…",
     "HEALTH_CHECK_KEY is empty": "HEALTH_CHECK_KEY is leeg",
     "HEALTH_CHECK_KEY is set": "HEALTH_CHECK_KEY is ingesteld",
+    "HEALTH_CHECK_KEY is too short": "HEALTH_CHECK_KEY is te kort",
     "HTTPS certificate": "HTTPS-certificaat",
     "HTTPS was not chosen": "HTTPS is niet gekozen",
     "Health": "Gezondheid",

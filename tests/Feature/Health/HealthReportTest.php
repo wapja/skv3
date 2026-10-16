@@ -5,12 +5,14 @@ declare(strict_types=1);
 /** covers §4.9 */
 
 use App\Enums\CheckStatus;
+use App\Setup\Doctor\Checks\MailCheck;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthReport;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 use Tests\Fixtures\FixedStatusCheck;
 use Tests\Fixtures\ThrowingCheck;
 
@@ -74,4 +76,21 @@ it('caches one report per language, because labels and messages are translated (
     expect($report->key())->toBe(HealthReport::CACHE_KEY.':en')
         ->and(Cache::store((string) config('skv.ops_cache_store'))->get($report->key()))->toBeNull()
         ->and(Cache::store((string) config('skv.ops_cache_store'))->get(HealthReport::CACHE_KEY.':nl'))->toBe($dutch);
+});
+
+it('probes the mail server the running configuration names, not the one in .env (CD-5, F10)', function (): void {
+    $server = stream_socket_server('tcp://127.0.0.1:0');
+    assert($server !== false);
+    $port = (int) Str::afterLast((string) stream_socket_get_name($server, false), ':');
+    // The sandbox .env is .env.example, which says MAIL_MAILER=log.
+    config(['mail.default' => 'smtp', 'mail.mailers.smtp.host' => '127.0.0.1', 'mail.mailers.smtp.port' => $port]);
+
+    try {
+        $report = new HealthReport([new MailCheck], $this->sandbox->basePath)->run();
+    } finally {
+        fclose($server);
+    }
+
+    expect($report['checks']['mail']['status'])->toBe(CheckStatus::Pass->value)
+        ->and($report['checks']['mail']['message'])->toBe(__('The mail server answers at :address', ['address' => '127.0.0.1:'.$port]));
 });

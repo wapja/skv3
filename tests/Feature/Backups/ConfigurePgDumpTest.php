@@ -35,18 +35,20 @@ it('points the dumper at the pg_dump the doctor finds before backup:run (RL-4)',
     expect(config('database.connections.pgsql.dump.dump_binary_path'))->toBe($this->bin);
 });
 
-it('finds Herd\'s newest PostgreSQL service when nothing else is configured (RL-4)', function () use ($starting): void {
-    $services = $this->sandbox->path('herd-services');
-    File::ensureDirectoryExists($services.'/18/bin');
-    File::copy($this->bin.'/pg_dump', $services.'/18/bin/pg_dump');
-    chmod($services.'/18/bin/pg_dump', 0755);
+it('finds Herd\'s newest PostgreSQL service when nothing else is configured (RL-4, CD-6, L-02)', function () use ($starting): void {
+    // CD-6: for a server on this machine Herd's services come before the PATH, so no PATH pg_dump hides the order.
+    config(['database.connections.pgsql.host' => '127.0.0.1', 'database.connections.pgsql.url' => null]);
+    $services = $this->sandbox->path('herd/services/postgresql');
+
+    foreach (['9.6', '10', '18'] as $version) {
+        File::ensureDirectoryExists($services.'/'.$version.'/bin');
+        File::copy($this->bin.'/pg_dump', $services.'/'.$version.'/bin/pg_dump');
+        chmod($services.'/'.$version.'/bin/pg_dump', 0755);
+    }
 
     new ConfigurePgDump($services, $this->sandbox->basePath)($starting('backup:run'));
 
-    $configured = (string) config('database.connections.pgsql.dump.dump_binary_path');
-
-    expect($configured)->not->toBe('')
-        ->and(is_executable($configured.'/pg_dump'))->toBeTrue();
+    expect(config('database.connections.pgsql.dump.dump_binary_path'))->toBe($services.'/18/bin');
 });
 
 it('keeps a configured path and leaves other commands alone (RL-4)', function (string $command, string $configured) use ($starting): void {

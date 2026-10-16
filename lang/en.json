@@ -239,6 +239,7 @@
     "Go to…": "Go to…",
     "HEALTH_CHECK_KEY is empty": "HEALTH_CHECK_KEY is empty",
     "HEALTH_CHECK_KEY is set": "HEALTH_CHECK_KEY is set",
+    "HEALTH_CHECK_KEY is too short": "HEALTH_CHECK_KEY is too short",
     "HTTPS certificate": "HTTPS certificate",
     "HTTPS was not chosen": "HTTPS was not chosen",
     "Health": "Health",

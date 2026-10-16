@@ -8,6 +8,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Support\EnvFile;
+use App\Support\Health\HealthCheckKey;
 use Illuminate\Support\Str;
 
 /**
@@ -17,13 +18,14 @@ use Illuminate\Support\Str;
  */
 final class EnvironmentStep implements SetupStep
 {
-    /** The secrets setup generates once when blank, with their lengths (§4.9): never overwritten, never printed. */
+    /** The secrets setup generates while they are missing (missingSecrets()), with their lengths (§4.9): a usable value is never overwritten, never printed. */
     public const array GENERATED = ['HEALTH_CHECK_KEY' => 40, 'BACKUP_ARCHIVE_PASSWORD' => 32];
 
     /**
-     * A fresh random value, of its GENERATED length, for every generated secret that is blank in $env (RL-10). Setup,
-     * the production bootstrap and the backup-password repair fill the keys the same way. It never writes, and never
-     * replaces a value: an existing one is what a monitor or the archives use already.
+     * A fresh random value, of its GENERATED length, for every generated secret that is missing in $env (RL-10): blank,
+     * or for HEALTH_CHECK_KEY shorter than HealthCheckKey::MIN_LENGTH, because /health-check refuses such a key, so no
+     * monitor can be using it (CD-4). Setup, the production bootstrap and the backup-password repair fill the keys the
+     * same way. It never writes, and never replaces a usable value: that is what a monitor or the archives use already.
      *
      * @return array<string, string>
      */
@@ -33,7 +35,9 @@ final class EnvironmentStep implements SetupStep
         $secrets = [];
 
         foreach (self::GENERATED as $key => $length) {
-            if (($values[$key] ?? '') === '') {
+            $value = $values[$key] ?? '';
+
+            if ($value === '' || ($key === 'HEALTH_CHECK_KEY' && ! HealthCheckKey::isUsable($value))) {
                 $secrets[$key] = Str::random($length);
             }
         }

@@ -98,8 +98,14 @@ it('lists the schedule and the scheduler heartbeat (RL-8)', function (): void {
     Livewire::test('pages::system.index')->assertDontSee(__('The scheduler has not run yet'));
 });
 
-it('runs only the web-safe doctor checks on the sandbox, starting no process (RL-2, RL-7)', function (): void {
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => '']);
+it('runs only the web-safe doctor checks on the sandbox, starting no process (RL-2, RL-7, F12)', function (): void {
+    // CD-5: the page's health-check-key row judges the running configuration, whatever the sandbox's .env holds.
+    config(['skv.health_check.key' => '']);
+    new EnvFile($this->sandbox->path('.env'))->set([
+        'HEALTH_CHECK_KEY' => str_repeat('k', 40),
+        'APP_URL' => 'http://my-app.test',
+        'TENANCY_APEX_DOMAIN' => 'other.test',
+    ]);
     asSuperAdmin();
     onAdminHost();
 
@@ -109,16 +115,17 @@ it('runs only the web-safe doctor checks on the sandbox, starting no process (RL
     $crashed = Str::before(__('The check could not run (:exception).'), '(');
 
     expect(array_column($rows, 'key'))->toBe([
-        'php', 'gd', 'app-key', 'marker', 'database', 'migrations', 'permissions', 'organisation-admin-role',
+        'php', 'gd', 'app-key', 'marker', 'apex', 'database', 'migrations', 'permissions', 'organisation-admin-role',
         'super-admin', 'super-admin-badges', 'session-driver', 'authenticate-session', 'health-check-key',
         'backup-password', 'assets', 'mail', 'pg-dump', 'queue', 'failed-jobs', 'storage-link',
     ])
         ->and(array_filter($rows, fn (array $row): bool => str_starts_with($row['message'], $crashed)))->toBe([])
-        // The rows read the sandbox's .env, not the repository's.
-        ->and(array_column($rows, 'status', 'key')['health-check-key'])->toBe(CheckStatus::Fail->value);
+        ->and(array_column($rows, 'status', 'key')['health-check-key'])->toBe(CheckStatus::Fail->value)
+        // F12: the apex row reads the sandbox's .env, not the repository's.
+        ->and(array_column($rows, 'status', 'key')['apex'])->toBe(CheckStatus::Fail->value);
     expect(array_diff(SystemChecks::KEYS, array_map(fn (Check $check): string => $check->key(), new Doctor()->checks())))->toBe([]);
 
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => 'a-long-random-health-check-key']);
+    config(['skv.health_check.key' => str_repeat('k', 40)]);
     /** @var list<array{key: string, label: string, status: string, message: string}> $again */
     $again = $page->call('runDoctor')->get('doctorRows');
 

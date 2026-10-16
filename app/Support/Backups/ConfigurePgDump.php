@@ -10,8 +10,9 @@ use Illuminate\Console\Events\CommandStarting;
 
 /**
  * Before backup:run, fills an empty `database.connections.pgsql.dump.dump_binary_path` with the directory of the
- * pg_dump the doctor finds (RL-4): PG_DUMP_BINARY_PATH, the toolchain PATH, then Herd's newest PostgreSQL service.
- * A cron job has no Herd PATH, so without this the nightly backup would not find Herd's pg_dump.
+ * pg_dump the doctor finds (RL-4, CD-6): PG_DUMP_BINARY_PATH, then for a server on this machine Herd's newest trusted
+ * PostgreSQL service before the toolchain PATH, else the PATH first (PostgresBinaries). A cron job has no Herd PATH,
+ * so without this the nightly backup would not find Herd's pg_dump.
  */
 final readonly class ConfigurePgDump
 {

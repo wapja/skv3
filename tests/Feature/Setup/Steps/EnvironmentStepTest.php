@@ -51,6 +51,21 @@ it('keeps the health key and APP_KEY it finds (§5.3.3 step 1)', function (): vo
     expect($env->get('HEALTH_CHECK_KEY'))->toBe(str_repeat('k', 40))->and($env->get('APP_KEY'))->toBe('base64:existing');
 });
 
+it('replaces a health key too short for /health-check, and is incomplete until then (§5.3.3 step 1, CD-4)', function (): void {
+    $context = setupSandbox();
+    $env = new EnvFile($context->path('.env'));
+    $env->set(['HEALTH_CHECK_KEY' => str_repeat('k', 10)]);
+
+    $before = new EnvironmentStep()->isComplete($context);
+    new EnvironmentStep()->run($context);
+    $written = (string) $env->get('HEALTH_CHECK_KEY');
+
+    expect($before)->toBeFalse()
+        ->and(strlen($written))->toBe(40)
+        ->and($written)->not->toBe(str_repeat('k', 10))
+        ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
+});
+
 it('keeps an existing generated secret, is incomplete while it is blank and generates it again (§4.9, g2-26)', function (string $key, int $length): void {
     $context = setupSandbox();
     $env = new EnvFile($context->path('.env'));

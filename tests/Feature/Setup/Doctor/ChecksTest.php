@@ -55,6 +55,7 @@ use App\Setup\SetupToken;
 use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Support\Health\HealthCheckKey;
 use App\Support\Skv;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Support\Facades\DB;
@@ -332,7 +333,8 @@ it('finds the PostgreSQL test database, or names the command that creates it (§
 })->skip(fn (): bool => DB::connection()->getDriverName() !== 'pgsql', 'Runs under composer test:pgsql only.');
 
 it('warns when a schema dump exists and the PostgreSQL tools are missing (§5.4, §7.3)', function () use ($stub): void {
-    $herdServices = $this->sandbox->path('herd-services');
+    // Herd's layout: the trust rule walks up to the root two levels above the services (CD-6).
+    $herdServices = $this->sandbox->path('herd/services/postgresql');
     $check = new SchemaToolsCheck($herdServices);
 
     expect($check->run($this->context)->status)->toBe(CheckStatus::Skipped);
@@ -424,17 +426,43 @@ it('needs AuthenticateSession in the web group (§5.4)', function (): void {
         ->and($missing->fix)->toBeNull();
 });
 
-it('writes a health-check key with --fix (§5.4)', function (): void {
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => '']);
+it('fails a blank or short health-check key and writes a new one with --fix (§5.4, CD-4, F15)', function (string $key, string $message): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => $key]);
 
-    $missing = new HealthCheckKeyCheck()->run($this->context);
+    $before = new HealthCheckKeyCheck()->run($this->context);
+    $result = new HealthCheckKeyCheck()->fix($this->context);
+    $written = (string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY');
+
+    expect($before->status)->toBe(CheckStatus::Fail)
+        ->and($before->message)->toBe(__($message))
+        ->and($before->fix)->toBe('php artisan skv:doctor --fix')
+        ->and($result->status)->toBe(CheckStatus::Pass)
+        ->and($result->message)->not->toContain($written)
+        ->and(strlen($written))->toBe(40);
+})->with([
+    'blank' => ['', 'HEALTH_CHECK_KEY is empty'],
+    'one short of the minimum' => [str_repeat('k', 31), 'HEALTH_CHECK_KEY is too short'],
+]);
+
+it('keeps a health-check key of the minimum length, which a monitor may use (§5.4, CD-4)', function (): void {
+    $key = str_repeat('k', HealthCheckKey::MIN_LENGTH);
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => $key]);
+
     $result = new HealthCheckKeyCheck()->fix($this->context);
 
-    expect($missing->status)->toBe(CheckStatus::Fail)
-        ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
-        ->and($result->status)->toBe(CheckStatus::Pass)
-        ->and($result->message)->not->toContain((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))
-        ->and(strlen((string) new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+    expect($result->status)->toBe(CheckStatus::Pass)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))->toBe($key);
+});
+
+it('judges the running configuration\'s health-check key in a runtime context, and .env otherwise (CD-5)', function (): void {
+    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => str_repeat('k', 40)]);
+    config(['skv.health_check.key' => 'short']);
+
+    $runtime = new HealthCheckKeyCheck()->run(DoctorContext::withoutDetection($this->sandbox->basePath));
+
+    expect(new HealthCheckKeyCheck()->run($this->context)->status)->toBe(CheckStatus::Pass)
+        ->and($runtime->status)->toBe(CheckStatus::Fail)
+        ->and($runtime->message)->toBe(__('HEALTH_CHECK_KEY is too short'));
 });
 
 it('needs an archive password while the backups module is on, and writes one with --fix (CD-10)', function (): void {
@@ -552,7 +580,8 @@ it('probes the SMTP port and accepts the log mailer (§5.4)', function (): void 
 });
 
 it('looks for pg_dump only while the backups module is on (§5.4, RL-11)', function () use ($stub): void {
-    $herdServices = $this->sandbox->path('herd-services');
+    // Herd's layout: the trust rule walks up to the root two levels above the services (CD-6).
+    $herdServices = $this->sandbox->path('herd/services/postgresql');
     config(['skv.modules.backups' => false]);
     $off = new PgDumpCheck($herdServices)->run($this->context);
     config(['skv.modules.backups' => true]);

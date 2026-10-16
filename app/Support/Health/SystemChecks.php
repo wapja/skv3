@@ -9,15 +9,17 @@ use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
 
 /**
- * The doctor checks the System page runs on demand (RL-7): the ones that start no child process and open no network
- * connection other than the mail probe, run without a detection (RL-2). Their repairs are not offered on the page;
- * php artisan skv:doctor --fix runs them.
+ * The doctor checks the System page runs on demand (RL-7, F12): a selection of the checks that start no child process
+ * and open no network connection other than the mail probe. The ones about the development machine (Herd, Node,
+ * Playwright, Claude, the test database, the schema tools and the like) are left out. They run without a detection
+ * (RL-2) and judge the running configuration where a setting has one (CD-5). Their repairs are not offered on the
+ * page; php artisan skv:doctor --fix runs them.
  */
 final readonly class SystemChecks
 {
-    /** @var list<string> */
+    /** @var list<string> in the doctor's order */
     public const array KEYS = [
-        'php', 'gd', 'app-key', 'marker', 'database', 'migrations', 'permissions', 'organisation-admin-role',
+        'php', 'gd', 'app-key', 'marker', 'apex', 'database', 'migrations', 'permissions', 'organisation-admin-role',
         'super-admin', 'super-admin-badges', 'session-driver', 'authenticate-session', 'health-check-key',
         'backup-password', 'assets', 'mail', 'pg-dump', 'queue', 'failed-jobs', 'storage-link',
     ];

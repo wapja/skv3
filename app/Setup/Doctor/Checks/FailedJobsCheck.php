@@ -14,7 +14,8 @@ use Throwable;
 
 /**
  * §4.9, CD-3: failed jobs. Fails only when the database failer's table is missing; stored failed jobs warn (the
- * schedule prunes them daily), so they never turn /health-check into a 503.
+ * schedule prunes them daily), so they never turn /health-check into a 503. Skipped while the failer's connection is
+ * the default one and the database is down (F2): the database check reports the outage.
  */
 final readonly class FailedJobsCheck implements Check
 {
@@ -39,9 +40,14 @@ final readonly class FailedJobsCheck implements Check
         if (in_array($driver, ['database', 'database-uuids'], true)) {
             $table = (string) config('queue.failed.table', 'failed_jobs');
             $connection = config('queue.failed.database');
+            $connection = is_string($connection) ? $connection : null;
+
+            if ($context->defaultConnectionDown($connection)) {
+                return CheckResult::skipped(__('The database is not reachable'));
+            }
 
             try {
-                $exists = Schema::connection(is_string($connection) ? $connection : null)->hasTable($table);
+                $exists = Schema::connection($connection)->hasTable($table);
             } catch (Throwable) {
                 $exists = false;
             }
