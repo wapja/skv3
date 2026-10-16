@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use App\Setup\Answers;
 use App\Setup\Http\EnsureSetupAccess;
+use App\Setup\Marker;
+use App\Setup\SetupContext;
 use App\Setup\Support\SafeMessage;
 use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
+use App\Tenancy\Hosts;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
@@ -46,9 +49,20 @@ new #[Layout('layouts::setup')] class extends Component
 
     public bool $claude = false;
 
-    /** questions | running | review | herd */
+    /** questions | running | review | herd | stranded (step 9 is done, the Herd stage could not begin: g3-32) */
     #[Locked]
     public string $stage = 'questions';
+
+    /**
+     * Whether the user picked "Start with" (g4-04). Only then does the page send start_with, so begin() can refuse the
+     * built-in demo default next to an own super admin (DEC-30 (29)); a refusal counts as the pick for the next try.
+     */
+    #[Locked]
+    public bool $startWithChosen = false;
+
+    /** The login page a stranded setup offers instead of "Try again", which would meet the closed gate (g3-32). */
+    #[Locked]
+    public ?string $loginUrl = null;
 
     #[Locked]
     public ?string $hostProblem = null;
@@ -76,6 +90,11 @@ new #[Layout('layouts::setup')] class extends Component
         $this->fill($this->formOf($defaults['answers']));
     }
 
+    public function updatedStartWith(): void
+    {
+        $this->startWithChosen = true;
+    }
+
     public function start(WizardRunner $runner): void
     {
         $this->authorise();
@@ -84,20 +103,33 @@ new #[Layout('layouts::setup')] class extends Component
             return;
         }
 
+        $input = [
+            'app_name' => $this->appName,
+            'database' => $this->database,
+            'super_admin_email' => $this->startWith === 'super_admin' ? $this->superAdminEmail : null,
+            'super_admin_password' => $this->startWith === 'super_admin' && $this->superAdminPassword !== '' ? $this->superAdminPassword : null,
+            'modules' => $this->modules,
+            'https' => $this->https,
+            'playwright' => $this->playwright,
+            'claude' => $this->claude,
+        ];
+
+        // The preselected "Demo data" is no choice: without start_with, begin() applies DEC-30 (29) (g4-04).
+        if ($this->startWithChosen || $this->startWith !== 'demo') {
+            $input['start_with'] = $this->startWith;
+        }
+
         try {
-            $runner->begin([
-                'app_name' => $this->appName,
-                'database' => $this->database,
-                'start_with' => $this->startWith,
-                'super_admin_email' => $this->startWith === 'super_admin' ? $this->superAdminEmail : null,
-                'super_admin_password' => $this->startWith === 'super_admin' && $this->superAdminPassword !== '' ? $this->superAdminPassword : null,
-                'modules' => $this->modules,
-                'https' => $this->https,
-                'playwright' => $this->playwright,
-                'claude' => $this->claude,
-            ], request()->getHttpHost());
+            $runner->begin($input, request()->getHttpHost());
         } catch (ValidationException $exception) {
+            $this->startWithChosen = $this->startWithChosen || array_key_exists('start_with', $exception->errors());
+
             throw ValidationException::withMessages($this->formErrors($exception->errors()));
+        } catch (Throwable $exception) {
+            // A lock or state file that cannot be written is a message on the form, not a 500 (g3-30).
+            $this->addError('host', SafeMessage::of($exception));
+
+            return;
         } finally {
             $this->superAdminPassword = '';
         }
@@ -115,7 +147,7 @@ new #[Layout('layouts::setup')] class extends Component
 
         try {
             $outcome = $runner->advance();
-        } catch (RuntimeException $exception) {
+        } catch (Throwable $exception) {
             $this->failure = SafeMessage::of($exception);
 
             return;
@@ -164,7 +196,7 @@ new #[Layout('layouts::setup')] class extends Component
 
         try {
             $runner->recheck($key);
-        } catch (RuntimeException $exception) {
+        } catch (Throwable $exception) {
             $this->failure = SafeMessage::of($exception);
 
             return;
@@ -186,8 +218,14 @@ new #[Layout('layouts::setup')] class extends Component
         try {
             $this->herdSecret = $runner->finish();
             $this->stage = 'herd';
-        } catch (RuntimeException $exception) {
+        } catch (Throwable $exception) {
             $this->failure = SafeMessage::of($exception);
+
+            // Step 9 wrote the marker and closed the gate: "Try again" would answer 404, so the login page is offered.
+            if (Marker::exists(app(SetupContext::class))) {
+                $this->stage = 'stranded';
+                $this->loginUrl = Hosts::url(Hosts::apex(), '/login');
+            }
         }
     }
 

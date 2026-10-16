@@ -171,7 +171,7 @@ it('offers the manual page when the Herd step cannot start, instead of settling 
     $withHerd($context);
     Process::fake($herdListings($context, served: true));
     $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], $herdDetection(), $context->folderName());
-    new WizardState('localhost', $answers, array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    new WizardState('localhost', $answers, $herdDetection(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
     $launcher->refuses = true;

@@ -31,7 +31,8 @@ use Throwable;
  * Drives the setup steps for the browser wizard (§5.3.4, RL-4): one step per request, the long ones detached through
  * the launcher, every result kept in the wizard state, every call inside Tenant::bypass() (strict mode: the doctor
  * and the seeders read tenant models). Steps 9–11 follow in finish() and the Herd stage (RL-6). Every load-check-save
- * runs under the SetupLock, so a reload or a second tab never runs a step twice (§5.3.4).
+ * runs under the SetupLock, so a reload or a second tab never runs a step twice (§5.3.4). begin() detects the machine
+ * once; every later request works on that snapshot from the state (CD-15).
  */
 final readonly class WizardRunner
 {
@@ -40,6 +41,9 @@ final readonly class WizardRunner
 
     /** A detached step whose log has not moved for this long is reported as stuck. */
     private const int STALL_SECONDS = 1800;
+
+    /** RL-8: a pid in `<step>.started` older than four hours is no longer trusted; the stall rule decides again. */
+    private const int LIVE_PID_SECONDS = 14400;
 
     public function __construct(
         private SetupRunner $runner,
@@ -87,15 +91,17 @@ final readonly class WizardRunner
             }
 
             $context = app(SetupContext::class);
-            $detection = $this->detector->detect($host);
+            // The one detection of this setup (CD-15), with the port the wizard was opened on (g1-17).
+            $port = parse_url('http://'.$requestHost, PHP_URL_PORT);
+            $detection = $this->detector->detect($host, requestPort: is_int($port) ? $port : null);
             $installed = $this->installed($context);
             $answers = Answers::fromArray($input, $detection, $context->folderName(), $installed);
 
             if (Tenant::bypass(fn (): bool => new InstallPreflight($context)->refusesDemoDefault($answers, $input, $installed, $detection))) {
-                throw ValidationException::withMessages(['start_with' => __('A super admin already exists, so setup does not add the demo data by default. Pass "start_with": "demo" to add it anyway, or "super_admin" with your own login.')]);
+                throw ValidationException::withMessages(['start_with' => __('A super admin already exists, so setup does not add the demo data by default. Click Start setup again to add it anyway, or choose My own super admin.')]);
             }
 
-            $state = new WizardState($host, $answers);
+            $state = new WizardState($host, $answers, $detection);
             $state->save($context->basePath);
 
             return $state;
@@ -125,7 +131,7 @@ final readonly class WizardRunner
         // While another request runs a step (a reload, a second tab), the page keeps polling: that step is running.
         return SetupLock::run($basePath, fn (): ?array => Tenant::bypass(function () use ($basePath): ?array {
             $state = $this->current() ?? throw new RuntimeException(__('There is no setup in progress.'));
-            $context = $state->context($basePath, $this->detector->detect($state->host));
+            $context = $state->context($basePath);
             $context->syncRuntimeConfig();
             $step = $this->nextStep($state);
 
@@ -133,11 +139,12 @@ final readonly class WizardRunner
                 return null;
             }
 
-            if ($step->isLong()) {
-                return $this->advanceLong($state, $context, $step);
-            }
-
             try {
+                // A long step's completeness check runs here too, so whatever it throws is a failure, never a 500 (g3-31).
+                if ($step->isLong()) {
+                    return $this->advanceLong($state, $context, $step);
+                }
+
                 $result = $this->runner->runStep($context, $step);
             } catch (Throwable $exception) {
                 return ['key' => $step->key(), 'state' => 'failed', 'message' => SafeMessage::of($exception)];
@@ -166,6 +173,11 @@ final readonly class WizardRunner
                 return;
             }
 
+            // RL-8: deleting the files under a live child would start a second one on the next poll.
+            if ($this->isRunning($basePath, $key)) {
+                throw new RuntimeException(__('This step is still running.'));
+            }
+
             unset($state->results[$key]);
 
             foreach (['json', 'log', 'exit', 'started'] as $extension) {
@@ -176,7 +188,10 @@ final readonly class WizardRunner
         }, busy: $this->busy(...));
     }
 
-    /** Step 9 in this request, then step 10 detached (RL-6); returns the secret the page polls with. */
+    /**
+     * Step 9 in this request, then step 10 detached (RL-6); returns the secret the page polls with. Once step 9 wrote
+     * the marker the gate is closed, so what fails after it is recorded in the marker before it is thrown (g3-32).
+     */
     public function finish(): string
     {
         $basePath = app(SetupContext::class)->basePath;
@@ -188,16 +203,22 @@ final readonly class WizardRunner
                 throw new RuntimeException(__('Finish the earlier steps first.'));
             }
 
-            $context = $state->context($basePath, $this->detector->detect($state->host));
+            $context = $state->context($basePath);
             $context->syncRuntimeConfig();
             $this->runner->runStep($context, app(MarkerStep::class));
 
-            [$herd, $secret] = HerdState::begin($basePath, $context, $state->host);
-            $root = rtrim($basePath, '/');
-            $started = $this->launcher->start($basePath, 'herd-site', $root.'/'.HerdState::PATH, $root.'/'.HerdState::LOG, $root.'/'.HerdState::EXIT);
+            try {
+                [$herd, $secret] = HerdState::begin($basePath, $context, $state->host);
+                $root = rtrim($basePath, '/');
+                $started = $this->launcher->start($basePath, 'herd-site', $root.'/'.HerdState::PATH, $root.'/'.HerdState::LOG, $root.'/'.HerdState::EXIT);
 
-            if (! $started) {
-                $this->launchFailed($herd, $context, $root);
+                if (! $started) {
+                    $this->launchFailed($herd, $context, $root);
+                }
+            } catch (Throwable $exception) {
+                $this->strand($context, $exception);
+
+                throw $exception;
             }
 
             return $secret;
@@ -213,7 +234,7 @@ final readonly class WizardRunner
     {
         Tenant::bypass(function () use ($herd, $message): void {
             $basePath = app(SetupContext::class)->basePath;
-            $context = $herd->context($basePath, $this->detector->detect($herd->host));
+            $context = $herd->context($basePath);
             $command = app(HerdSiteStep::class)->manualCommand($context);
             $context->results['herd-site'] = $command === null ? StepResult::skipped($message) : StepResult::manual($command, $message);
             $this->runner->applyHttpsConsequence($context);
@@ -258,7 +279,7 @@ final readonly class WizardRunner
             }
 
             return Tenant::bypass(function () use ($current, $basePath): ?StepResult {
-                $context = $current->context($basePath, $this->detector->detect($current->host));
+                $context = $current->context($basePath);
                 $result = app(HerdSiteStep::class)->confirm($context);
 
                 if (! $result instanceof StepResult) {
@@ -320,6 +341,20 @@ final readonly class WizardRunner
     }
 
     /**
+     * g3-32: the Herd stage could not begin after step 9 closed the gate, so the page cannot retry. The Herd stage's
+     * files go, and the marker says what the Herd step did not do: its command left to run and the HTTPS consequence.
+     */
+    private function strand(SetupContext $context, Throwable $exception): void
+    {
+        HerdState::forget($context->basePath);
+        $command = app(HerdSiteStep::class)->manualCommand($context);
+        $message = SafeMessage::of($exception);
+        $context->results['herd-site'] = $command === null ? StepResult::skipped($message) : StepResult::manual($command, $message);
+        $this->runner->applyHttpsConsequence($context);
+        $this->runner->finish($context, null);
+    }
+
+    /**
      * Five minutes for the step of this web request (RL-4). A console process (a test worker) keeps its own limit:
      * set_time_limit() would turn the CLI's unlimited default into 300 seconds for everything it runs afterwards.
      */
@@ -370,6 +405,9 @@ final readonly class WizardRunner
         $basePath = $context->basePath;
         $key = $step->key();
         $resultFile = $this->stepFile($basePath, $key, 'json');
+        // The exit file before the result (g3-11): the child writes its result first, so a result that appears
+        // between the two reads is still read, never taken for a step that stopped without one.
+        $exited = is_file($this->stepFile($basePath, $key, 'exit'));
 
         if (is_file($resultFile)) {
             try {
@@ -381,13 +419,18 @@ final readonly class WizardRunner
             return $this->record($state, $context, $key, $result);
         }
 
-        if (is_file($this->stepFile($basePath, $key, 'exit'))) {
+        if ($exited) {
             return $this->record($state, $context, $key, StepResult::manual($this->fallbackCommand($key), __('The step stopped without a result; see :log.', ['log' => WizardState::STEPS.'/'.$key.'.log'])));
         }
 
         $started = $this->stepFile($basePath, $key, 'started');
 
         if (is_file($started)) {
+            // RL-8: a step whose process lives is running, however long its log has been quiet.
+            if ($this->isRunning($basePath, $key)) {
+                return ['key' => $key, 'state' => 'running', 'message' => ''];
+            }
+
             $log = $this->stepFile($basePath, $key, 'log');
             $lastActivity = max((int) @filemtime($started), (int) @filemtime($log));
 
@@ -400,13 +443,39 @@ final readonly class WizardRunner
             return $this->record($state, $context, $key, StepResult::skipped(__('Already done')));
         }
 
-        StateFile::write($started, (string) Date::now()->getTimestamp());
+        // Its mtime says when the step started; the launcher's shell writes its pid into it (RL-8).
+        StateFile::write($started, '');
 
-        if (! $this->launcher->start($basePath, $key, $resultFile, $this->stepFile($basePath, $key, 'log'), $this->stepFile($basePath, $key, 'exit'))) {
+        if (! $this->launcher->start($basePath, $key, $resultFile, $this->stepFile($basePath, $key, 'log'), $this->stepFile($basePath, $key, 'exit'), $started)) {
             return $this->record($state, $context, $key, StepResult::manual($this->fallbackCommand($key), __('The step could not start in the background.')));
         }
 
         return ['key' => $key, 'state' => 'running', 'message' => ''];
+    }
+
+    /**
+     * RL-8: whether the process the launcher's shell wrote into `<step>.started` still runs. It does not once the exit
+     * file exists, when the file holds no pid (the inline launcher, or a shell that never started), or without posix.
+     * Nor once the step started LIVE_PID_SECONDS ago: a shell that died without writing the exit file (a reboot, an
+     * OOM kill) leaves its pid behind, and another process of this user can get that pid later. The shell's `echo $$`
+     * refreshes the file's mtime at launch, so the bound counts from the step's start.
+     */
+    private function isRunning(string $basePath, string $key): bool
+    {
+        $started = $this->stepFile($basePath, $key, 'started');
+
+        if (! is_file($started) || is_file($this->stepFile($basePath, $key, 'exit')) || ! function_exists('posix_kill')) {
+            return false;
+        }
+
+        if (Date::now()->getTimestamp() - (int) @filemtime($started) >= self::LIVE_PID_SECONDS) {
+            return false;
+        }
+
+        $pid = (int) strtok((string) @file_get_contents($started), "\n");
+
+        // 0 would signal this process group, and 1 is launchd or init: neither is a step.
+        return $pid > 1 && posix_kill($pid, 0);
     }
 
     /** @return array{key: string, state: 'done', message: string} */

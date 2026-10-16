@@ -5,17 +5,24 @@ declare(strict_types=1);
 /** covers §5.3.1, §5.3.2, §5.3.4, §7.2 */
 
 use App\Enums\CheckStatus;
+use App\Models\User;
+use App\Setup\Answers;
+use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Http\EnsureSetupAccess;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupToken;
+use App\Setup\StepResult;
 use App\Setup\Steps\DatabaseStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\HerdState;
 use App\Setup\Wizard\SetupLock;
+use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
+use App\Tenancy\Hosts;
 use Dom\HTMLDocument;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -346,4 +353,93 @@ it('asks to rename a folder that can be no Herd address, instead of suggesting o
             'name' => Str::slug($context->folderName()),
         ]))
         ->assertDontSee('http://'.Str::lower($context->folderName()).'.test');
+});
+
+it('turns a start that cannot take the setup lock into an error on the form, not a 500 (g3-30)', function () use ($open, $next, $answers): void {
+    // Arrange: a directory stands where the setup lock goes, so opening it fails as a read-only disk would.
+    $context = useSetupWizard();
+    $snapshot = $open($context);
+    File::ensureDirectoryExists($context->path(SetupLock::PATH));
+
+    [, $html] = $next(callPageAction($snapshot, 'start', updates: $answers)->assertOk());
+
+    expect($html)->toContain('data-test="setup-questions"')
+        ->toContain(__('Could not write :file.', ['file' => basename(SetupLock::PATH)]))
+        ->and($context->path(WizardState::PATH))->not->toBeFile();
+});
+
+it('refuses the default demo data next to an own super admin, and adds it when Start is clicked again (DEC-30, g4-04)', function () use ($open, $next, $answers): void {
+    $context = useSetupWizard();
+    User::factory()->superAdmin()->create(['email' => 'owner@example.com']);
+    // The user leaves the "Start with" radio alone: no update for startWith, so the page sends no start_with.
+    $untouched = array_diff_key($answers, ['startWith' => true]);
+
+    [$snapshot, $html] = $next(callPageAction($open($context), 'start', updates: $untouched)->assertOk());
+
+    expect($html)->toContain(__('A super admin already exists, so setup does not add the demo data by default. Click Start setup again to add it anyway, or choose My own super admin.'))
+        ->and($context->path(WizardState::PATH))->not->toBeFile();
+
+    callPageAction($snapshot, 'start')->assertOk();
+
+    expect(WizardState::load($context->basePath)?->answers->startWith)->toBe('demo');
+});
+
+it('stops polling on a failure, and Try again runs the step again (§5.3.1, g4-13, g4-14)', function () use ($open, $next, $answers): void {
+    // Arrange: PostgreSQL chosen while no server answers on this port, so the database step fails.
+    $context = useSetupWizard();
+    config(['database.connections.pgsql.port' => 1]);
+    [$snapshot] = $next(callPageAction($open($context), 'start', updates: [...$answers, 'database' => 'pgsql'])->assertOk());
+    [$snapshot] = $next(callPageAction($snapshot, 'advance')->assertOk());
+    [$snapshot, $html] = $next(callPageAction($snapshot, 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-failure"')->toContain('wire:click="retry"')->not->toContain('wire:poll');
+
+    // Act: the cause is fixed (SQLite instead) and the user clicks Try again.
+    $state = WizardState::load($context->basePath) ?? throw new LogicException('No setup state.');
+    $state->answers = Answers::fromState([...$state->answers->toState(), 'database' => 'sqlite']);
+    $state->save($context->basePath);
+    [, $html] = $next(callPageAction($snapshot, 'retry')->assertOk());
+
+    expect($html)->not->toContain('data-test="setup-failure"')->toContain('wire:poll')
+        ->and(WizardState::load($context->basePath)->results)->toHaveKey('database');
+});
+
+it('runs Finish setup again from the review when Try again is clicked (§5.3.1, g4-13)', function () use ($open, $next): void {
+    // Arrange: steps 1–8 have results, one of them a manual command, so the page stops at the review.
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    $results = [...array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')), 'frontend' => StepResult::manual('npm ci && npm run build', 'node is missing')];
+    new WizardState('localhost', $answers, Detection::none(), $results)->save($context->basePath);
+    [$snapshot, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-review"');
+
+    // Another request holds the setup lock, so the first Finish setup fails before the marker.
+    $lock = fopen($context->path(SetupLock::PATH), 'c') ?: throw new LogicException('No lock file.');
+    flock($lock, LOCK_EX);
+    [$snapshot, $html] = $next(callPageAction($snapshot, 'complete')->assertOk());
+    flock($lock, LOCK_UN);
+
+    expect($html)->toContain('data-test="setup-failure"')->toContain(__('Setup is busy in another tab.'))
+        ->and(Marker::exists($context))->toBeFalse();
+
+    [, $html] = $next(callPageAction($snapshot, 'retry')->assertOk());
+
+    expect($html)->toContain('data-test="setup-herd-stage"')
+        ->and(Marker::exists($context))->toBeTrue();
+});
+
+it('offers the login page instead of Try again when the Herd stage cannot start after step 9 (g3-32)', function () use ($open, $next): void {
+    // Arrange: steps 1–8 are done, and a directory stands where the Herd state goes, so finishing fails after the marker.
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, Detection::none(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    File::ensureDirectoryExists($context->path(HerdState::PATH));
+
+    [, $html] = $next(callPageAction($open($context), 'advance')->assertOk());
+
+    expect($html)->toContain('data-test="setup-stranded"')
+        ->toContain('href="'.Hosts::url(Hosts::apex(), '/login').'"')
+        ->not->toContain('wire:click="retry"')
+        ->and(Marker::exists($context))->toBeTrue();
 });

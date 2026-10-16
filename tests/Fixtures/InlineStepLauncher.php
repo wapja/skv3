@@ -7,7 +7,7 @@ namespace Tests\Fixtures;
 use App\Setup\Wizard\StepLauncher;
 use Illuminate\Support\Facades\Artisan;
 
-/** Runs a "detached" step in-process and at once, so tests never spawn a process (RL-4). */
+/** Runs a "detached" step in-process and at once, so tests never spawn a process (RL-4); it writes no pid (RL-8). */
 final class InlineStepLauncher implements StepLauncher
 {
     /** @var list<string> */
@@ -15,7 +15,7 @@ final class InlineStepLauncher implements StepLauncher
 
     public bool $refuses = false;
 
-    public function start(string $basePath, string $key, string $resultFile, string $logFile, string $exitFile): bool
+    public function start(string $basePath, string $key, string $resultFile, string $logFile, string $exitFile, ?string $pidFile = null): bool
     {
         if ($this->refuses) {
             return false;

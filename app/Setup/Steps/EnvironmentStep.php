@@ -101,8 +101,9 @@ final class EnvironmentStep implements SetupStep
         $current = (string) $env->get('APP_URL');
         $currentHost = parse_url($current, PHP_URL_HOST);
         $secured = parse_url($current, PHP_URL_SCHEME) === 'https' && $currentHost === $host;
-        // Without Herd the app may run on a port (php artisan serve): an APP_URL on this host keeps it (g1-17).
-        $port = ! $detection->herd && $currentHost === $host ? parse_url($current, PHP_URL_PORT) : null;
+        // Without Herd the app may run on a port (php artisan serve): the port the wizard was opened on, else the one
+        // of an APP_URL on this host (g1-17).
+        $port = $detection->port ?? (! $detection->herd && $currentHost === $host ? parse_url($current, PHP_URL_PORT) : null);
 
         $variables = [
             'APP_NAME' => $answers->appName,

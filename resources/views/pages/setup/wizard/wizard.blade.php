@@ -121,6 +121,13 @@
                 </x-slot>
             </flux:callout>
         @endif
+    @elseif ($stage === 'stranded')
+        {{-- g3-32: the marker exists, so this page answers no further update; it links out instead. --}}
+        <div data-test="setup-stranded" class="space-y-4">
+            <flux:callout variant="warning" icon="exclamation-triangle" :heading="__('Setup is done, but the Herd step could not start.')" :text="$failure" />
+            <flux:text>{{ __('Run php artisan skv:doctor whenever you want to check the installation.') }}</flux:text>
+            <flux:button variant="primary" :href="$loginUrl" data-test="setup-login">{{ __('Go to the login page') }}</flux:button>
+        </div>
     @else
         <div data-test="setup-herd-stage" class="space-y-3"
              x-data="setupHerdStage(@js(route('setup.herd-status', absolute: false)), @js(route('setup.finish', absolute: false)), @js($herdSecret))"

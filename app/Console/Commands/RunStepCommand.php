@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Setup\Detector;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
@@ -33,7 +32,7 @@ use Throwable;
 #[Signature('skv:run-step {step : The step key} {--result= : Where the result goes, inside storage/app/private}')]
 final class RunStepCommand extends Command
 {
-    public function handle(SetupRunner $runner, Detector $detector): int
+    public function handle(SetupRunner $runner): int
     {
         $basePath = app(SetupContext::class)->basePath;
         $resultFile = $this->option('result');
@@ -76,7 +75,8 @@ final class RunStepCommand extends Command
             return self::FAILURE;
         }
 
-        $context = $state->context($basePath, $detector->detect($state->host));
+        // The detection the wizard took at the start (CD-15): a detached step never detects again.
+        $context = $state->context($basePath);
 
         try {
             $result = $runner->runStep($context, $step);

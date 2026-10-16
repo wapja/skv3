@@ -37,7 +37,7 @@ it('deletes the wizard state and its step files, and never follows a symlinked d
     File::ensureDirectoryExists($outside);
     file_put_contents($outside.'/keep', 'x');
     symlink($outside, $context->path(WizardState::STEPS));
-    new WizardState('localhost', $context->answers)->save($context->basePath);
+    new WizardState('localhost', $context->answers, $context->detection)->save($context->basePath);
 
     new MarkerStep()->run($context);
 

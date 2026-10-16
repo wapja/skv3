@@ -16,18 +16,28 @@ beforeEach(function (): void {
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
-it('starts skv:run-step detached with every value as its own argument (RL-4)', function (): void {
+it('starts skv:run-step detached with every value as its own argument, its shell writing its pid first (RL-4, RL-8)', function (): void {
     $context = setupSandbox();
     Process::fake(["*sh' '-c'*" => Process::result('')]);
 
     $started = new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')
-        ->start($context->basePath, 'frontend', '/r.json', '/l.log', '/e.exit');
+        ->start($context->basePath, 'frontend', '/r.json', '/l.log', '/e.exit', '/s.started');
 
     expect($started)->toBeTrue();
     Process::assertRan(fn ($process): bool => $process->command[0] === 'sh'
         && $process->command[1] === '-c'
         && str_contains($process->command[2], 'nohup')
-        && array_slice($process->command, 3) === ['sh', '/usr/bin/php', 'frontend', '/r.json', '/l.log', '/e.exit']);
+        && str_contains($process->command[2], 'echo $$ > "$5"; "$0" artisan skv:run-step')
+        && array_slice($process->command, 3) === ['sh', '/usr/bin/php', 'frontend', '/r.json', '/l.log', '/e.exit', '/s.started']);
+});
+
+it('writes the pid of a launch without a pid file to /dev/null (RL-8)', function (): void {
+    $context = setupSandbox();
+    Process::fake(["*sh' '-c'*" => Process::result('')]);
+
+    new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')->start($context->basePath, 'herd-site', '/r.json', '/l.log', '/e.exit');
+
+    Process::assertRan(fn ($process): bool => array_slice($process->command, -1) === ['/dev/null']);
 });
 
 it('reports a launch it could not start (RL-4)', function (): void {

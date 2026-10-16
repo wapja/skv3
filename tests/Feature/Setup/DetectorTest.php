@@ -117,3 +117,24 @@ it('uses a valid request host and ignores an invalid one (A4)', function () use 
     expect($detector(new Toolchain($this->home))->detect('My-App.test:80')->host)->toBe('my-app.test')
         ->and($detector(new Toolchain($this->home))->detect('evil.com@x')->host)->toBe('fallback.test');
 });
+
+it('keeps the request\'s port without Herd, never the scheme\'s default port (CD-15, g1-17)', function (string $scheme, ?int $requestPort, ?int $port): void {
+    $detection = new Detector(new Toolchain($this->home), postgresProbe: fn (): bool => false)->detect('localhost', $scheme, $requestPort);
+
+    expect($detection->port)->toBe($port);
+})->with([
+    'a port' => ['http', 8000, 8000],
+    'http on 80' => ['http', 80, null],
+    'https on 443' => ['https', 443, null],
+    'no request' => ['http', null, null],
+]);
+
+it('keeps no port under Herd, which serves every site on the default port (CD-15)', function (): void {
+    $herd = $this->home.'/Library/Application Support/Herd/bin/herd';
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    Process::fake(["*'services:list' '--json'*" => Process::result('')]);
+
+    expect(new Detector(new Toolchain($this->home), postgresProbe: fn (): bool => false)->detect('my-app.test', 'http', 8000)->port)->toBeNull();
+});

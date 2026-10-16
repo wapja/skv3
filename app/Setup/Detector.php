@@ -29,8 +29,10 @@ final readonly class Detector
      * @param  string|null  $requestHost  the host of the current request, when there is one (the browser wizard); one
      *                                    that fails SetupHost::normalise() falls back to the CLI host (A4)
      * @param  string  $scheme  the scheme the site is served over now
+     * @param  int|null  $requestPort  the port of the current request; kept without Herd unless it is the scheme's
+     *                                 default (CD-15, g1-17)
      */
-    public function detect(?string $requestHost = null, string $scheme = 'http'): Detection
+    public function detect(?string $requestHost = null, string $scheme = 'http', ?int $requestPort = null): Detection
     {
         $herd = $this->toolchain->herd();
         [$herdMail, $herdSmtpPort] = $this->herdMail();
@@ -45,6 +47,7 @@ final readonly class Detector
             claude: $this->toolchain->which('claude') !== null,
             host: ($requestHost !== null ? SetupHost::normalise($requestHost) : null) ?? $this->cliHost(),
             scheme: $scheme,
+            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) ? $requestPort : null,
         );
     }
 

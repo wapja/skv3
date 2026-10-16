@@ -15,8 +15,9 @@ use JsonException;
 
 /**
  * The Herd stage after the marker (RL-6): the sha256 of the one-time secret only the wizard's browser holds, the
- * pinned host, the public answers, the results and notes of steps 1–9, when the stage started, and once the detached
- * Herd step has finished its result. The file holds no password hash (RL-5): the super admin exists by now.
+ * pinned host, the public answers, the wizard's detection snapshot (CD-15), the results and notes of steps 1–9, when
+ * the stage started, and once the detached Herd step has finished its result. The file holds no password hash
+ * (RL-5): the super admin exists by now.
  */
 final class HerdState
 {
@@ -40,6 +41,7 @@ final class HerdState
         public string $secretHash,
         public string $host,
         public Answers $answers,
+        public Detection $detection,
         public array $results,
         public array $notes,
         public int $startedAt,
@@ -59,6 +61,7 @@ final class HerdState
             secretHash: hash('sha256', $secret),
             host: $host,
             answers: Answers::fromState([...$context->answers->toPublicArray(), 'super_admin_password_hash' => null]),
+            detection: $context->detection,
             results: $context->results,
             notes: $context->notes,
             startedAt: Date::now()->getTimestamp(),
@@ -79,7 +82,7 @@ final class HerdState
         }
 
         if (! is_string($data['secret_hash'] ?? null) || ! is_string($data['host'] ?? null) || ! is_array($data['answers'] ?? null)
-            || ! is_array($data['results'] ?? null) || ! is_array($data['notes'] ?? null) || ! is_int($data['started_at'] ?? null)
+            || ! is_array($data['detection'] ?? null) || ! is_array($data['results'] ?? null) || ! is_array($data['notes'] ?? null) || ! is_int($data['started_at'] ?? null)
             || (($data['result'] ?? null) !== null && ! is_array($data['result']))) {
             throw new InvalidArgumentException('Herd state: unexpected shape.');
         }
@@ -93,6 +96,7 @@ final class HerdState
             secretHash: $data['secret_hash'],
             host: $data['host'],
             answers: Answers::fromState($answers),
+            detection: Detection::fromArray($data['detection']),
             results: WizardState::resultsFromState($data['results']),
             notes: WizardState::notesFromState($data['notes']),
             startedAt: $data['started_at'],
@@ -115,6 +119,7 @@ final class HerdState
             'host' => $this->host,
             // Never a password hash, whatever context the answers were absorbed from (RL-5).
             'answers' => [...$this->answers->toPublicArray(), 'super_admin_password_hash' => null],
+            'detection' => $this->detection->toArray(),
             'results' => array_map(fn (StepResult $result): array => $result->toArray(), $this->results),
             'notes' => $this->notes,
             'started_at' => $this->startedAt,
@@ -132,9 +137,10 @@ final class HerdState
         return Date::now()->getTimestamp() - $this->startedAt <= self::LIFETIME;
     }
 
-    public function context(string $basePath, Detection $detection): SetupContext
+    /** The setup context of the Herd stage, on the wizard's detection snapshot (CD-15). */
+    public function context(string $basePath): SetupContext
     {
-        $context = new SetupContext($basePath, $this->answers, $detection);
+        $context = new SetupContext($basePath, $this->answers, $this->detection);
         $context->results = $this->results;
         $context->notes = $this->notes;
 

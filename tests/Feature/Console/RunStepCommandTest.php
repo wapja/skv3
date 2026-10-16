@@ -30,24 +30,27 @@ beforeEach(function (): void {
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
-it('runs one step from the wizard state and writes its result (RL-4)', function (): void {
+it('runs one step from the wizard state and writes its result (RL-4, g4-19)', function (): void {
     $context = setupSandbox();
     app()->instance(SetupContext::class, $context);
-    new WizardState('localhost', Answers::defaults(Detection::none(), $context->folderName()))->save($context->basePath);
+    new WizardState('localhost', Answers::defaults(Detection::none(), $context->folderName()), Detection::none())->save($context->basePath);
     File::ensureDirectoryExists($context->path(WizardState::STEPS));
     $result = $context->path(WizardState::STEPS.'/git.json');
     Process::fake(["*git' 'init'*" => Process::result(''), "*git' 'config' 'core.hooksPath' '.githooks'*" => Process::result('')]);
 
     $exitCode = Artisan::call('skv:run-step', ['step' => 'git', '--result' => $result]);
 
+    // A step that crashed would also write a result, as manual: only "done" and the git commands prove it ran.
     expect($exitCode)->toBe(0)
-        ->and(StateFile::readJson($result)['status'] ?? null)->toBeIn(['done', 'skipped', 'manual']);
+        ->and(StateFile::readJson($result)['status'] ?? null)->toBe('done');
+    Process::assertRan(fn ($process): bool => array_slice((array) $process->command, -1) === ['init']);
+    Process::assertRan(fn ($process): bool => array_slice((array) $process->command, -3) === ['config', 'core.hooksPath', '.githooks']);
 });
 
 it('refuses a result path outside storage/app/private and an unknown step (RL-5)', function (string $step, string $where): void {
     $context = setupSandbox();
     app()->instance(SetupContext::class, $context);
-    new WizardState('localhost', Answers::defaults(Detection::none(), $context->folderName()))->save($context->basePath);
+    new WizardState('localhost', Answers::defaults(Detection::none(), $context->folderName()), Detection::none())->save($context->basePath);
     File::ensureDirectoryExists($context->path(WizardState::STEPS));
 
     expect(Artisan::call('skv:run-step', ['step' => $step, '--result' => $context->path($where)]))->toBe(1)
@@ -191,4 +194,18 @@ it('leaves no lock file when the login used the secret while Herd ran (g3-02)', 
 
     expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0)
         ->and($context->path(SetupLock::PATH))->not->toBeFile();
+});
+
+it('runs a step with the detection the wizard stored at the start, never a new one (CD-15)', function (): void {
+    // Arrange: the stored snapshot says Herd, while this machine (the sandbox toolchain) has none.
+    $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: 'localhost', scheme: 'http');
+    $context = setupSandbox($detection);
+    app()->instance(SetupContext::class, $context);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], $detection, $context->folderName());
+    Marker::write($context, []);
+    HerdState::begin($context->basePath, $context, 'localhost');
+    withoutPostgresProbe();
+
+    expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0)
+        ->and(HerdState::load($context->basePath)?->result?->toArray())->toBe(['status' => 'manual', 'message' => __('The herd command was not found.'), 'command' => 'herd link']);
 });

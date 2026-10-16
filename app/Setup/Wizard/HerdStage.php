@@ -6,7 +6,6 @@ namespace App\Setup\Wizard;
 
 use App\Actions\Auth\IssueHandoff;
 use App\Models\User;
-use App\Setup\Detector;
 use App\Setup\Http\DirectRequest;
 use App\Setup\Http\SetupHostGuard;
 use App\Setup\Marker;
@@ -96,7 +95,7 @@ final readonly class HerdStage
     {
         $basePath = app(SetupContext::class)->basePath;
 
-        return app(HerdSiteStep::class)->manualCommand($state->context($basePath, app(Detector::class)->detect($state->host)));
+        return app(HerdSiteStep::class)->manualCommand($state->context($basePath));
     }
 
     /**
