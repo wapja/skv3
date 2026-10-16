@@ -10,8 +10,10 @@ use RuntimeException;
 /**
  * The setup's small state files (RL-5): written atomically (a temp file in the same directory, then rename(), which
  * replaces a symlink instead of following it) with mode 0600 unless the caller names another (RL-1: ProjectFile and
- * the .env copies), and read back as JSON objects. A read refuses a symlink and a file it cannot read as it refuses a
- * file that is no JSON object, so every caller that catches JsonException treats all three as damaged (RL-2).
+ * the .env copies), and read back as JSON objects. A failed write throws "Could not write :file." and removes its temp
+ * file, which may hold a whole .env; .gitignore covers `.state-*` for a process killed before the rename. A read
+ * refuses a symlink and a file it cannot read as it refuses a file that is no JSON object, so every caller that catches
+ * JsonException treats all three as damaged (RL-2).
  */
 final class StateFile
 {
@@ -37,15 +39,19 @@ final class StateFile
             throw new RuntimeException(__('Could not write :file.', ['file' => basename($path)]));
         }
 
-        // The mode before any content goes in, so a secret is never readable at the umask's mode.
-        chmod($temporary, $mode);
-        $written = fwrite($handle, $contents) === strlen($contents);
-        fclose($handle);
+        try {
+            // The mode before any content goes in, so a secret is never readable at the umask's mode. Silenced, so a
+            // failure throws the message below instead of becoming PHP's warning, with its paths, as an ErrorException.
+            $written = @chmod($temporary, $mode) && @fwrite($handle, $contents) === strlen($contents);
+            fclose($handle);
 
-        if (! $written || ! rename($temporary, $path)) {
-            @unlink($temporary);
-
-            throw new RuntimeException(__('Could not write :file.', ['file' => basename($path)]));
+            if (! $written || ! @rename($temporary, $path)) {
+                throw new RuntimeException(__('Could not write :file.', ['file' => basename($path)]));
+            }
+        } finally {
+            if (is_file($temporary)) {
+                @unlink($temporary);
+            }
         }
     }
 

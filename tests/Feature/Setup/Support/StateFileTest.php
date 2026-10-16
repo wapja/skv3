@@ -55,6 +55,16 @@ it('replaces a symlink instead of writing through it (RL-5)', function (): void 
         ->and(is_link($this->directory.'/state.json'))->toBeFalse();
 });
 
+it('removes its temporary copy and throws its own message when the rename fails (RL-5)', function (): void {
+    // A directory where the file goes: rename() refuses it once the copy already holds the whole contents.
+    $path = $this->directory.'/.env.testing';
+    File::ensureDirectoryExists($path);
+
+    expect(fn () => StateFile::write($path, "APP_KEY=secret\n"))
+        ->toThrow(RuntimeException::class, __('Could not write :file.', ['file' => '.env.testing']))
+        ->and(glob($this->directory.'/.state-*'))->toBe([]);
+});
+
 it('writes with the mode it is given (RL-1)', function (): void {
     $path = $this->directory.'/herd.yml';
 

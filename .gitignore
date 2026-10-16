@@ -9,6 +9,7 @@
 /vendor
 .env*
 !.env.example
+.state-*
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
