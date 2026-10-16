@@ -10,6 +10,7 @@ use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -60,9 +61,9 @@ final readonly class SetSuperAdmin
 
     /**
      * Inserts a new super admin and completes it (RL-9, DEC-30 (21)). The flag, no organisation (W8) and the Active
-     * status are forced, and the locale defaults to the app's. The insert and handleCreated() run in one
-     * transaction, so the user never exists without the badge and the audit entry. The password may be plain or
-     * a hash already; the hashed cast keeps a hash.
+     * status are forced, the locale defaults to the app's, and every other attribute is dropped. The insert and
+     * handleCreated() run in one transaction, so the user never exists without the badge and the audit entry. The
+     * password may be plain or a hash already; the hashed cast keeps a hash.
      *
      * @param  array{name: string, email: string, password: string, locale?: Locale}  $attributes
      */
@@ -72,7 +73,7 @@ final readonly class SetSuperAdmin
             $user = new User;
             $user->forceFill([
                 'locale' => Locale::default(),
-                ...$attributes,
+                ...Arr::only($attributes, ['name', 'email', 'password', 'locale']),
                 'organisation_id' => null,
                 'is_super_admin' => true,
                 'status' => UserStatus::Active,

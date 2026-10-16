@@ -186,3 +186,18 @@ it('creates a new super admin with the badge and one grant, or nothing at all (R
         ->and(badgeRows($user))->toBe([null])
         ->and(recordedActivity(ActivityEvent::SuperAdminGranted)->sole()->subject_id)->toBe($user->id);
 });
+
+it('takes only the name, email, password and locale of a new super admin, whatever else the caller sends (M9)', function (): void {
+    // A caller with wider input than the documented shape: json_decode() types it mixed, as such input would be.
+    $attributes = [
+        ...json_decode('{"two_factor_secret": "forged", "two_factor_confirmed_at": "2026-01-01 00:00:00", "remember_token": "forged"}', true, flags: JSON_THROW_ON_ERROR),
+        'name' => 'Owner', 'email' => 'owner@example.com', 'password' => 'correct-horse-battery', 'locale' => Locale::English,
+    ];
+
+    $user = app(SetSuperAdmin::class)->createNew($attributes);
+    $stored = Tenant::bypass(fn (): ?object => DB::table('users')->where('id', $user->id)->first(['two_factor_secret', 'two_factor_confirmed_at', 'remember_token']));
+
+    expect($user->name)->toBe('Owner')
+        ->and($user->locale)->toBe(Locale::English)
+        ->and((array) $stored)->toBe(['two_factor_secret' => null, 'two_factor_confirmed_at' => null, 'remember_token' => null]);
+});
