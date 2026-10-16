@@ -321,9 +321,10 @@ it('rewrites the marker summary with the https address after securing (§5.3.4)'
     expect(Marker::read($context)['summary']['urls'] ?? [])->toContain("https://{$context->folderName()}.test");
 });
 
-it('is complete once served and secured, and not when herd fails (§5.3.1)', function (string $secured, bool $fails, bool $complete): void {
+it('is complete once served, secured and on the https APP_URL, and not when herd fails (§5.3.1, g1-08)', function (string $secured, bool $fails, string $appUrl, bool $complete): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
+    new EnvFile($context->path('.env'))->set(['APP_URL' => str_replace('{name}', Str::lower($context->folderName()), $appUrl)]);
 
     Process::fake([
         "*herd' 'links'*" => Process::result(''),
@@ -335,10 +336,36 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
 
     expect(new HerdSiteStep()->isComplete($context))->toBe($complete);
 })->with([
-    'secured' => ["| {name}.test | 2027-01-01 |\n", false, true],
-    'not secured' => ['', false, false],
-    'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, false],
+    'secured' => ["| {name}.test | 2027-01-01 |\n", false, 'https://{name}.test', true],
+    'secured, APP_URL still http' => ["| {name}.test | 2027-01-01 |\n", false, 'http://{name}.test', false],
+    'not secured' => ['', false, 'https://{name}.test', false],
+    'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, 'https://{name}.test', false],
 ]);
+
+it('rewrites an http APP_URL of a site Herd already secured instead of skipping (g1-08, RL-16)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
+    $name = $context->folderName();
+    // Secured by hand, or by a detached run that died before it wrote APP_URL.
+    new EnvFile($context->path('.env'))->set(['APP_URL' => "http://{$name}.test"]);
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'secured'*" => Process::result("| {$name}.test | 2027-01-01 |\n"),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+    ]);
+
+    $completeBefore = new HerdSiteStep()->isComplete($context);
+    $result = new HerdSiteStep()->run($context);
+
+    expect($completeBefore)->toBeFalse()
+        ->and($result->message)->toStartWith(HerdSiteStep::SECURED)
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe("https://{$name}.test")
+        ->and(new HerdSiteStep()->isComplete($context))->toBeTrue();
+    Process::assertDidntRun(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}"));
+});
 
 it('names the one Herd command left to run: herd link while unserved, herd secure while HTTPS is missing (RL-7)', function (bool $served, bool $https, ?string $command): void {
     $context = setupSandbox($this->detection);

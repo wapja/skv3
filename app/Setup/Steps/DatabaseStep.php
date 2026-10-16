@@ -7,7 +7,6 @@ namespace App\Setup\Steps;
 use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
-use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Setup\Answers;
@@ -91,11 +90,17 @@ final class DatabaseStep implements SetupStep
                 return false;
             }
 
-            // A password in the answers is applied on every run, also to an account that exists (createSuperAdmin()).
-            return $answers->startWith === 'demo'
-                ? DB::connection(self::CONNECTION)->table('organisations')->whereIn('slug', DemoSeeder::SLUGS)->count() === count(DemoSeeder::SLUGS)
-                : $answers->superAdminPasswordHash === null
-                    && DB::connection(self::CONNECTION)->table('users')->where('email', $answers->superAdminEmail)->where('is_super_admin', true)->exists();
+            if ($answers->startWith === 'demo') {
+                return DB::connection(self::CONNECTION)->table('organisations')->whereIn('slug', DemoSeeder::SLUGS)->count() === count(DemoSeeder::SLUGS);
+            }
+
+            $superAdmin = DB::connection(self::CONNECTION)->table('users')
+                ->where('email', $answers->superAdminEmail)
+                ->where('is_super_admin', true)
+                ->first(['password']);
+
+            // A password in the answers is applied unless the account holds exactly its hash already (g1-07).
+            return $superAdmin !== null && $this->passwordIsCurrent($answers, $superAdmin->password);
         } catch (Throwable) {
             return false;
         } finally {
@@ -249,10 +254,11 @@ final class DatabaseStep implements SetupStep
     }
 
     /**
-     * The real super admin (§5.3.3 step 2): an existing user is promoted, a new one is inserted with the flag (W8)
-     * and completed by handleCreated(), in one transaction, so it never exists without the badge and the grant. A
-     * password given for an existing account replaces its own (a demo account's shared one too): its remember token
-     * changes and PasswordChanged is recorded, and AuthenticateSession signs its other sessions out.
+     * The real super admin (§5.3.3 step 2). An existing user is promoted. A new one is created by
+     * SetSuperAdmin::createNew() (RL-9), so it never exists without the badge and the grant. A password given for an
+     * existing account replaces its own, a demo account's shared one too. Its remember token changes,
+     * PasswordChanged is recorded, and AuthenticateSession signs its other sessions out. A hash the account holds
+     * already is never applied again: a wizard re-check or a resumed run carries the earlier run's hash (g1-07).
      */
     private function createSuperAdmin(Answers $answers): void
     {
@@ -269,7 +275,7 @@ final class DatabaseStep implements SetupStep
             DB::transaction(function () use ($answers, $existing, $setSuperAdmin): void {
                 $setSuperAdmin->handle($existing, true);
 
-                if ($answers->superAdminPasswordHash !== null) {
+                if (! $this->passwordIsCurrent($answers, $existing->password)) {
                     // The hashed cast keeps a value that is already a hash (Answers hashes the password on entry, RL-5).
                     $existing->forceFill(['password' => $answers->superAdminPasswordHash, 'remember_token' => Str::random(60)])->save();
                     app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $existing);
@@ -284,21 +290,19 @@ final class DatabaseStep implements SetupStep
             throw new RuntimeException(__('The super admin :email does not exist; pass super_admin_password to create it.', ['email' => $email]));
         }
 
-        DB::transaction(function () use ($answers, $email, $setSuperAdmin): void {
-            $user = new User;
+        $setSuperAdmin->createNew([
+            'name' => Str::headline(Str::before($email, '@')),
+            'email' => $email,
             // The hashed cast keeps a value that is already a hash (Answers hashes the password on entry, RL-5).
-            $user->forceFill([
-                'organisation_id' => null,
-                'is_super_admin' => true,
-                'status' => UserStatus::Active,
-                'locale' => Locale::default(),
-                'name' => Str::headline(Str::before($email, '@')),
-                'email' => $email,
-                'password' => $answers->superAdminPasswordHash,
-            ])->save();
+            'password' => $answers->superAdminPasswordHash,
+        ]);
+    }
 
-            $setSuperAdmin->handleCreated($user);
-        });
+    /** No password to apply, or the account holds exactly the answers' hash already, applied by an earlier run (g1-07). */
+    private function passwordIsCurrent(Answers $answers, mixed $stored): bool
+    {
+        return $answers->superAdminPasswordHash === null
+            || (is_string($stored) && hash_equals($stored, $answers->superAdminPasswordHash));
     }
 
     /** The last part of the switch: DB_* into .env, then .env.testing as a copy pointing at the test database. */
@@ -366,7 +370,7 @@ final class DatabaseStep implements SetupStep
     private function artisan(string $command, array $parameters = []): void
     {
         if (Artisan::call($command, $parameters) !== 0) {
-            throw new RuntimeException(trim("[{$command}] failed. ".Artisan::output()));
+            throw new RuntimeException(trim(__('[:command] failed.', ['command' => $command]).' '.Artisan::output()));
         }
     }
 }

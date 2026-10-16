@@ -20,6 +20,27 @@ final class EnvironmentStep implements SetupStep
     /** The secrets setup generates once when blank, with their lengths (§4.9): never overwritten, never printed. */
     public const array GENERATED = ['HEALTH_CHECK_KEY' => 40, 'BACKUP_ARCHIVE_PASSWORD' => 32];
 
+    /**
+     * A fresh random value, of its GENERATED length, for every generated secret that is blank in $env (RL-10). Setup,
+     * the production bootstrap and the backup-password repair fill the keys the same way. It never writes, and never
+     * replaces a value: an existing one is what a monitor or the archives use already.
+     *
+     * @return array<string, string>
+     */
+    public static function missingSecrets(EnvFile $env): array
+    {
+        $values = $env->all();
+        $secrets = [];
+
+        foreach (self::GENERATED as $key => $length) {
+            if (($values[$key] ?? '') === '') {
+                $secrets[$key] = Str::random($length);
+            }
+        }
+
+        return $secrets;
+    }
+
     public function key(): string
     {
         return 'environment';
@@ -38,10 +59,8 @@ final class EnvironmentStep implements SetupStep
             return false;
         }
 
-        foreach (array_keys(self::GENERATED) as $key) {
-            if (($env->get($key) ?? '') === '') {
-                return false;
-            }
+        if (self::missingSecrets($env) !== []) {
+            return false;
         }
 
         foreach ($this->variables($context, $env) as $key => $value) {
@@ -69,13 +88,7 @@ final class EnvironmentStep implements SetupStep
     public function run(SetupContext $context): StepResult
     {
         $env = new EnvFile($context->path('.env'));
-        $variables = $this->variables($context, $env);
-
-        foreach (self::GENERATED as $key => $length) {
-            if (($env->get($key) ?? '') === '') {
-                $variables[$key] = Str::random($length);
-            }
-        }
+        $variables = $this->variables($context, $env) + self::missingSecrets($env);
 
         $note = $this->installerSetMail($env) || array_key_exists('MAIL_MAILER', $variables)
             ? ''

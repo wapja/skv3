@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §5.3.3, §7.3 */
 
+use App\Enums\UserStatus;
 use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\SetupContext;
@@ -113,10 +114,18 @@ it('creates the real super admin instead of demo data when asked (§5.3.3 step 2
         ->and(Hash::check('correct-horse-battery', (string) $owner->password))->toBeTrue()
         ->and(DB::connection('setup')->table('organisations')->count())->toBe(0)
         ->and(DB::connection('setup')->table('activity_log')->where('event', 'user.super_admin_granted')->where('subject_id', $owner->id)->count())->toBe(1)
-        // Answers that still carry a password are applied again; a re-run without one finds the step complete.
-        ->and(new DatabaseStep()->isComplete($context))->toBeFalse();
+        // The same answers carry the hash the account holds now (a wizard re-check): nothing is left to apply (g1-07).
+        ->and(new DatabaseStep()->isComplete($context))->toBeTrue();
 
-    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName(), $context->answers->toPublicArray());
+    $installed = $context->answers->toPublicArray();
+    $context->answers = Answers::fromArray([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'another-horse-battery',
+    ], Detection::none(), $context->folderName());
+
+    // A new password is a new hash: it still has to be applied.
+    expect(new DatabaseStep()->isComplete($context))->toBeFalse();
+
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName(), $installed);
 
     expect(new DatabaseStep()->isComplete($context))->toBeTrue();
 });
@@ -163,6 +172,28 @@ it('replaces the password of an existing account when one is given (§5.3.3 step
     'a demo organisation admin' => ['admin@demo1.{apex}'],
 ]);
 
+it('never applies the same password hash twice: one PasswordChanged, the remember token kept (§5.3.3 step 2, g1-07)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
+    new DatabaseStep()->run($context);
+    $email = 'superadmin@'.Hosts::apex();
+    // One Answers object, as a wizard re-check or a resumed run has: the state file keeps the hash, not the password.
+    $context->answers = Answers::fromArray([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => $email, 'super_admin_password' => 'correct-horse-battery',
+    ], Detection::none(), $context->folderName());
+
+    new DatabaseStep()->run($context);
+    $afterFirst = DB::connection('setup')->table('users')->where('email', $email)->sole();
+    $completeAfterFirst = new DatabaseStep()->isComplete($context);
+    new DatabaseStep()->run($context);
+    $afterSecond = DB::connection('setup')->table('users')->where('email', $email)->sole();
+
+    expect($completeAfterFirst)->toBeTrue()
+        ->and($afterSecond->password)->toBe($afterFirst->password)
+        ->and($afterSecond->remember_token)->toBe($afterFirst->remember_token)
+        ->and(DB::connection('setup')->table('activity_log')->where('event', 'security.password_changed')->where('subject_id', $afterSecond->id)->count())->toBe(1);
+});
+
 it('is not complete for a super admin start after a demo install, nor for a demo start after a super admin install (§5.3.1)', function (): void {
     $context = setupSandbox();
     $demo = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
@@ -186,21 +217,26 @@ it('is not complete for a super admin start after a demo install, nor for a demo
         ->and($afterSuperAdmin)->toBeFalse();
 });
 
-it('refuses to make a pending user the super admin (§5.3.3 step 2)', function (): void {
+it('refuses to make a user who is not active the super admin (§5.3.3 step 2, g2-18)', function (string $local, UserStatus $status): void {
     $context = setupSandbox();
     $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
     new DatabaseStep()->run($context);
-    $invited = 'invited@demo1.'.Hosts::apex();
+    $email = $local.'@demo1.'.Hosts::apex();
+    DB::connection('setup')->table('users')->where('email', $email)->update(['status' => $status->value]);
     $context->answers = Answers::fromArray([
         'database' => 'sqlite',
         'start_with' => 'super_admin',
-        'super_admin_email' => $invited,
+        'super_admin_email' => $email,
         'super_admin_password' => 'correct-horse-battery',
     ], Detection::none(), $context->folderName());
 
-    expect(fn (): mixed => new DatabaseStep()->run($context))->toThrow(RuntimeException::class, $invited)
-        ->and((bool) DB::connection('setup')->table('users')->where('email', $invited)->value('is_super_admin'))->toBeFalse();
-});
+    expect(fn (): mixed => new DatabaseStep()->run($context))
+        ->toThrow(RuntimeException::class, __('Only an active user can become a super admin; :email is :status.', ['email' => $email, 'status' => $status->label()]))
+        ->and((bool) DB::connection('setup')->table('users')->where('email', $email)->value('is_super_admin'))->toBeFalse();
+})->with([
+    'pending' => ['invited', UserStatus::PendingActivation],
+    'disabled' => ['user', UserStatus::Disabled],
+]);
 
 it('asks for a password when the super admin of an earlier install is gone (§5.3.3 step 2, DEC-30)', function (): void {
     $context = setupSandbox();
@@ -228,6 +264,8 @@ it('refuses a committed PostgreSQL schema dump and leaves .env alone (§7.3, RL-
     File::put($context->path('database/schema/pgsql-schema.sql'), '-- dump');
     $context->answers = Answers::fromArray(['database' => 'pgsql', 'modules' => []], Detection::none(), $context->folderName());
     $before = File::get($context->path('.env'));
+    // An unreachable server: a regressed guard fails on the connection instead of creating databases (g2-19).
+    config(['database.connections.pgsql.host' => '127.0.0.1', 'database.connections.pgsql.port' => 1]);
 
     expect(fn (): mixed => new DatabaseStep()->run($context))->toThrow(RuntimeException::class, 'pgsql-schema')
         ->and(File::get($context->path('.env')))->toBe($before)

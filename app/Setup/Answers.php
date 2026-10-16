@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -90,7 +91,7 @@ final readonly class Answers
             'database' => ['required', Rule::in(['pgsql', 'sqlite'])],
             'start_with' => ['required', Rule::in(['demo', 'super_admin'])],
             'super_admin_email' => ['nullable', 'required_if:start_with,super_admin', 'email', 'max:255'],
-            'super_admin_password' => ['nullable', Rule::requiredIf($values['start_with'] === 'super_admin' && ! $isInstalledSuperAdmin), 'string', 'min:8'],
+            'super_admin_password' => ['nullable', Rule::requiredIf($values['start_with'] === 'super_admin' && ! $isInstalledSuperAdmin), 'string', Password::default()],
             'modules' => ['present', 'array'],
             'modules.*' => [Rule::in(self::MODULES)],
             'https' => ['required', 'boolean'],

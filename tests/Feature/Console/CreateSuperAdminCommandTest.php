@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Setup\Support\Toolchain;
@@ -101,13 +102,18 @@ it('keeps an existing user\'s password when the new one is too weak (RL-9)', fun
         ->and(Hash::check('old-password-123', (string) $member->fresh()?->password))->toBeTrue();
 });
 
-it('refuses a user who is not active (RL-9)', function (): void {
-    $pending = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->pending()->create(['email' => 'invited@example.com']);
+it('refuses a user who is not active (RL-9, g2-18)', function (UserStatus $status): void {
+    $user = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->create(['email' => 'inactive@example.com', 'status' => $status]);
 
-    expect(Artisan::call('skv:create-super-admin', ['email' => 'invited@example.com', '--no-interaction' => true]))->toBe(1);
+    $exit = Artisan::call('skv:create-super-admin', ['email' => 'inactive@example.com', '--no-interaction' => true]);
 
-    expect($pending->fresh()?->isSuperAdmin())->toBeFalse();
-});
+    expect($exit)->toBe(1)
+        ->and(Artisan::output())->toContain(__('Only an active user can become a super admin; :email is :status.', ['email' => 'inactive@example.com', 'status' => $status->label()]))
+        ->and($user->fresh()?->isSuperAdmin())->toBeFalse();
+})->with([
+    'pending' => [UserStatus::PendingActivation],
+    'disabled' => [UserStatus::Disabled],
+]);
 
 it('needs an email and a password without interaction', function (): void {
     expect(Artisan::call('skv:create-super-admin', ['--no-interaction' => true]))->toBe(1)

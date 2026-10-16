@@ -63,7 +63,11 @@ final readonly class HerdSiteStep implements SetupStep
         return __('Herd site');
     }
 
-    /** Served (parked or linked) and, when HTTPS was chosen, secured; false on any process failure. */
+    /**
+     * Served (parked or linked) and, when HTTPS was chosen, secured with APP_URL on that https address (RL-16): a site
+     * secured by hand, or by a detached run that died before writing APP_URL, still needs run()'s rewrite (g1-08).
+     * False on any process failure.
+     */
     public function isComplete(SetupContext $context): bool
     {
         $herd = $this->toolchain->herd();
@@ -74,7 +78,7 @@ final readonly class HerdSiteStep implements SetupStep
 
         try {
             return $this->siteState($context, $herd) === self::SERVED
-                && (! $context->answers->https || $this->isSecured($context, $herd));
+                && (! $context->answers->https || ($this->appUrlIsSecured($context) && $this->isSecured($context, $herd)));
         } catch (Throwable) {
             return false;
         }
@@ -314,6 +318,12 @@ final readonly class HerdSiteStep implements SetupStep
     private function isSecured(SetupContext $context, string $herd): bool
     {
         return $this->row($this->herd($context, $herd, ['secured'])->output(), $this->domain($context)) !== null;
+    }
+
+    /** .env's APP_URL is the https address secured() writes (RL-16). */
+    private function appUrlIsSecured(SetupContext $context): bool
+    {
+        return new EnvFile($context->path('.env'))->get('APP_URL') === 'https://'.$this->domain($context);
     }
 
     /**

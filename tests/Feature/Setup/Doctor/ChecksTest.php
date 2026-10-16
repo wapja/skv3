@@ -439,7 +439,7 @@ it('writes a health-check key with --fix (§5.4)', function (): void {
 
 it('needs an archive password while the backups module is on, and writes one with --fix (CD-10)', function (): void {
     useBackupsModule(false);
-    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '']);
+    new EnvFile($this->sandbox->path('.env'))->set(['BACKUP_ARCHIVE_PASSWORD' => '', 'HEALTH_CHECK_KEY' => '']);
 
     $off = new BackupPasswordCheck()->run($this->context);
 
@@ -453,7 +453,8 @@ it('needs an archive password while the backups module is on, and writes one wit
         ->and($missing->fix)->toBe('php artisan skv:doctor --fix')
         ->and($result->status)->toBe(CheckStatus::Pass)
         ->and(strlen($written))->toBe(32)
-        ->and($result->message)->not->toContain($written);
+        ->and($result->message)->not->toContain($written)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('HEALTH_CHECK_KEY'))->toBe('');
 });
 
 it('fails while .env has an archive password that the running configuration lacks (CD-10)', function (): void {

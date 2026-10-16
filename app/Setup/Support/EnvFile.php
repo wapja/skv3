@@ -49,7 +49,7 @@ final readonly class EnvFile
     public function set(array $variables, bool $overwrite = true): void
     {
         if (! $this->exists()) {
-            throw new RuntimeException("The environment file [{$this->path}] does not exist.");
+            throw new RuntimeException(__('The environment file [:path] does not exist.', ['path' => $this->path]));
         }
 
         $values = array_map(fn (string|bool|int|null $value): string => match (true) {
@@ -60,11 +60,11 @@ final readonly class EnvFile
 
         foreach ($values as $key => $value) {
             if (preg_match('/\A[A-Z][A-Z0-9_]*\z/', $key) !== 1) {
-                throw new RuntimeException('An environment variable name must be upper case letters, digits and underscores.');
+                throw new RuntimeException(__('An environment variable name must be upper case letters, digits and underscores.'));
             }
 
             if (preg_match('/[\r\n\0]/', $value) === 1) {
-                throw new RuntimeException("The value for [{$key}] contains a line break or a NUL byte.");
+                throw new RuntimeException(__('The value for [:key] contains a line break or a NUL byte.', ['key' => $key]));
             }
         }
 
@@ -91,7 +91,7 @@ final readonly class EnvFile
         $handle = fopen($temporary, 'x');
 
         if ($handle === false) {
-            throw new RuntimeException("Could not create a temporary copy of [{$this->path}].");
+            throw new RuntimeException(__('Could not create a temporary copy of [:path].', ['path' => $this->path]));
         }
 
         try {
@@ -116,19 +116,19 @@ final readonly class EnvFile
             $before = $this->literalValues($original);
             $after = $this->literalValues($written);
         } catch (ExceptionInterface) {
-            throw new RuntimeException("Writing [{$keys}] would leave [{$this->path}] unreadable; the file was not changed.");
+            throw new RuntimeException(__('Writing [:keys] would leave [:path] unreadable; the file was not changed.', ['keys' => $keys, 'path' => $this->path]));
         }
 
         foreach ($values as $key => $value) {
             $keptOld = ! $overwrite && array_key_exists($key, $before) && ($after[$key] ?? null) === $before[$key];
 
             if (($after[$key] ?? null) !== $value && ! $keptOld) {
-                throw new RuntimeException("The value for [{$key}] would not read back unchanged; [{$this->path}] was not changed.");
+                throw new RuntimeException(__('The value for [:key] would not read back unchanged; [:path] was not changed.', ['key' => $key, 'path' => $this->path]));
             }
         }
 
         if (array_diff_key($after, $values) !== array_diff_key($before, $values)) {
-            throw new RuntimeException("Writing [{$keys}] would change other variables in [{$this->path}]; the file was not changed.");
+            throw new RuntimeException(__('Writing [:keys] would change other variables in [:path]; the file was not changed.', ['keys' => $keys, 'path' => $this->path]));
         }
     }
 

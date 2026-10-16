@@ -8,11 +8,16 @@ use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Authorization\SyncPermissions;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Enums\UserStatus;
+use App\Models\Activity;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Facades\Tenant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Tests\Fixtures\FailureSwitch;
 
 /** @return array<int, mixed> */
 function badgeRows(User $user): array
@@ -154,4 +159,30 @@ it('refuses to demote a promoted super admin while their organisation is archive
     expect($promoted->fresh()?->isSuperAdmin())->toBeTrue()
         ->and(badgeRows($promoted))->toBe([null])
         ->and(recordedActivity(ActivityEvent::SuperAdminRevoked))->toBeEmpty();
+});
+
+it('creates a new super admin with the badge and one grant, or nothing at all (RL-9, DEC-30 (21))', function (): void {
+    // A holder with a typed property: PHPStan would type a captured `true` as always true.
+    $audit = new FailureSwitch(fails: true);
+    Activity::creating(function (Activity $activity) use ($audit): void {
+        if ($audit->fails && $activity->event === ActivityEvent::SuperAdminGranted->value) {
+            throw new RuntimeException('The audit log is unavailable.');
+        }
+    });
+    $attributes = ['name' => 'Owner', 'email' => 'owner@example.com', 'password' => 'correct-horse-battery'];
+
+    expect(fn (): User => app(SetSuperAdmin::class)->createNew($attributes))
+        ->toThrow(RuntimeException::class, 'The audit log is unavailable.');
+    expect(Tenant::bypass(fn (): bool => User::query()->where('email', 'owner@example.com')->exists()))->toBeFalse();
+
+    $audit->fails = false;
+    $user = app(SetSuperAdmin::class)->createNew($attributes);
+
+    expect($user->isSuperAdmin())->toBeTrue()
+        ->and($user->organisation_id)->toBeNull()
+        ->and($user->status)->toBe(UserStatus::Active)
+        ->and($user->locale)->toBe(Locale::default())
+        ->and(Hash::check('correct-horse-battery', $user->password))->toBeTrue()
+        ->and(badgeRows($user))->toBe([null])
+        ->and(recordedActivity(ActivityEvent::SuperAdminGranted)->sole()->subject_id)->toBe($user->id);
 });

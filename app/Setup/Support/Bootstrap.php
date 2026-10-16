@@ -8,7 +8,6 @@ use App\Setup\SetupToken;
 use App\Setup\Steps\EnvironmentStep;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Process;
-use Illuminate\Support\Str;
 
 /**
  * The non-interactive first run (§5.2, RL-1): .env, APP_KEY, the Herd APP_URL, the SQLite file plus migrate and the
@@ -42,11 +41,14 @@ final readonly class Bootstrap implements BootstrapRunner
         // CD-10: it does get the secrets setup would generate, because a blank BACKUP_ARCHIVE_PASSWORD means
         // unencrypted backups. Only the key names are reported, never the values.
         if ($this->isProduction()) {
-            foreach (EnvironmentStep::GENERATED as $key => $length) {
-                if (($env->get($key) ?? '') === '') {
-                    $env->set([$key => Str::random($length)]);
-                    $actions[] = __('Generated :key', ['key' => $key]);
-                }
+            $secrets = EnvironmentStep::missingSecrets($env);
+
+            if ($secrets !== []) {
+                $env->set($secrets);
+            }
+
+            foreach (array_keys($secrets) as $key) {
+                $actions[] = __('Generated :key', ['key' => $key]);
             }
 
             return $actions;
