@@ -27,4 +27,6 @@ it('single-quotes a value with a space or a shell character (RL-6, g2-05)', func
     'a variable' => ['$HOME', "'\$HOME'"],
     'a single quote' => ["it's", "'it'\\''s'"],
     'nothing' => ['', "''"],
+    'a trailing newline' => ["app\n", "'app\n'"],
+    'a leading = (zsh expands =cmd)' => ['=ls', "'=ls'"],
 ]);

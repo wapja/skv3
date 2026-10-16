@@ -74,7 +74,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
 - The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
 - After setup, a super admin who confirmed two-factor sign-in is sent to the login page instead of signed in with the single-use link.
-- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it.
+- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
 - The wizard no longer adds the demo data by default when a super admin already exists, as `skv:install` already refused.
 - `skv:install` runs only in the `local`, `testing` and `staging` environments, and refuses an inline `super_admin_password` of any type; `skv:bootstrap` treats an install as production when `.env` or the process environment says `APP_ENV=production`.
 - `skv:create-super-admin --password-stdin` refuses to read a password from a terminal, where it would echo; pipe it in.

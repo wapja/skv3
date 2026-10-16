@@ -12,7 +12,8 @@ namespace App\Setup\Support;
  */
 final class ShellArgument
 {
-    private const string PLAIN = '/^[A-Za-z0-9._\/:=@%+-]+$/';
+    /** `\z`, not `$`, so a trailing newline is quoted; no leading `=`, which zsh expands to a command's path. */
+    private const string PLAIN = '/\A[A-Za-z0-9._\/:@%+-][A-Za-z0-9._\/:=@%+-]*\z/';
 
     public static function quote(string $value): string
     {
