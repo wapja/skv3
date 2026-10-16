@@ -51,6 +51,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - The doctor's `failed-jobs` row (warns while failed jobs are stored) and `backup-password` row (fails while the backups module is on and `BACKUP_ARCHIVE_PASSWORD` is blank; `--fix` writes one); the health check's `last-backup` row fails while backups would be unencrypted, and `backup:run` then refuses to start, also by hand. The `backup-password` row also fails while `.env` has a password that the running configuration lacks (a stale config cache).
 - Audit entries written by an Artisan command are tagged with the command, and the audit log shows them as *Command line*, or as the causer's name followed by *via the command line* when they have one.
 - `skv:create-organisation --as=<email>` picks the acting super admin.
+- `skv:flux-pro` marks `composer.json` with `extra.skv.flux-pro` before it requires the package, so an app that commits Flux Pro on purpose skips the kit's "never references Flux Pro in the committed composer files" test.
+- An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link.
+- `DB_CONNECT_TIMEOUT` (5 seconds) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
+- The System page's *Refresh* and *Run checks* allow six runs a minute per user.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
@@ -66,11 +70,27 @@ All notable changes to this project are documented here. The format follows [Kee
 - Demo data runs only in the `local` and `testing` environments; elsewhere `skv:install` refuses `start_with=demo` before anything is written.
 - The demo accounts use the app's default language.
 - `skv:create-organisation --locale` defaults to the app's default language instead of `nl`.
+- The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.1` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `X-Original-Host` or `Forwarded` header, check the pinned host on every request, start a new session when the token is accepted, and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
+- Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
+- The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
+- After setup, a super admin who confirmed two-factor sign-in is sent to the login page instead of signed in with the single-use link.
+- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it.
+- The wizard no longer adds the demo data by default when a super admin already exists, as `skv:install` already refused.
+- `skv:install` runs only in the `local`, `testing` and `staging` environments, and refuses an inline `super_admin_password` of any type; `skv:bootstrap` treats an install as production when `.env` or the process environment says `APP_ENV=production`.
+- `skv:create-super-admin --password-stdin` refuses to read a password from a terminal, where it would echo; pipe it in.
+- A `HEALTH_CHECK_KEY` shorter than 32 characters counts as no key: `/health-check` answers 403, the doctor's `health-check-key` row fails, and `skv:doctor --fix` replaces it with a random 40-character key; setup and the production `skv:bootstrap` replace it too.
+- `/health-check` counts requests without the right key in one shared limit (300 a minute) and requests with it per key (60 a minute), so strangers cannot lock a monitor out; its 429 answers carry `Cache-Control: no-store`.
+- The System page and `/health-check` judge the running mail and health-key settings; `skv:doctor` and setup keep reading `.env`. The System page also runs the `apex` check.
+- With a PostgreSQL server on this machine the backups prefer Herd's newest `pg_dump` over the one on PATH, use a Herd binary only when it and its directories are no symbolic links, belong to you or root and are not group- or world-writable, and pass the connection's `sslmode` (`DB_SSLMODE`, or the one in `DB_URL`) to `pg_dump`.
+- `backup:run`, `backup:clean` and `backup:monitor` hold their overlap lock for 12 hours instead of 24, so a killed backup never skips the next night; `backup:run` refuses an unencrypted backup with one error line instead of an exception trace, also for a configuration chosen with `--config`.
+- The setup's super-admin password follows the app's password rules (`Password::default()`).
+- The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
+- The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
 - `composer setup` keeps an existing `APP_KEY` (2FA secrets and passkey handles depend on it).
-- `composer setup` runs `boost:update`, so a fresh clone gets the Boost guidelines (`AGENTS.md`) that `CLAUDE.md` imports.
+- Setup's Claude step writes the Boost guidelines (`AGENTS.md`) that `CLAUDE.md` imports; `composer setup` never ran `boost:update`, and without the Claude answer no `AGENTS.md` is written.
 - Profile emails are stored lower-cased, so a capitalised address no longer locks the user out.
 - Real `tests/Feature/ExampleTest.php` and `tests/Unit/ExampleTest.php` are shipped, so the installer's `pest --init` step leaves the test suite green.
 - Roles can only be changed through the roles form, never to the super admin badge, another organisation's role or a role with permissions the administrator lacks, and roles of another organisation cannot be edited (skv2 W1).
@@ -95,6 +115,21 @@ All notable changes to this project are documented here. The format follows [Kee
 - Child processes that setup starts (`npm`, `claude`, the background steps) no longer inherit the project's `.env` values such as `APP_KEY` or `DB_PASSWORD`, and a child `php artisan` reads the current `.env`.
 - Setup no longer hangs when Herd does not answer, and reads `herd tld` one way everywhere.
 - Setup error messages no longer show PostgreSQL's `DETAIL` lines, which can hold a password hash.
+- Setup and the doctor no longer crash on an unparsable `.env`, and read it once per change instead of on every child process.
+- A state file that is a symbolic link or cannot be read counts as damaged: the doctor's `marker` row fails instead of the doctor crashing, and a setup token left next to such a marker is still reported.
+- `herd.yml`, `.mcp.json`, `composer.json`, `.claude/settings.local.json`, `.env.testing` and the bootstrap's `.env` are written atomically and replace a symbolic link instead of writing through it; the long steps' logs and exit codes are created with mode 0600.
+- A re-check of a long step whose process still runs is refused instead of starting it twice (for at most four hours after the step started, so a reused process id cannot block the step for good), and a step that finished between two polls keeps its result.
+- The setup errors that still answered 500 (a start that cannot write its state, a long step whose completion check throws, a failure after the marker) show a message the page can act on.
+- The wizard detects Herd and PostgreSQL once per setup instead of on every poll, and its page title no longer repeats *Installatie*.
+- `POST /quick-login` with a malformed email answers 404 instead of 500.
+- A Herd step that ends after the login no longer leaves the setup lock behind, and an old Herd exit file no longer times out a new Herd stage at once.
+- A re-run with an unchanged super-admin password no longer rotates the remember token or logs a password change, and a secured site with an `http://` `APP_URL` is finished on `https://`.
+- The demo seeder creates its super admin, badge and grant in one transaction; setup, `skv:create-super-admin` and the seeder share one creator.
+- Setup's step errors and `.env` messages are translated.
+- The doctor's `queue` and `failed-jobs` rows are skipped while the database is unreachable instead of reporting a missing table.
+- `/health-check` still answers with the real report when the ops store can be read but not written.
+- The System page no longer answers 500 when the ops store or a backup disk fails, no longer needs ext-intl for its sizes, no longer boots the console kernel or looks up the PHP binary on every render, and no longer takes the backup lock to show whether a job is on.
+- The backups' source connection defaults to the app's default database (`sqlite`), like `config/database.php`.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

@@ -15,12 +15,13 @@ it('never rotates an existing APP_KEY during setup', function (): void {
         ->toContain('@php artisan skv:bootstrap --no-interaction');
 });
 
-it('generates the Boost guidelines during setup', function (): void {
+it('leaves the Boost guidelines to the Claude step of skv:install, never to boost:update (CD-11)', function (): void {
     /** @var array{scripts: array{setup: list<string>}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
 
-    // The Claude step runs boost:install (ClaudeStepTest).
-    expect($composer['scripts']['setup'])->toContain('@php artisan skv:install');
+    // AGENTS.md comes from the Claude step's boost:install (ClaudeStepTest); composer setup runs no Boost command itself.
+    expect($composer['scripts']['setup'])->toContain('@php artisan skv:install')
+        ->and(implode("\n", $composer['scripts']['setup']))->not->toContain('boost:');
 });
 
 it('checks Playwright and the Vite build before running the browser suite (§7.4)', function (): void {

@@ -253,9 +253,12 @@ it('quotes the names in the cleanup commands the local e2e script prints (RL-6, 
         ->and(preg_match('/echo "  (herd|rm) /', $cleanup))->toBe(0);
 });
 
-it('checks in CI that the setup stylesheet is current (OD-1)', function (): void {
+it('checks in CI that the setup stylesheet is current, and names the dependencies that change it (OD-1, g4-07)', function (): void {
     expect((string) file_get_contents(base_path('.github/workflows/tests.yml')))
-        ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css');
+        ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css')
+        // A Dependabot update of these changes the built stylesheet too, so the guideline names them.
+        ->and((string) file_get_contents(base_path('.ai/guidelines/skv3.md')))
+        ->toContain('`tailwindcss`')->toContain('`@tailwindcss/vite`')->toContain('`vite`')->toContain('`livewire/flux`');
 });
 
 it('checks the wizard after every entry point in the phase-1 job (§7.2, OD-3)', function (): void {
