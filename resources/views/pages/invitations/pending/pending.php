@@ -57,7 +57,10 @@ new #[Title('Pending invitations')] class extends Component
      */
     private ?LengthAwarePaginator $invitationsPage = null;
 
-    /** The route's can: middleware does not cover Livewire updates or a page reused elsewhere (FU4-4). */
+    /**
+     * The route's can: middleware also runs on Livewire updates (Authorize is persistent middleware); this check
+     * covers the page wherever it is mounted (FU4-4, G2-08).
+     */
     public function mount(): void
     {
         Gate::authorize(Permission::UsersView);

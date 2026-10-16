@@ -197,6 +197,19 @@ it('hides the invite link from a replayed snapshot that already holds the link i
         ->not->toContain('/invitations/accept/');
 });
 
+it('builds the copied invite link with APP_URL\'s scheme and port, not the request\'s (CD-4, G1-04)', function () use ($adminOf, $invite): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = $invite($adminOf($organisation), $organisation, 'invitee@example.com');
+    asOrgAdmin($organisation);
+    $snapshot = pageSnapshot(route('invitations.pending'), 'pages::invitations.pending');
+    config(['app.url' => 'https://localhost:8443']);
+
+    $html = (string) callPageAction($snapshot, 'showLink', [$invitation->id])->assertOk()->json('components.0.effects.html');
+
+    expect($html)->toContain('https://acme.localhost:8443/invitations/accept/')
+        ->not->toContain('http://acme.localhost/invitations/accept/');
+});
+
 it('refuses a forged id of another organisation\'s invitation', function (string $method) use ($adminOf, $invite): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $beta = Organisation::factory()->create(['slug' => 'beta']);

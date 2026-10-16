@@ -86,6 +86,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The setup's super-admin password follows the app's password rules (`Password::default()`).
 - The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
 - The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.
+- Links the kit builds for another request (password reset, email change, invitation and handoff links) and the passkey origin take their scheme and port from APP_URL, never from the request's port or forwarded headers.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.

@@ -33,6 +33,27 @@ it('sends a member the reset link for their own host, wherever it was requested 
     ));
 })->with(['own tenant', 'apex', 'admin']);
 
+it('builds the reset link with APP_URL\'s scheme and port, whatever the request says (CD-4, G1-04)', function (string $case): void {
+    Notification::fake();
+    config(['app.url' => 'https://localhost']);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    if ($case === 'a port in the Host header') {
+        $this->post('http://acme.localhost:6666/forgot-password', ['email' => $member->email])->assertSessionHasNoErrors();
+    } else {
+        config(['trustedproxy.proxies' => '127.0.0.1']);
+        $this->post(route('password.email'), ['email' => $member->email], ['X-Forwarded-Proto' => 'http', 'X-Forwarded-Port' => '8080'])
+            ->assertSessionHasNoErrors();
+    }
+
+    Notification::assertSentTo($member, ResetPassword::class, fn (ResetPassword $notification): bool => str_starts_with(
+        (string) $notification->toMail($member)->actionUrl,
+        'https://acme.localhost/reset-password/',
+    ));
+})->with(['a port in the Host header', 'forwarded headers from a trusted proxy']);
+
 it('sends a super admin the reset link for the admin host', function (): void {
     Notification::fake();
     $superAdmin = User::factory()->superAdmin()->create();

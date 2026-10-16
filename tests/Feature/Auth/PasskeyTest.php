@@ -127,7 +127,7 @@ it('has a relying-party id after the module is switched on at runtime (FU3-2)', 
     expect(config('passkeys.relying_party_id'))->toBe(PasskeyRelyingParty::id());
 });
 
-it('allows the origin of the current request for passkey ceremonies (P1)', function (string $host, string $origin): void {
+it('allows the current host\'s origin for passkey ceremonies (P1)', function (string $host, string $origin): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     passkeyHost($host, $organisation);
 
@@ -139,6 +139,15 @@ it('allows the origin of the current request for passkey ceremonies (P1)', funct
     'apex' => ['apex', 'http://localhost'],
     'admin' => ['admin', 'http://admin.localhost'],
 ]);
+
+it('allows the host with APP_URL\'s scheme and port, not the request\'s (CD-4, G1-06)', function (): void {
+    config(['app.url' => 'https://localhost']);
+    Organisation::factory()->create(['slug' => 'acme']);
+
+    $this->get('http://acme.localhost:8443/login')->assertOk();
+
+    expect(config('passkeys.allowed_origins'))->toBe(['https://acme.localhost']);
+});
 
 it('registers a passkey on a tenant host and signs the member in with it there', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
