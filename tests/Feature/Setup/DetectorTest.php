@@ -90,11 +90,15 @@ it('asks the given probe instead of opening a connection (RL-3, g1-13)', functio
 
 it('pins the wizard\'s PostgreSQL probe, so no setup test reaches the machine\'s server (RL-3, g4-08)', function (): void {
     useSetupWizard();
+    // The bound Detector carries a probe: "unreachable" alone would also pass with the real PDO probe wherever no
+    // PostgreSQL answers, CI included (M35).
+    $probe = new ReflectionProperty(Detector::class, 'postgresProbe')->getValue(app(Detector::class));
 
     $unreachable = app(Detector::class)->detect('localhost')->postgres;
     withoutPostgresProbe(true);
 
-    expect($unreachable)->toBeFalse()
+    expect($probe)->toBeInstanceOf(Closure::class)
+        ->and($unreachable)->toBeFalse()
         ->and(app(Detector::class)->detect('localhost')->postgres)->toBeTrue();
 });
 
