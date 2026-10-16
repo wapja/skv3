@@ -339,3 +339,70 @@ it('is complete once served and secured, and not when herd fails (§5.3.1)', fun
     'not secured' => ['', false, false],
     'herd times out' => ["| {name}.test | 2027-01-01 |\n", true, false],
 ]);
+
+it('names the one Herd command left to run: herd link while unserved, herd secure while HTTPS is missing (RL-7)', function (bool $served, bool $https, ?string $command): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => $https], $this->detection, $context->folderName());
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([$served ? dirname($context->basePath) : '/somewhere/else'], JSON_THROW_ON_ERROR)),
+    ]);
+
+    expect(new HerdSiteStep()->manualCommand($context))->toBe($command === null ? null : sprintf($command, $context->folderName()));
+})->with([
+    'not served, HTTPS chosen' => [false, true, 'herd link %s'],
+    'not served, no HTTPS' => [false, false, 'herd link %s'],
+    'served, HTTPS chosen' => [true, true, 'herd secure %s'],
+    'served, no HTTPS' => [true, false, null],
+]);
+
+it('names no Herd command without Herd (RL-7)', function (): void {
+    expect(new HerdSiteStep()->manualCommand(setupSandbox()))->toBeNull();
+});
+
+it('names the command HTTPS asks for when Herd\'s listings fail (RL-7)', function (bool $https, string $command): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => $https], $this->detection, $context->folderName());
+    Process::fake([
+        "*herd' 'links'*" => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result('')),
+    ]);
+
+    expect(new HerdSiteStep()->manualCommand($context))->toBe(sprintf($command, $context->folderName()));
+})->with([
+    'HTTPS chosen' => [true, 'herd secure %s'],
+    'no HTTPS' => [false, 'herd link %s'],
+]);
+
+it('quotes a folder name with a space in the commands it prints, never in the argv it runs (RL-6, g2-05)', function (Closure $listings, string $command): void {
+    $context = setupSandbox($this->detection, 'my app ');
+    $context->answers = Answers::fromArray(['https' => true], $this->detection, $context->folderName());
+    $name = $context->folderName();
+    Process::fake($listings($context));
+
+    $result = new HerdSiteStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe(str_replace('{name}', $name, $command));
+    Process::assertRan(fn ($process): bool => in_array($name, (array) $process->command, true) || in_array('--site='.$name, (array) $process->command, true));
+})->with([
+    'herd link' => [fn (SetupContext $context): array => [
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'link'*" => Process::result('linked'),
+    ], "herd link '{name}'"],
+    'herd isolate' => [fn (SetupContext $context): array => [
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*herd' 'isolate'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.3.12'),
+    ], "herd isolate 8.4 '--site={name}'"],
+    'herd secure' => [fn (SetupContext $context): array => [
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
+        "*herd' 'secured'*" => Process::result(''),
+        "*herd' 'secure'*" => Process::result(''),
+    ], "herd secure '{name}'"],
+]);

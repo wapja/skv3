@@ -18,6 +18,7 @@ use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
 
 use function Pest\Laravel\withoutMiddleware;
 
@@ -115,3 +116,21 @@ it('answers 404 to the quick login outside a local demo install (RL-9)', functio
 
     $this->post(route('quick-login'), ['email' => 'admin@demo1.'.Hosts::apex()])->assertNotFound();
 });
+
+it('answers 404, not 500, to an email that is not a string (g3-14)', function (string $environment) use ($demoInstall): void {
+    $demoInstall();
+    app()->detectEnvironment(fn (): string => $environment);
+
+    $this->post(route('quick-login'), ['email' => ['admin@demo1.'.Hosts::apex()]])->assertNotFound();
+})->with(['local', 'production']);
+
+it('offers no quick login to a request that is not direct, and answers 404 to it (DEC-24, g3-15)', function (Closure $notDirect) use ($demoInstall): void {
+    $demoInstall();
+    $notDirect($this);
+
+    $this->get(route('login'))->assertOk()->assertDontSee('data-test="quick-login"', false);
+    $this->post(route('quick-login'), ['email' => 'admin@demo1.'.Hosts::apex()])->assertNotFound();
+})->with([
+    'through herd share or a proxy' => [fn (TestCase $test): TestCase => $test->withHeader('X-Forwarded-For', '203.0.113.7')],
+    'from another machine' => [fn (TestCase $test): TestCase => $test->withServerVariables(['REMOTE_ADDR' => '192.168.1.20'])],
+]);

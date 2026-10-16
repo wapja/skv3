@@ -9,6 +9,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
+use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Steps\SummaryStep;
 use App\Setup\Support\SafeMessage;
 use App\Setup\Support\StateFile;
@@ -80,7 +81,8 @@ final class RunStepCommand extends Command
         try {
             $result = $runner->runStep($context, $step);
         } catch (Throwable $exception) {
-            $result = StepResult::manual($herd ? 'herd secure '.$context->folderName() : 'php artisan skv:install', SafeMessage::of($exception));
+            $command = $herd ? app(HerdSiteStep::class)->manualCommand($context) : 'php artisan skv:install';
+            $result = $command === null ? StepResult::skipped(SafeMessage::of($exception)) : StepResult::manual($command, SafeMessage::of($exception));
         }
 
         if ($state instanceof HerdState) {
@@ -89,7 +91,14 @@ final class RunStepCommand extends Command
                 // replace another finish()'s state (RL-6).
                 $current = HerdState::load($basePath);
 
-                if (! $current instanceof HerdState || ! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
+                // The login used the state up and removed the lock: this late child removes the lock it recreated (g3-02).
+                if (! $current instanceof HerdState) {
+                    SetupLock::forget($basePath);
+
+                    return;
+                }
+
+                if (! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
                     return;
                 }
 

@@ -250,6 +250,7 @@
     "Herd did not confirm HTTPS in time.": "Herd heeft HTTPS niet op tijd bevestigd.",
     "Herd did not confirm PHP 8.4 for this site.": "Herd heeft PHP 8.4 voor deze site niet bevestigd.",
     "Herd did not confirm the certificate.": "Herd heeft het certificaat niet bevestigd.",
+    "Herd did not confirm the site in time.": "Herd heeft de site niet op tijd bevestigd.",
     "Herd does not serve this site": "Herd serveert deze site niet",
     "Herd has not secured this site": "Herd heeft deze site niet beveiligd",
     "Herd is installed": "Herd is geïnstalleerd",

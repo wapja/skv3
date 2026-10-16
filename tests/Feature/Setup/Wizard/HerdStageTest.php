@@ -19,6 +19,10 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\HerdStage;
 use App\Setup\Wizard\HerdState;
+use App\Setup\Wizard\SetupLock;
+use App\Setup\Wizard\StepLauncher;
+use App\Setup\Wizard\WizardRunner;
+use App\Setup\Wizard\WizardState;
 use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -26,6 +30,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Laravel\Boost\Middleware\InjectBoost;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Fixtures\InlineStepLauncher;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -33,18 +38,38 @@ beforeEach(function (): void {
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
 });
 
-/** The state finish() leaves: the marker, and a Herd state; returns the secret. */
-$afterStepNine = function (SetupContext $context, string $startWith = 'demo', string $host = 'localhost'): string {
-    $context->answers = Answers::fromArray(
-        $startWith === 'demo' ? ['modules' => ['impersonation'], 'https' => true] : ['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery', 'modules' => ['impersonation'], 'https' => true],
-        Detection::none(),
+/**
+ * The state finish() leaves: the marker, and a Herd state; returns the secret. The Herd state keeps the context's
+ * detection (CD-15), so a test that gives the stage Herd passes a detection that says so.
+ */
+$afterStepNine = function (SetupContext $context, string $startWith = 'demo', string $host = 'localhost', ?Detection $detection = null, bool $https = true): string {
+    $detected = $detection ?? Detection::none();
+    $stage = new SetupContext($context->basePath, Answers::fromArray(
+        $startWith === 'demo' ? ['modules' => ['impersonation'], 'https' => $https] : ['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => 'correct-horse-battery', 'modules' => ['impersonation'], 'https' => $https],
+        $detected,
         $context->folderName(),
-    );
-    Marker::write($context, Summary::build($context));
+    ), $detected);
+    $context->answers = $stage->answers;
+    Marker::write($stage, Summary::build($stage));
     @unlink(new SetupToken($context->basePath)->path());
 
-    return HerdState::begin($context->basePath, $context, $host)[1];
+    return HerdState::begin($context->basePath, $stage, $host)[1];
 };
+
+/** What the Detector finds next to a Herd stub: Herd, on the pinned host. */
+$herdDetection = fn (string $host = 'localhost'): Detection => new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: $host, scheme: 'http');
+
+/**
+ * Herd's read-only listings: the project parked (served) or not, and `herd secured` printing $secured.
+ *
+ * @return array<string, mixed>
+ */
+$herdListings = fn (SetupContext $context, bool $served, string $secured = ''): array => [
+    "*herd' 'services:list'*" => Process::result(''),
+    "*herd' 'links'*" => Process::result(''),
+    "*herd' 'paths'*" => Process::result(json_encode([$served ? dirname($context->basePath) : '/somewhere/else'], JSON_THROW_ON_ERROR)),
+    "*herd' 'secured'*" => Process::result($secured),
+];
 
 /** A herd stub in a home inside the sandbox (removed with it), so the wizard sees Herd; every herd command stays faked. */
 $withHerd = function (SetupContext $context): void {
@@ -92,12 +117,72 @@ it('answers 404 on every Herd-stage endpoint outside the local environment, even
     expect(HerdState::load($context->basePath))->not->toBeNull();
 })->with(['herd-status', 'finish', 'login']);
 
-it('shows a finishing page while the Herd step runs, and the manual command after a timeout (RL-6)', function () use ($afterStepNine): void {
+it('shows a finishing page while the Herd step runs, and the manual command after a timeout (RL-6, RL-7)', function () use ($afterStepNine, $withHerd, $herdDetection, $herdListings): void {
+    // Arrange: Herd serves the site but has not secured it, so the command left is `herd secure`.
     $context = useSetupWizard();
-    $secret = $afterStepNine($context);
+    $secret = $afterStepNine($context, detection: $herdDetection());
+    $withHerd($context);
+    Process::fake($herdListings($context, served: true));
 
     $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Refresh', '2');
     $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertOk()
+        ->assertSee('herd secure '.$context->folderName())
+        ->assertSee(__('Herd did not confirm HTTPS in time.'));
+});
+
+it('offers herd link, not herd secure, while Herd does not serve the site (RL-7, g3-23)', function (bool $https, string $heading) use ($afterStepNine, $withHerd, $herdDetection, $herdListings): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context, detection: $herdDetection(), https: $https);
+    $withHerd($context);
+    Process::fake($herdListings($context, served: false));
+
+    $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertOk()
+        ->assertSee('data-test="setup-manual-herd"', false)
+        ->assertSee('herd link '.$context->folderName())
+        ->assertDontSee('herd secure')
+        ->assertSee(__($heading));
+})->with([
+    'HTTPS chosen' => [true, 'Herd did not confirm HTTPS in time.'],
+    'no HTTPS' => [false, 'Herd did not confirm the site in time.'],
+]);
+
+it('shows no command on the manual page without Herd (RL-7)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+
+    $this->get('/welcome-setup/finish?secret='.$secret.'&timeout=1')->assertOk()
+        ->assertSee('data-test="setup-manual-herd"', false)
+        ->assertDontSee('herd secure')
+        ->assertDontSee('<code', false);
+});
+
+it('is not overdue at the start when an earlier stage left its exit file (g3-24)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    File::put($context->path(HerdState::EXIT), "0\n");
+
+    $secret = $afterStepNine($context);
+
+    $this->getJson('/welcome-setup/herd-status?secret='.$secret)->assertExactJson(['state' => 'running']);
+});
+
+it('offers the manual page when the Herd step cannot start, instead of settling at once (g3-22)', function () use ($withHerd, $herdDetection, $herdListings): void {
+    // Arrange: steps 1–8 are done under Herd, which serves the site without securing it.
+    $context = useSetupWizard();
+    $withHerd($context);
+    Process::fake($herdListings($context, served: true));
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], $herdDetection(), $context->folderName());
+    new WizardState('localhost', $answers, array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->refuses = true;
+
+    $secret = app(WizardRunner::class)->finish();
+
+    expect(HerdState::load($context->basePath)?->result)->toBeNull()
+        ->and(Marker::read($context)['answers']['https'] ?? null)->toBeTrue();
+    $this->getJson('/welcome-setup/herd-status?secret='.$secret)->assertExactJson(['state' => 'timeout']);
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()
+        ->assertSee('data-test="setup-manual-herd"', false)
         ->assertSee('herd secure '.$context->folderName());
 });
 
@@ -122,10 +207,10 @@ it('shows the manual command instead of the finishing page once the poll window 
         ->assertSee('data-test="setup-manual-herd"', false);
 });
 
-it('settles a site secured by hand once herd secured lists it, when the manual page is reloaded (§5.3.4, RL-6)', function () use ($afterStepNine, $withHerd): void {
+it('settles a site secured by hand once herd secured lists it, when the manual page is reloaded (§5.3.4, RL-6)', function () use ($afterStepNine, $withHerd, $herdDetection): void {
     $context = useSetupWizard();
     $host = $context->folderName().'.test';
-    $secret = $afterStepNine($context, 'demo', $host);
+    $secret = $afterStepNine($context, 'demo', $host, $herdDetection($host));
     config(['tenancy.apex_domain' => $host]);
     $withHerd($context);
     Process::fake([
@@ -284,3 +369,75 @@ it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URL
     $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
     $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
 });
+
+it('sends a super admin with a confirmed second factor to the login page, not through a handoff (CD-14, g4-03)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context, 'super_admin');
+    User::factory()->superAdmin()->withTwoFactor()->create(['email' => 'owner@example.com']);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+
+    $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect(Hosts::url(Hosts::apex(), '/login'));
+
+    expect(HandoffToken::query()->count())->toBe(0)
+        ->and(is_file($context->path(HerdState::PATH)))->toBeFalse();
+});
+
+it('leaves no lock file when the Herd stage acts after the login used the secret (g3-02)', function (Closure $late) use ($afterStepNine): void {
+    // Arrange: the login deleted the Herd state and the lock; a request that loaded the state before arrives late.
+    $context = useSetupWizard();
+    $afterStepNine($context);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    app(HerdStage::class)->loginUrl($state);
+
+    $late($state);
+
+    expect($context->path(SetupLock::PATH))->not->toBeFile();
+})->with([
+    'the server-side confirmation' => [fn (HerdState $state): mixed => app(WizardRunner::class)->confirmHerd($state)],
+    'continue without HTTPS' => [function (HerdState $state): void {
+        app(HerdStage::class)->continueWithoutHttps($state);
+    }],
+]);
+
+/** What happens to the Herd state between a request's load and its lock (g4-12). */
+$movedOn = [
+    'the Herd step answered meanwhile' => [function (SetupContext $context): void {
+        $current = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+        $current->result = StepResult::skipped('Herd is not installed');
+        $current->save($context->basePath);
+    }],
+    'another finish replaced the state' => [function (SetupContext $context) use ($afterStepNine, $herdDetection): void {
+        $afterStepNine($context, detection: $herdDetection());
+    }],
+];
+
+it('leaves a Herd state that changed after this request loaded it on continue without HTTPS (RL-6, g4-12)', function (Closure $moveOn) use ($afterStepNine, $herdDetection): void {
+    $context = useSetupWizard();
+    $afterStepNine($context, detection: $herdDetection());
+    $stale = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $moveOn($context);
+    $before = (string) file_get_contents($context->path(HerdState::PATH));
+
+    app(HerdStage::class)->continueWithoutHttps($stale);
+
+    expect((string) file_get_contents($context->path(HerdState::PATH)))->toBe($before)
+        ->and(Marker::read($context)['answers']['https'] ?? null)->toBeTrue();
+})->with($movedOn);
+
+it('leaves a Herd state that changed after this request loaded it on the server-side confirmation (RL-6, g4-12)', function (Closure $moveOn) use ($afterStepNine, $withHerd, $herdDetection, $herdListings): void {
+    // Arrange: Herd now serves and secures the site, so a confirmation without its guards would settle the stage.
+    $context = useSetupWizard();
+    $afterStepNine($context, detection: $herdDetection());
+    $withHerd($context);
+    Process::fake($herdListings($context, served: true, secured: "| Site | Expires |\n| {$context->folderName()}.test | 2027-01-01 00:00:00 GMT |\n"));
+    $stale = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $moveOn($context);
+    $before = (string) file_get_contents($context->path(HerdState::PATH));
+
+    app(WizardRunner::class)->confirmHerd($stale);
+
+    expect((string) file_get_contents($context->path(HerdState::PATH)))->toBe($before)
+        ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->not->toStartWith('https://');
+})->with($movedOn);

@@ -10,6 +10,7 @@ use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\ShellArgument;
 use App\Setup\Support\Toolchain;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
@@ -117,7 +118,7 @@ final readonly class HerdSiteStep implements SetupStep
 
         $name = $context->folderName();
         $linked = false;
-        $pending = "herd link {$name}";
+        $pending = 'herd link '.ShellArgument::quote($name);
 
         try {
             $state = $this->siteState($context, $herd);
@@ -137,7 +138,7 @@ final readonly class HerdSiteStep implements SetupStep
                 $linked = true;
             }
 
-            $pending = 'herd isolate '.self::PHP_VERSION.' --site='.$name;
+            $pending = 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
 
             if (! $this->runsSupportedPhp($context, $herd)) {
                 $this->herd($context, $herd, ['isolate', self::PHP_VERSION, '--site='.$name]);
@@ -151,7 +152,7 @@ final readonly class HerdSiteStep implements SetupStep
                 return StepResult::done($this->withLink(__('Site served by Herd'), $linked, $name));
             }
 
-            $pending = "herd secure {$name}";
+            $pending = 'herd secure '.ShellArgument::quote($name);
 
             if (! $this->isSecured($context, $herd)) {
                 $this->herd($context, $herd, ['secure', $name]);
@@ -198,6 +199,35 @@ final readonly class HerdSiteStep implements SetupStep
         }
 
         return $this->secured($context, __('Site secured with HTTPS'));
+    }
+
+    /**
+     * The one Herd command the user still has to run for this project (RL-7): `herd link` while Herd does not serve
+     * it, `herd secure` when HTTPS was chosen, and null without Herd or with nothing left to do. A listing that fails
+     * counts as unknown, so the command HTTPS asks for is named. Only Herd's read-only listings run, so the wizard,
+     * the Herd stage and skv:run-step may call it from a web request (DEC-23).
+     */
+    public function manualCommand(SetupContext $context): ?string
+    {
+        $herd = $this->toolchain->herd();
+
+        if (! $context->detection->herd || $herd === null) {
+            return null;
+        }
+
+        $name = ShellArgument::quote($context->folderName());
+
+        try {
+            $served = $this->siteState($context, $herd) === self::SERVED;
+        } catch (Throwable) {
+            return $context->answers->https ? 'herd secure '.$name : 'herd link '.$name;
+        }
+
+        if (! $served) {
+            return 'herd link '.$name;
+        }
+
+        return $context->answers->https ? 'herd secure '.$name : null;
     }
 
     /**

@@ -281,12 +281,13 @@ if [ "$FAILED" = 0 ]; then echo "Summary: every check passed."; else echo "Summa
 
 echo
 echo "Clean up when you are done (this script runs none of these):"
+# %q quotes a name or path the shell would split or expand, so every printed line runs as it is (RL-6).
 if [ "$ENTRY" = herd ]; then
-    echo "  herd unsecure $NAME"
-    if herd_lists isolated; then echo "  herd unisolate --site=$NAME"; fi
-    if [ "$LINKED_BEFORE" = false ] && herd_lists links; then echo "  herd unlink $NAME"; fi
+    printf '  herd unsecure %q\n' "$NAME"
+    if herd_lists isolated; then printf '  herd unisolate %q\n' "--site=$NAME"; fi
+    if [ "$LINKED_BEFORE" = false ] && herd_lists links; then printf '  herd unlink %q\n' "$NAME"; fi
 fi
-echo "  rm -rf \"$TARGET\""
-echo "  rm -rf \"$WORK\""
+printf '  rm -rf %q\n' "$TARGET"
+printf '  rm -rf %q\n' "$WORK"
 
 exit "$FAILED"

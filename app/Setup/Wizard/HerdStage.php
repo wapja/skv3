@@ -6,11 +6,13 @@ namespace App\Setup\Wizard;
 
 use App\Actions\Auth\IssueHandoff;
 use App\Models\User;
+use App\Setup\Detector;
 use App\Setup\Http\DirectRequest;
 use App\Setup\Http\SetupHostGuard;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\StepResult;
+use App\Setup\Steps\HerdSiteStep;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
@@ -74,12 +76,27 @@ final readonly class HerdStage
             // A state with another secret belongs to another finish() and is not this browser's to settle.
             $current = HerdState::load($basePath);
 
-            if (! $current instanceof HerdState || ! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
+            // The login used the state up and removed the lock: this late request removes the lock it recreated (g3-02).
+            if (! $current instanceof HerdState) {
+                SetupLock::forget($basePath);
+
+                return;
+            }
+
+            if (! hash_equals($state->secretHash, $current->secretHash) || $current->result instanceof StepResult) {
                 return;
             }
 
             $this->wizard->settleWithoutHttps($current, __('Continued without HTTPS.'));
         });
+    }
+
+    /** The Herd command the manual page offers (RL-7), or null when there is none to run. */
+    public function manualCommand(HerdState $state): ?string
+    {
+        $basePath = app(SetupContext::class)->basePath;
+
+        return app(HerdSiteStep::class)->manualCommand($state->context($basePath, app(Detector::class)->detect($state->host)));
     }
 
     /**
@@ -96,8 +113,9 @@ final readonly class HerdStage
     }
 
     /**
-     * The handoff for the installed super admin, or the login page for a demo; the secret is used up (RL-6). The state
-     * is claimed under the SetupLock, so two logins never both pass and a late Herd step never writes it back.
+     * The handoff for the installed super admin, or the login page for a demo or for a super admin with a confirmed
+     * second factor, which a handoff would skip (CD-14); the secret is used up (RL-6). The state is claimed under the
+     * SetupLock, so two logins never both pass and a late Herd step never writes it back.
      */
     public function loginUrl(HerdState $state): string
     {
@@ -116,6 +134,10 @@ final readonly class HerdStage
 
         $user = Tenant::bypass(fn (): ?User => User::query()->where('email', $state->answers->superAdminEmail)->first());
         abort_unless($user instanceof User && $user->isSuperAdmin(), 404);
+
+        if ($user->two_factor_confirmed_at !== null) {
+            return Hosts::url(Hosts::apex(), '/login');
+        }
 
         return app(IssueHandoff::class)->handle($user, Hosts::admin(), '/');
     }

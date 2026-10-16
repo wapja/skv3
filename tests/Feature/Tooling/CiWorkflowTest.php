@@ -207,6 +207,18 @@ it('ships a local e2e script that never touches global Composer config (OD-3)', 
         ->and($script)->not->toContain('composer config --global --list');
 });
 
+it('quotes the names in the cleanup commands the local e2e script prints (RL-6, g2-05)', function (): void {
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+    $cleanup = Str::after($script, 'Clean up when you are done');
+
+    expect($cleanup)->toContain("printf '  herd unsecure %q\\n' \"\$NAME\"")
+        ->toContain("printf '  herd unisolate %q\\n' \"--site=\$NAME\"")
+        ->toContain("printf '  herd unlink %q\\n' \"\$NAME\"")
+        ->toContain("printf '  rm -rf %q\\n' \"\$TARGET\"")
+        // An echo would print the name as it is, so a folder with a space or a quote gives a broken command.
+        ->and(preg_match('/echo "  (herd|rm) /', $cleanup))->toBe(0);
+});
+
 it('checks in CI that the setup stylesheet is current (OD-1)', function (): void {
     expect((string) file_get_contents(base_path('.github/workflows/tests.yml')))
         ->toContain('npm run build:setup && git diff --exit-code resources/setup/setup.css');

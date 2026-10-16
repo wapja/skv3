@@ -47,7 +47,8 @@ final class HerdState
     ) {}
 
     /**
-     * Starts the Herd stage for the context of a finished step 9 and saves it.
+     * Starts the Herd stage for the context of a finished step 9 and saves it. An exit file an earlier stage left
+     * would make this one overdue from its first poll (g3-24), so it goes first.
      *
      * @return array{0: self, 1: string} the state and the plain secret, which only the page receives
      */
@@ -62,6 +63,7 @@ final class HerdState
             notes: $context->notes,
             startedAt: Date::now()->getTimestamp(),
         );
+        @unlink(rtrim($basePath, '/').'/'.self::EXIT);
         $state->save($basePath);
 
         return [$state, $secret];

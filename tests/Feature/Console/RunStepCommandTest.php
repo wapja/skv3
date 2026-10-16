@@ -14,7 +14,9 @@ use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\StateFile;
 use App\Setup\Support\Toolchain;
+use App\Setup\Wizard\HerdStage;
 use App\Setup\Wizard\HerdState;
+use App\Setup\Wizard\SetupLock;
 use App\Setup\Wizard\WizardState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -139,11 +141,23 @@ it('leaves a Herd state that another finish replaced while Herd ran (RL-6)', fun
         ->and($after?->result)->toBeNull();
 });
 
-it('applies the HTTPS consequence when the Herd step throws (OD-2, RL-6)', function (): void {
-    // Arrange: HTTPS and passkeys chosen; `herd secure` then hangs and the detached step throws.
-    $context = setupSandbox();
+it('applies the HTTPS consequence when the Herd step throws, with the Herd command left to run (OD-2, RL-6, RL-7)', function (): void {
+    // Arrange: HTTPS and passkeys chosen under Herd, which serves the site; `herd secure` then hangs and the step throws.
+    $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: 'localhost', scheme: 'http');
+    $context = setupSandbox($detection);
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home')));
+    withoutPostgresProbe();
+    Process::fake([
+        "*herd' 'services:list'*" => Process::result(''),
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+    ]);
     app()->instance(SetupContext::class, $context);
-    $context->answers = Answers::fromArray(['modules' => ['passkeys', 'impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    $context->answers = Answers::fromArray(['modules' => ['passkeys', 'impersonation'], 'https' => true], $detection, $context->folderName());
     new EnvFile($context->path('.env'))->set(['MODULE_PASSKEYS' => true]);
     Marker::write($context, []);
     HerdState::begin($context->basePath, $context, 'localhost');
@@ -160,4 +174,21 @@ it('applies the HTTPS consequence when the Herd step throws (OD-2, RL-6)', funct
         ->and($result?->command)->toBe('herd secure '.$context->folderName())
         ->and(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
         ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false');
+});
+
+it('leaves no lock file when the login used the secret while Herd ran (g3-02)', function (): void {
+    $context = setupSandbox();
+    app()->instance(SetupContext::class, $context);
+    withoutPostgresProbe();
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    Marker::write($context, []);
+    [$state] = HerdState::begin($context->basePath, $context, 'localhost');
+    app()->instance(SetupRunner::class, new SetupRunner([
+        new CallbackSetupStep('herd-site', function () use ($state): void {
+            app(HerdStage::class)->loginUrl($state);
+        }, StepResult::done(HerdSiteStep::SECURED.': late')),
+    ]));
+
+    expect(Artisan::call('skv:run-step', ['step' => 'herd-site', '--result' => $context->path(HerdState::PATH)]))->toBe(0)
+        ->and($context->path(SetupLock::PATH))->not->toBeFile();
 });

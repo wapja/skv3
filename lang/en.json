@@ -250,6 +250,7 @@
     "Herd did not confirm HTTPS in time.": "Herd did not confirm HTTPS in time.",
     "Herd did not confirm PHP 8.4 for this site.": "Herd did not confirm PHP 8.4 for this site.",
     "Herd did not confirm the certificate.": "Herd did not confirm the certificate.",
+    "Herd did not confirm the site in time.": "Herd did not confirm the site in time.",
     "Herd does not serve this site": "Herd does not serve this site",
     "Herd has not secured this site": "Herd has not secured this site",
     "Herd is installed": "Herd is installed",

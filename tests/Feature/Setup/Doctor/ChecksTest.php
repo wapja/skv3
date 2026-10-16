@@ -213,6 +213,21 @@ it('checks the certificate only when HTTPS was chosen (§5.4)', function () use 
         ->and($unsecured->fix)->toBe("herd secure {$name}");
 });
 
+it('quotes a folder name with a space in the Herd fix commands (RL-6, g2-05)', function () use ($stub, $withMarker): void {
+    $stub($this->home.'/Library/Application Support/Herd/bin/herd');
+    $spaced = setupSandbox(prefix: 'my app ');
+    $name = $spaced->folderName();
+    $context = $withMarker(new DoctorContext($spaced->basePath, $this->context->toolchain, $this->herd, null), ['https' => true]);
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),
+        "*herd' 'secured'*" => Process::result(''),
+    ]);
+
+    expect(new HerdSiteCheck()->run($context)->fix)->toBe("herd link '{$name}'")
+        ->and(new HerdSecuredCheck()->run($context)->fix)->toBe("herd secure '{$name}'");
+});
+
 it('prints the /etc/hosts lines when subdomains do not resolve without Herd (§5.4)', function (): void {
     Organisation::factory()->create(['slug' => 'acme']);
     config(['tenancy.apex_domain' => 'unresolvable.invalid']);

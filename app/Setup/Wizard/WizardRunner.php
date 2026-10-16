@@ -197,7 +197,7 @@ final readonly class WizardRunner
             $started = $this->launcher->start($basePath, 'herd-site', $root.'/'.HerdState::PATH, $root.'/'.HerdState::LOG, $root.'/'.HerdState::EXIT);
 
             if (! $started) {
-                $this->settleWithoutHttps($herd, __('The Herd step could not start in the background.'));
+                $this->launchFailed($herd, $context, $root);
             }
 
             return $secret;
@@ -205,16 +205,17 @@ final readonly class WizardRunner
     }
 
     /**
-     * Ends the Herd stage without a secured site (OD-2, RL-6): the Herd step could not start, or the user continued
-     * without HTTPS. The HTTPS consequence applies, and the marker is rewritten with the manual `herd secure`. The
-     * callers hold the SetupLock.
+     * Ends the Herd stage without a secured site (OD-2, RL-6): the Herd step could not start without Herd, or the user
+     * continued without HTTPS. The HTTPS consequence applies, and the marker is rewritten with the Herd command left to
+     * run (RL-7), or as skipped when there is none. The callers hold the SetupLock.
      */
     public function settleWithoutHttps(HerdState $herd, string $message): void
     {
         Tenant::bypass(function () use ($herd, $message): void {
             $basePath = app(SetupContext::class)->basePath;
             $context = $herd->context($basePath, $this->detector->detect($herd->host));
-            $context->results['herd-site'] = StepResult::manual('herd secure '.$context->folderName(), $message);
+            $command = app(HerdSiteStep::class)->manualCommand($context);
+            $context->results['herd-site'] = $command === null ? StepResult::skipped($message) : StepResult::manual($command, $message);
             $this->runner->applyHttpsConsequence($context);
             $this->runner->finish($context, null);
             $herd->absorb($context);
@@ -236,7 +237,14 @@ final readonly class WizardRunner
         return SetupLock::run($basePath, function () use ($herd, $basePath): ?StepResult {
             $current = HerdState::load($basePath);
 
-            if (! $current instanceof HerdState || ! hash_equals($herd->secretHash, $current->secretHash)) {
+            // The login used the state up and removed the lock: this late request removes the lock it recreated (g3-02).
+            if (! $current instanceof HerdState) {
+                SetupLock::forget($basePath);
+
+                return null;
+            }
+
+            if (! hash_equals($herd->secretHash, $current->secretHash)) {
                 return null;
             }
 
@@ -293,6 +301,22 @@ final readonly class WizardRunner
         }
 
         return $rows;
+    }
+
+    /**
+     * The Herd step could not start in the background (g3-22). With a Herd command left to run, the exit file makes
+     * the answer overdue at once, so the page offers the manual page with Reload and Continue without HTTPS; without
+     * one (no Herd), the stage ends as the step itself would have ended it.
+     */
+    private function launchFailed(HerdState $herd, SetupContext $context, string $root): void
+    {
+        if (app(HerdSiteStep::class)->manualCommand($context) === null) {
+            $this->settleWithoutHttps($herd, __('The Herd step could not start in the background.'));
+
+            return;
+        }
+
+        StateFile::write($root.'/'.HerdState::EXIT, "127\n");
     }
 
     /**

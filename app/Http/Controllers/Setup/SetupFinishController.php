@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Setup;
 
 use App\Http\Controllers\Controller;
-use App\Setup\SetupContext;
 use App\Setup\StepResult;
 use App\Setup\Wizard\HerdStage;
 use Illuminate\Contracts\View\View;
@@ -34,7 +33,8 @@ final class SetupFinishController extends Controller
 
             if (! $stage->confirm($state) instanceof StepResult) {
                 return view('setup.manual', [
-                    'command' => 'herd secure '.app(SetupContext::class)->folderName(),
+                    'command' => $stage->manualCommand($state),
+                    'https' => $state->answers->https,
                     'continueUrl' => route('setup.finish', ['secret' => $secret, 'without_https' => 1], absolute: false),
                     'reloadUrl' => route('setup.finish', ['secret' => $secret], absolute: false),
                 ]);

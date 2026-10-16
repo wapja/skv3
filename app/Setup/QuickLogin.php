@@ -7,6 +7,7 @@ namespace App\Setup;
 use App\Actions\Auth\IssueHandoff;
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Setup\Http\DirectRequest;
 use App\Tenancy\Facades\Tenant;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -14,9 +15,10 @@ use Illuminate\Support\Facades\Hash;
 use JsonException;
 
 /**
- * §6.5, RL-9: one click into a demo account, on a local demo install only. The accounts are DemoSeeder's; one that
- * is not active, has two-factor authentication or no longer uses the demo password is not offered (the handoff
- * skips the second factor by design).
+ * §6.5, RL-9: one click into a demo account, on a local demo install only, for a request straight from this machine
+ * (DEC-24: not through `herd share`, a proxy or the network, g3-15). The accounts are DemoSeeder's; one that is not
+ * active, has two-factor authentication or no longer uses the demo password is not offered (the handoff skips the
+ * second factor by design).
  */
 final readonly class QuickLogin
 {
@@ -25,7 +27,7 @@ final readonly class QuickLogin
     /** @return list<array{email: string, role: string, host: string}> */
     public function accounts(): array
     {
-        if (! app()->isLocal()) {
+        if (! DirectRequest::isDirect(request())) {
             return [];
         }
 

@@ -8,6 +8,7 @@ use App\Setup\Doctor\Check;
 use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Steps\HerdSiteStep;
+use App\Setup\Support\ShellArgument;
 
 /** §5.4: Herd serves the site, parked under a `herd paths` entry or in `herd links` (setup step 10's own rule). */
 final readonly class HerdSiteCheck implements Check
@@ -28,7 +29,7 @@ final readonly class HerdSiteCheck implements Check
             return CheckResult::skipped(__('Herd is not installed'));
         }
 
-        $command = 'herd link '.$context->folderName();
+        $command = 'herd link '.ShellArgument::quote($context->folderName());
 
         if ($context->toolchain->herd() === null) {
             return CheckResult::fail(__('The herd command was not found.'), $command);

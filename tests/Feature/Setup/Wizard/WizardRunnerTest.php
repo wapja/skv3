@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 /** covers §5.3.3, §5.3.4, §7.2 */
 
+use App\Setup\Answers;
+use App\Setup\Detection;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupToken;
@@ -194,23 +196,20 @@ it('ignores a re-check of a key that is not a page step, so a client-sent path n
     'a step outside the page' => ['marker', WizardState::STEPS.'/marker.json'],
 ]);
 
-it('applies the HTTPS consequence when the Herd step cannot start (OD-2, RL-6)', function (): void {
+it('settles at once without HTTPS when the Herd step cannot start without Herd (OD-2, RL-7, g3-22)', function (): void {
+    // Arrange: steps 1–8 are done and there is no Herd, so no Herd command is left for the user to run.
     $context = useSetupWizard();
-    $runner = app(WizardRunner::class);
-    $runner->begin(['app_name' => 'Acme', 'database' => 'sqlite', 'start_with' => 'demo', 'modules' => ['passkeys', 'impersonation'], 'https' => true, 'playwright' => false, 'claude' => false], 'localhost');
-    Process::fake(['*' => Process::result('')]);
-
-    while ($runner->advance() !== null) {
-    }
-
+    $answers = Answers::fromArray(['modules' => ['passkeys', 'impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
     /** @var InlineStepLauncher $launcher */
     $launcher = app(StepLauncher::class);
     $launcher->refuses = true;
-    $runner->finish();
+
+    app(WizardRunner::class)->finish();
 
     expect(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
-        ->and(HerdState::load($context->basePath)?->result?->status)->toBe('manual')
-        ->and((string) json_encode(Marker::read($context)))->toContain('herd secure '.$context->folderName());
+        ->and(HerdState::load($context->basePath)?->result?->toArray())->toBe(['status' => 'skipped', 'message' => __('The Herd step could not start in the background.'), 'command' => null])
+        ->and($context->path(HerdState::EXIT))->not->toBeFile();
 });
 
 it('reports the next step as running and runs nothing while another request holds the lock (§5.3.4)', function () use ($holdLock): void {
