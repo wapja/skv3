@@ -37,8 +37,10 @@ it('keeps the mode of the file it replaces and gives a new file 0644, atomically
 });
 
 it('replaces a symlink instead of writing through it (RL-1, g2-07)', function (): void {
+    // A world-writable target: a write that took the link target's mode would leave .mcp.json writable by anyone (M30).
     $outside = $this->directory.'/outside.json';
     File::put($outside, 'keep');
+    chmod($outside, 0666);
     symlink($outside, $this->directory.'/.mcp.json');
 
     ProjectFile::write($this->directory.'/.mcp.json', "{}\n");
