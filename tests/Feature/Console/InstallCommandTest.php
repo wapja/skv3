@@ -5,7 +5,6 @@ declare(strict_types=1);
 /** covers §5.3.3, §5.3.2 */
 
 use App\Models\User;
-use App\Setup\Detector;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
 use App\Setup\SetupRunner;
@@ -34,7 +33,7 @@ beforeEach(function (): void {
     app()->instance(SetupContext::class, $this->sandbox);
     app()->instance(Bootstrap::class, new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home'))));
     app()->instance(BootstrapRunner::class, app(Bootstrap::class));
-    app()->instance(Detector::class, new Detector(new Toolchain($this->sandbox->path('home'))));
+    withoutPostgresProbe();
     $this->previousConnection = config('database.default');
 });
 
@@ -303,4 +302,15 @@ it('names an unreadable answers file (RL-11)', function () use ($install): void 
 
     // The console components print paths inside the project relative to it (EnsureRelativePaths).
     expect($exit)->toBe(1)->and($output)->toContain(__('The answers file :path cannot be read.', ['path' => Str::after($this->sandbox->path('missing.json'), base_path().'/')]));
+});
+
+it('defaults to SQLite whatever PostgreSQL the machine runs (g1-13, RL-3)', function () use ($install): void {
+    /** @var array<string, mixed> $answers */
+    $answers = json_decode((string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), true, flags: JSON_THROW_ON_ERROR);
+    unset($answers['database']);
+
+    [$exitCode] = $install(['--answers' => json_encode($answers, JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and(new EnvFile($this->sandbox->path('.env'))->get('DB_CONNECTION'))->toBe('sqlite');
 });

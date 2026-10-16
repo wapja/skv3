@@ -15,6 +15,7 @@ use App\Setup\SetupContext;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\StateFile;
 use App\Tenancy\Facades\Tenant;
 use Database\Seeders\DemoSeeder;
 use Database\Seeders\EssentialsSeeder;
@@ -324,11 +325,8 @@ final class DatabaseStep implements SetupStep
                 : ['DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => self::SQLITE_DATABASE]);
         }
 
-        if (! copy($env, $testing)) {
-            throw new RuntimeException('Could not write .env.testing.');
-        }
-
-        chmod($testing, fileperms($env) & 0777);
+        // Atomically with .env's mode: .env.testing never sits at the umask's mode, and a symlink is replaced (RL-1).
+        StateFile::write($testing, (string) file_get_contents($env), fileperms($env) & 0777);
 
         new EnvFile($testing)->set([
             'APP_ENV' => 'testing',

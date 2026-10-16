@@ -182,7 +182,7 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
     expect($html)->toContain('data-test="setup-herd-stage"')
         ->and(Marker::exists($context))->toBeTrue()
         ->and(new EnvFile($context->path('.env'))->get('DB_DATABASE'))->toBe($name);
-})->skip(fn (): bool => ! app(Detector::class)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');
 
 it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers): void {
     $context = useSetupWizard();

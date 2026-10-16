@@ -81,3 +81,47 @@ it('finds the CLI php next to Herd\'s php-fpm (DEC-23)', function (): void {
     expect(new Toolchain($this->home)->which('php'))->toBe($bin.'/php')
         ->and(is_executable((string) new Toolchain($this->home)->phpCli()))->toBeTrue();
 });
+
+it('scrubs the keys of an .env that Dotenv cannot parse, without throwing (g3-08, RL-12)', function (): void {
+    $context = setupSandbox();
+    File::put($context->path('.env'), "APP_KEY=base64:x\nDB_PASSWORD=secret\nBROKEN=a b\n");
+
+    $environment = new Toolchain($this->home, $context->basePath)->environment();
+
+    expect($environment['APP_KEY'] ?? null)->toBeFalse()
+        ->and($environment['DB_PASSWORD'] ?? null)->toBeFalse()
+        ->and($environment['BROKEN'] ?? null)->toBeFalse()
+        ->and($environment['HOME'])->toBe($this->home);
+});
+
+it('parses an unchanged .env once, and again once it changes (g3-09)', function (): void {
+    $context = setupSandbox();
+    $path = $context->path('.env');
+    File::put($path, "FIRST_KEY=1\n");
+    $toolchain = new Toolchain($this->home, $context->basePath);
+
+    $first = $toolchain->environment();
+    $mtime = (int) filemtime($path);
+    // Same size, inode and mtime: the cached names stand, so this edit is not read yet.
+    File::put($path, "OTHER_KEY=1\n");
+    touch($path, $mtime);
+    $cached = $toolchain->environment();
+    touch($path, $mtime + 5);
+    $changed = $toolchain->environment();
+
+    expect($first)->toHaveKey('FIRST_KEY')
+        ->and($cached)->toHaveKey('FIRST_KEY')->not->toHaveKey('OTHER_KEY')
+        ->and($changed)->toHaveKey('OTHER_KEY')->not->toHaveKey('FIRST_KEY');
+});
+
+it('maps Herd\'s php-fpm to the CLI php next to it (g4-18, DEC-23)', function (): void {
+    $bin = $this->home.'/Library/Application Support/Herd/bin';
+
+    foreach (['php84-fpm', 'php84'] as $name) {
+        File::put($bin.'/'.$name, "#!/bin/sh\n");
+        chmod($bin.'/'.$name, 0755);
+    }
+
+    expect(new Toolchain($this->home)->phpCli(binary: $bin.'/php84-fpm'))->toBe($bin.'/php84')
+        ->and(new Toolchain($this->home)->phpCli(binary: $bin.'/php84'))->toBe($bin.'/php84');
+});

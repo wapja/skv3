@@ -27,7 +27,9 @@ final readonly class Bootstrap implements BootstrapRunner
         $env = new EnvFile($this->basePath.'/.env');
 
         if (! $env->exists() && is_file($this->basePath.'/.env.example')) {
-            copy($this->basePath.'/.env.example', $this->basePath.'/.env');
+            $example = $this->basePath.'/.env.example';
+            // Atomically, with the example's mode: a symlinked .env is replaced, never written through (RL-1).
+            StateFile::write($this->basePath.'/.env', (string) file_get_contents($example), fileperms($example) & 0777);
             $actions[] = __('Created .env from .env.example');
         }
 

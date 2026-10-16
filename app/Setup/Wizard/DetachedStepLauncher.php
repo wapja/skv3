@@ -15,8 +15,11 @@ use Throwable;
  */
 final readonly class DetachedStepLauncher implements StepLauncher
 {
-    /** Outer: $1 php, $2 key, $3 result, $4 log, $5 exit; inner: $0 php, $1 key, $2 result, $3 log, $4 exit. */
-    private const string SCRIPT = 'nohup sh -c \'"$0" artisan skv:run-step "$1" --no-interaction --result="$2" > "$3" 2>&1; echo $? > "$4"\' "$1" "$2" "$3" "$4" "$5" > /dev/null 2>&1 &';
+    /**
+     * Outer: $1 php, $2 key, $3 result, $4 log, $5 exit; inner: $0 php, $1 key, $2 result, $3 log, $4 exit. The inner
+     * script starts with umask 077, so the redirect and `echo $? >` create the log and the exit file 0600 (g3-16).
+     */
+    private const string SCRIPT = 'nohup sh -c \'umask 077; "$0" artisan skv:run-step "$1" --no-interaction --result="$2" > "$3" 2>&1; echo $? > "$4"\' "$1" "$2" "$3" "$4" "$5" > /dev/null 2>&1 &';
 
     public function __construct(private Toolchain $toolchain, private ?string $php = null) {}
 

@@ -9,6 +9,7 @@ use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
 use App\Enums\CheckStatus;
 use App\Setup\Detection;
+use App\Setup\Detector;
 use App\Setup\Doctor\Doctor;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Marker;
@@ -93,3 +94,20 @@ it('treats an unreadable marker as no marker while setup builds its context (A8)
         'start_with' => $this->sandbox->answers->startWith,
     ]);
 });
+
+it('treats a marker it cannot read as no marker, in setup and in the running application (L-09, L-10, A8)', function (): void {
+    $marker = $this->sandbox->path(Marker::FILE);
+    File::put($marker, '{}');
+    chmod($marker, 0000);
+    $toolchain = new Toolchain($this->sandbox->path('home'));
+
+    $setup = DoctorContext::fromSetup($this->sandbox, $toolchain);
+    $application = DoctorContext::forApplication($toolchain, new Detector($toolchain, postgresProbe: fn (): bool => false), basePath: $this->sandbox->basePath);
+
+    expect($setup->marker)->toBe([
+        'answers' => $this->sandbox->answers->toPublicArray(),
+        'start_with' => $this->sandbox->answers->startWith,
+    ])
+        ->and($application->basePath)->toBe($this->sandbox->basePath)
+        ->and($application->marker)->toBeNull();
+})->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');

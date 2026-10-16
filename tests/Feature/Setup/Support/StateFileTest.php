@@ -54,3 +54,32 @@ it('replaces a symlink instead of writing through it (RL-5)', function (): void 
     expect(file_get_contents($target))->toBe('keep')
         ->and(is_link($this->directory.'/state.json'))->toBeFalse();
 });
+
+it('writes with the mode it is given (RL-1)', function (): void {
+    $path = $this->directory.'/herd.yml';
+
+    StateFile::write($path, "name: x\n", mode: 0644);
+
+    expect(file_get_contents($path))->toBe("name: x\n")
+        ->and(fileperms($path) & 0777)->toBe(0644);
+});
+
+it('refuses to read a symlinked state file (RL-2, g3-07)', function (): void {
+    File::ensureDirectoryExists($this->directory);
+    $target = $this->directory.'/elsewhere.json';
+    file_put_contents($target, '{"a":1}');
+    symlink($target, $this->directory.'/state.json');
+
+    expect(fn (): ?array => StateFile::readJson($this->directory.'/state.json'))
+        ->toThrow(JsonException::class, __(':file is a symbolic link.', ['file' => 'state.json']));
+});
+
+it('refuses a state file it cannot read like a damaged one (RL-2, L-09)', function (): void {
+    File::ensureDirectoryExists($this->directory);
+    $path = $this->directory.'/state.json';
+    file_put_contents($path, '{"a":1}');
+    chmod($path, 0000);
+
+    expect(fn (): ?array => StateFile::readJson($path))
+        ->toThrow(JsonException::class, __(':file is not readable.', ['file' => 'state.json']));
+})->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');

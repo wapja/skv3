@@ -93,4 +93,4 @@ it('sets a super-admin install up on PostgreSQL and signs the owner in once (§7
         ->click('@setup-login')
         ->assertPathIs('/organisations')
         ->assertNoJavaScriptErrors();
-})->skip(fn (): bool => ! app(Detector::class)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');

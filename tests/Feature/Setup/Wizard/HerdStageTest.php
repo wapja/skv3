@@ -234,3 +234,17 @@ it('issues one handoff when two logins arrive at once (RL-6)', function () use (
     expect(fn () => app(HerdStage::class)->loginUrl($state))->toThrow(HttpException::class)
         ->and(HandoffToken::query()->count())->toBe(1);
 });
+
+it('shows the finish page without a summary when the marker no longer reads back (g3-06)', function () use ($afterStepNine): void {
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+    File::put($context->path(Marker::FILE), 'null');
+
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()
+        ->assertSee('data-test="setup-summary"', false)
+        ->assertSee('data-test="setup-login"', false)
+        ->assertDontSee('data-test="setup-next-steps"', false);
+});

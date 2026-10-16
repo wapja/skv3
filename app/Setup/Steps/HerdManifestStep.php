@@ -7,6 +7,7 @@ namespace App\Setup\Steps;
 use App\Setup\SetupContext;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
+use App\Setup\Support\ProjectFile;
 
 /**
  * §5.3.3 step 3: herd.yml with the site name, PHP 8.4, the HTTPS answer and, on pgsql, Herd's PostgreSQL 18 service.
@@ -44,7 +45,7 @@ final class HerdManifestStep implements SetupStep
 
     public function run(SetupContext $context): StepResult
     {
-        file_put_contents($context->path('herd.yml'), $this->manifest($context));
+        ProjectFile::write($context->path('herd.yml'), $this->manifest($context));
 
         return StepResult::done();
     }

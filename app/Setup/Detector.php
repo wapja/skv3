@@ -7,6 +7,7 @@ namespace App\Setup;
 use App\Setup\Support\HerdTld;
 use App\Setup\Support\Toolchain;
 use App\Support\Skv;
+use Closure;
 use Illuminate\Support\Facades\Process;
 use PDO;
 use PDOException;
@@ -18,7 +19,11 @@ use Throwable;
  */
 final readonly class Detector
 {
-    public function __construct(private Toolchain $toolchain) {}
+    /**
+     * @param  (Closure(string, int): bool)|null  $postgresProbe  replaces the PDO probe (RL-3): tests pass one, so no
+     *                                                            test opens a connection to the developer's PostgreSQL
+     */
+    public function __construct(private Toolchain $toolchain, private ?Closure $postgresProbe = null) {}
 
     /**
      * @param  string|null  $requestHost  the host of the current request, when there is one (the browser wizard); one
@@ -46,6 +51,10 @@ final readonly class Detector
     /** Whether Postgres answers with Herd's known credentials: user root, empty password, database postgres. */
     public function postgresReachable(string $host = '127.0.0.1', int $port = 5432): bool
     {
+        if ($this->postgresProbe instanceof Closure) {
+            return ($this->postgresProbe)($host, $port);
+        }
+
         try {
             new PDO("pgsql:host={$host};port={$port};dbname=postgres", 'root', '', [
                 PDO::ATTR_TIMEOUT => 2,

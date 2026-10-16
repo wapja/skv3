@@ -77,10 +77,17 @@ final readonly class HerdStage
         });
     }
 
-    /** @return array<string, mixed> the marker's summary (§5.3.4: the summary is read from the marker) */
+    /**
+     * @return array<string, mixed> the marker's summary (§5.3.4: the summary is read from the marker); none when the
+     *                              marker no longer reads back, so the finish page and its login stay usable (g3-06)
+     */
     public function summary(): array
     {
-        return Marker::read(app(SetupContext::class))['summary'] ?? [];
+        try {
+            return Marker::read(app(SetupContext::class))['summary'] ?? [];
+        } catch (JsonException) {
+            return [];
+        }
     }
 
     /**

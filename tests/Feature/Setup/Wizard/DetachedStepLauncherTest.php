@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -34,4 +35,17 @@ it('reports a launch it could not start (RL-4)', function (): void {
     Process::fake(["*sh' '-c'*" => Process::result(exitCode: 127)]);
 
     expect(new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')->start($context->basePath, 'frontend', '/r', '/l', '/e'))->toBeFalse();
+});
+
+it('creates the child\'s log and exit files private: umask 077 before any redirect (g3-16)', function (): void {
+    $context = setupSandbox();
+    Process::fake(["*sh' '-c'*" => Process::result('')]);
+
+    new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')->start($context->basePath, 'frontend', '/r.json', '/l.log', '/e.exit');
+
+    Process::assertRan(function (PendingProcess $process): bool {
+        $script = ((array) $process->command)[2] ?? null;
+
+        return is_string($script) && str_starts_with($script, "nohup sh -c 'umask 077; ");
+    });
 });

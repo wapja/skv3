@@ -37,13 +37,17 @@ final class DoctorContext
         public readonly ?array $marker,
     ) {}
 
-    /** The context of the running application: base_path(), a fresh detection and its marker. */
-    public static function forApplication(Toolchain $toolchain, Detector $detector): self
+    /**
+     * The context of the running application, or of the project at $basePath (tests pass a sandbox, L-10): a fresh
+     * detection and its marker, which is null when it is absent or unreadable (A8).
+     */
+    public static function forApplication(Toolchain $toolchain, Detector $detector, ?string $basePath = null): self
     {
+        $basePath ??= base_path();
         $detection = $detector->detect();
-        $setup = SetupContext::forApplication(Answers::defaults($detection, basename(base_path())), $detection);
+        $setup = new SetupContext($basePath, Answers::defaults($detection, basename($basePath)), $detection);
 
-        return new self(base_path(), $toolchain, $detection, self::readableMarker($setup));
+        return new self($basePath, $toolchain, $detection, self::readableMarker($setup));
     }
 
     /** The setup's context; before the marker exists, the marker-gated checks read the answers being installed (RL-8). */

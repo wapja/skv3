@@ -5,7 +5,6 @@ declare(strict_types=1);
 /** covers §4.12, §5.2, §5.3.3 */
 
 use App\Models\Organisation;
-use App\Setup\Detector;
 use App\Setup\SetupContext;
 use App\Setup\SetupToken;
 use App\Setup\Support\Bootstrap;
@@ -28,7 +27,7 @@ beforeEach(function (): void {
     // write the repository's .env, database/database.sqlite or setup token.
     app()->instance(Bootstrap::class, new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home'))));
     app()->instance(BootstrapRunner::class, app(Bootstrap::class));
-    app()->instance(Detector::class, new Detector(new Toolchain($this->sandbox->path('home'))));
+    withoutPostgresProbe();
     $this->previousConnection = config('database.default');
     $this->environment = app()->environment();
 });

@@ -395,3 +395,17 @@ it('resumes on the PostgreSQL databases it created itself after .env lost them (
     expect(new EnvFile($context->path('.env'))->get('DB_DATABASE'))->toBe($name)
         ->and(new DatabaseStep()->isComplete($context))->toBeTrue();
 })->skip(fn (): bool => config('database.default') !== 'pgsql', 'runs under composer test:pgsql only');
+
+it('writes .env.testing atomically with the mode of .env, replacing a symlink (RL-1, g2-08)', function (): void {
+    $context = setupSandbox();
+    $context->answers = Answers::fromArray(['database' => 'sqlite'], Detection::none(), $context->folderName());
+    chmod($context->path('.env'), 0640);
+    File::put($context->path('elsewhere.env'), 'keep');
+    symlink($context->path('elsewhere.env'), $context->path('.env.testing'));
+
+    expect(new DatabaseStep()->run($context)->status)->toBe('done')
+        ->and(file_get_contents($context->path('elsewhere.env')))->toBe('keep')
+        ->and(is_link($context->path('.env.testing')))->toBeFalse()
+        ->and(fileperms($context->path('.env.testing')) & 0777)->toBe(0640)
+        ->and(new EnvFile($context->path('.env.testing'))->get('DB_DATABASE'))->toBe(':memory:');
+});

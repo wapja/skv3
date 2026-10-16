@@ -670,18 +670,53 @@ it('only warns when the superpowers plugin is not installed (§5.4)', function (
         ->and(new SuperpowersCheck()->run($chosen)->status)->toBe(CheckStatus::Pass);
 });
 
-it('warns about a leftover setup token and deletes it with --fix (§5.4)', function () use ($withMarker): void {
-    $installed = $withMarker($this->context, []);
+it('warns about a leftover setup token and deletes it with --fix (§5.4)', function (): void {
     File::put($this->sandbox->path(SetupToken::PATH), Str::random(64));
-    $leftover = new SetupTokenCheck()->run($installed);
-    $fixed = new SetupTokenCheck()->fix($installed);
+    $before = new SetupTokenCheck()->run($this->context);
 
-    expect(new SetupTokenCheck()->run($this->context)->status)->toBe(CheckStatus::Skipped)
+    Marker::write($this->sandbox, []);
+    $leftover = new SetupTokenCheck()->run($this->context);
+    $fixed = new SetupTokenCheck()->fix($this->context);
+
+    expect($before->status)->toBe(CheckStatus::Skipped)
         ->and($leftover->status)->toBe(CheckStatus::Warn)
         ->and($leftover->fix)->toBe('php artisan skv:doctor --fix')
         ->and($fixed?->status)->toBe(CheckStatus::Pass)
         ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse();
 });
+
+it('checks the setup token whenever the marker file exists, also when it does not read back (L-13)', function (): void {
+    File::put($this->sandbox->path(Marker::FILE), '{"answers":');
+    File::put($this->sandbox->path(SetupToken::PATH), Str::random(64));
+
+    $leftover = new SetupTokenCheck()->run($this->context);
+    $fixed = new SetupTokenCheck()->fix($this->context);
+
+    expect($leftover->status)->toBe(CheckStatus::Warn)
+        ->and($fixed?->status)->toBe(CheckStatus::Pass)
+        ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse();
+});
+
+it('fails the marker row for a marker that is a symlink or cannot be read (F3, L-09, RL-2)', function (): void {
+    $file = $this->sandbox->path(Marker::FILE);
+    Marker::write($this->sandbox, []);
+    rename($file, $file.'.real');
+    symlink($file.'.real', $file);
+    $linked = new MarkerCheck()->run($this->context);
+
+    unlink($file);
+    rename($file.'.real', $file);
+    chmod($file, 0000);
+    $unreadable = new MarkerCheck()->run($this->context);
+    chmod($file, 0600);
+
+    $message = __('The install marker :file cannot be read', ['file' => Marker::FILE]);
+
+    expect($linked->status)->toBe(CheckStatus::Fail)
+        ->and($linked->message)->toBe($message)
+        ->and($unreadable->status)->toBe(CheckStatus::Fail)
+        ->and($unreadable->message)->toBe($message);
+})->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');
 
 it('warns without public/storage and runs storage:link with --fix (§5.4)', function (): void {
     Process::fake(["*'artisan' 'storage:link'*" => Process::result('')]);
