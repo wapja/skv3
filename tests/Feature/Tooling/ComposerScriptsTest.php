@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 /** covers §7.4 */
+
+use Illuminate\Support\Str;
+
 it('never rotates an existing APP_KEY during setup', function (): void {
     /** @var array{scripts: array{setup: list<string>}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
@@ -82,4 +85,20 @@ it('ends composer setup with the CLI after the commands the clone route repeats 
         "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
         '@php artisan skv:bootstrap --no-interaction',
     ])->and(end($setup))->toBe('@php artisan skv:install');
+});
+
+it('repeats the commands of composer setup in the clone route of scripts/e2e-local.sh (g4-25, RL-11)', function (): void {
+    /** @var array{scripts: array{setup: list<string>}} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+    $normalise = fn (string $command): string => str_replace(' --no-interaction', '', (string) preg_replace('/^@php /', 'php ', $command));
+    $clone = $normalise(Str::between((string) file_get_contents(base_path('scripts/e2e-local.sh')), "        clone)\n", ';;'));
+    $offset = 0;
+
+    foreach (array_slice($composer['scripts']['setup'], 1, 3) as $command) {
+        $position = strpos($clone, $normalise($command), $offset);
+
+        expect($position)->not->toBeFalse("The clone route lacks [{$command}] after the commands before it.");
+
+        $offset = (int) $position + 1;
+    }
 });

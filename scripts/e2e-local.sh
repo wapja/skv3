@@ -81,7 +81,8 @@ PACKAGE="$(php -r 'echo json_decode(file_get_contents($argv[1]), true, flags: JS
 
 # The real cache dir is read before COMPOSER_HOME moves, otherwise it would point into the temporary home.
 CACHE_DIR="$(composer config --global cache-dir)"
-export COMPOSER_HOME="$(mktemp -d)"
+COMPOSER_HOME="$(mktemp -d)"
+export COMPOSER_HOME
 export COMPOSER_CACHE_DIR="$CACHE_DIR"
 WORK="$(mktemp -d)"
 SERVE_PID=""

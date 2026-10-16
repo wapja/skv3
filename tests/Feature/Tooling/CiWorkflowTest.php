@@ -238,3 +238,12 @@ it('checks the wizard after every entry point in the phase-1 job (§7.2, OD-3)',
         ->toContain('SetupToken::PATH')
         ->not->toContain('composer config --global --list');
 });
+
+it('never hides a failed command substitution behind export or local in the shell scripts (g1-14)', function (): void {
+    $scripts = [...(glob(base_path('scripts/*.sh')) ?: []), ...(glob(base_path('.githooks/*')) ?: [])];
+    // `export X="$(cmd)"` returns export's status, so set -e never sees a failing cmd; assign first, then export.
+    $masked = array_values(array_filter($scripts, fn (string $path): bool => preg_match('/^\s*(?:export|local|readonly|declare)\s+(?:-\w+\s+)*[A-Za-z_]\w*="?\$\(/m', (string) file_get_contents($path)) === 1));
+
+    expect($scripts)->not->toBeEmpty()
+        ->and($masked)->toBe([]);
+});
