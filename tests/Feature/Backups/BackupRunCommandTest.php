@@ -69,6 +69,8 @@ it('judges the configuration that --config names, not the default one (CD-7)', f
 
 it('hands an encrypted backup to the package (CD-7)', function (): void {
     Exceptions::fake();
+    // The package logs the failed run and its trace: keep them out of storage/logs/laravel.log (L-08, M31).
+    config(['logging.default' => 'null']);
 
     $exit = Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true]);
     $output = Artisan::output();
