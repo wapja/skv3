@@ -35,15 +35,24 @@ it('reports a backup as active while its overlap lock is held, and leaves that l
         ->first(fn (Event $event): bool => str_contains((string) $event->command, 'backup:run'))
         ?? throw new LogicException('backup:run is not scheduled.');
 
-    // The scheduler holds this lock (default cache store) while the nightly backup runs.
-    expect($running->mutex->create($running))->toBeTrue();
+    // The page's copy builds its command line without the PHP binary, so its mutex name differs from the real event's.
+    $copy = collect(ScheduledTasks::schedule()->events())
+        ->first(fn (Event $event): bool => str_contains((string) $event->command, 'backup:run'))
+        ?? throw new LogicException('backup:run is not listed.');
+
+    // The scheduler holds this lock (default cache store) while the nightly backup runs. The copy's own name is held
+    // too, as if a copy had the real name: only the inert mutex keeps `active` from seeing either lock.
+    expect($running->mutex->create($running))->toBeTrue()
+        ->and($copy->mutex->create($copy))->toBeTrue();
 
     $active = array_column(ScheduledTasks::all(), 'active', 'task');
 
     expect($active['backup:run --only-db'])->toBeTrue()
-        ->and($running->mutex->exists($running))->toBeTrue();
+        ->and($running->mutex->exists($running))->toBeTrue()
+        ->and($copy->mutex->exists($copy))->toBeTrue();
 
     $running->mutex->forget($running);
+    $copy->mutex->forget($copy);
 });
 
 it('builds its copies without looking up the PHP binary, which forks a shell under php-fpm (CD-8, RL-7)', function (): void {
