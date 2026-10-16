@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tenancy\Auth;
 
+use App\Enums\Appearance;
+use App\Enums\Locale;
 use App\Models\User;
 use App\Support\Skv;
 use Illuminate\Auth\SessionGuard;
@@ -26,6 +28,12 @@ final class Impersonation
 
     /** HMAC of the impersonator's password hash at start; a password change ends the impersonation (RK-B4). */
     public const string IMPERSONATOR_HASH_KEY = 'impersonation.impersonator_hash';
+
+    /** The language chosen during the impersonation (G2-05): it lasts as long as the impersonation, never on the target's account. */
+    public const string LOCALE_KEY = 'impersonation.locale';
+
+    /** The appearance chosen during the impersonation (G2-05), kept like LOCALE_KEY. */
+    public const string APPEARANCE_KEY = 'impersonation.appearance';
 
     /** The module flag (§6.8), kept for existing callers; Skv::impersonationEnabled() is the one source of truth. */
     public static function enabled(): bool
@@ -63,6 +71,37 @@ final class Impersonation
     public static function target(): ?User
     {
         return self::findUser(self::targetId());
+    }
+
+    /** Whether this session is impersonating $user. */
+    public static function isTarget(User $user): bool
+    {
+        return self::isActive() && self::targetId() === $user->id;
+    }
+
+    /**
+     * Keeps a language or appearance chosen during the impersonation in the session (G2-05): UpdateLocale and
+     * UpdateAppearance call it instead of writing the impersonated user's account.
+     */
+    public static function rememberPreference(Locale|Appearance $choice): void
+    {
+        Session::put($choice instanceof Locale ? self::LOCALE_KEY : self::APPEARANCE_KEY, $choice->value);
+    }
+
+    /** The language $user sees: while this session impersonates them, the one chosen during it, else their own (G2-05). */
+    public static function localeFor(User $user): Locale
+    {
+        $chosen = self::isTarget($user) ? Locale::tryFrom((string) Session::get(self::LOCALE_KEY)) : null;
+
+        return $chosen ?? $user->locale;
+    }
+
+    /** The appearance $user sees, decided like localeFor() (G2-05). */
+    public static function appearanceFor(User $user): Appearance
+    {
+        $chosen = self::isTarget($user) ? Appearance::tryFrom((string) Session::get(self::APPEARANCE_KEY)) : null;
+
+        return $chosen ?? $user->appearance;
     }
 
     public static function impersonatorPasswordUnchanged(User $impersonator): bool
@@ -117,10 +156,10 @@ final class Impersonation
         return $impersonator;
     }
 
-    /** Forget the impersonation keys; the guard's login key is left as it is. */
+    /** Forget the impersonation keys and the preferences chosen during it; the guard's login key is left as it is. */
     public static function clear(): void
     {
-        Session::forget([self::SESSION_KEY, self::IMPERSONATOR_HASH_KEY]);
+        Session::forget([self::SESSION_KEY, self::IMPERSONATOR_HASH_KEY, self::LOCALE_KEY, self::APPEARANCE_KEY]);
     }
 
     /**

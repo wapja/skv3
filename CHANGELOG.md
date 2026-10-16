@@ -89,6 +89,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Links the kit builds for another request (password reset, email change, invitation and handoff links) and the passkey origin take their scheme and port from APP_URL, never from the request's port or forwarded headers.
 - A failed passkey sign-in is recorded in the audit log like a failed password sign-in (*Sign-in failed*, with `method: passkey`); it names the account only when the passkey belongs to a member of the host's organisation, or on the central hosts.
 - A passkey whose signature counter did not increase (a sign of a cloned authenticator) is refused as before and now also writes one warning to the log.
+- While you impersonate someone, a language or appearance you pick lasts until the impersonation ends and never changes their account.
+- The language switch in the user menu reloads the page you are on, query string and filters included.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -143,6 +145,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - With the passkeys module off, the security page refuses its passkey actions (404) even when a Livewire request calls them directly.
 - Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download, and "Regenerate codes" stays available to replace them.
 - A failed passkey sign-in never names a super admin in an organisation's audit log, also not one promoted from that organisation, and a form post with a malformed credential id no longer answers with a server error.
+- The language toggle goes back only to a page on the same host; a `Referer` from another site or another organisation's address leads to the home page instead.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

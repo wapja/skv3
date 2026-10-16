@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Enums\Locale;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
@@ -13,7 +14,10 @@ use Illuminate\Support\Facades\Date;
 /** Which language a request is answered in (§4.11, RL-8). */
 final class Locales
 {
-    /** The signed-in user's language, else the guest's choice, else the browser's preference, else the default. */
+    /**
+     * The signed-in user's language (during an impersonation the one chosen in it, G2-05), else the guest's choice, else
+     * the browser's preference, else the default.
+     */
     public static function forRequest(Request $request): Locale
     {
         return self::resolve($request, $request->user());
@@ -47,7 +51,7 @@ final class Locales
     private static function resolve(Request $request, mixed $user): Locale
     {
         if ($user instanceof User) {
-            return $user->locale;
+            return Impersonation::localeFor($user);
         }
 
         if ($request->hasSession()) {

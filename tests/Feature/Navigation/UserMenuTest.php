@@ -7,7 +7,6 @@ declare(strict_types=1);
 use App\Enums\Appearance;
 use App\Enums\Locale;
 use App\Models\Organisation;
-use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 
 it('shows the user menu with settings, language, appearance and log out on app pages', function (): void {
@@ -21,22 +20,23 @@ it('shows the user menu with settings, language, appearance and log out on app p
         ->assertSee(Locale::English->nativeName());
 });
 
-it('changes the language and reloads the page it was opened on, never the Referer (RL-7)', function (): void {
+it('changes the language and lets the browser reload the page it shows, never a redirect to a stored path or the Referer (G3-07, RL-7)', function (): void {
     $user = asOrgAdmin(Organisation::factory()->create(['slug' => 'acme']));
     $this->withHeader('Referer', 'https://evil.example/phish');
-    $snapshot = pageSnapshot(route('users.index'), 'user-menu');
+    $snapshot = pageSnapshot(route('users.index', ['search' => 'x']), 'user-menu');
 
     callPageAction($snapshot, 'setLocale', ['nl'])->assertOk()
-        ->assertJsonPath('components.0.effects.redirect', '/users');
+        ->assertJsonMissingPath('components.0.effects.redirect')
+        ->assertJsonPath('components.0.effects.xjs.0.expression', 'window.location.reload()');
 
     expect($user->fresh()?->locale)->toBe(Locale::Dutch);
 });
 
-it('keeps the return path locked against the client', function (): void {
+it('keeps no return path in its state for a client to change (G3-07)', function (): void {
     asMember(Organisation::factory()->create(['slug' => 'acme']));
 
-    Livewire::test('user-menu', ['variant' => 'sidebar'])->set('returnPath', 'https://evil.example');
-})->throws(CannotUpdateLockedPropertyException::class);
+    expect(pageSnapshot(route('dashboard'), 'user-menu')['data'])->not->toHaveKey('returnPath');
+});
 
 it('refuses an unknown language', function (): void {
     $user = asMember(Organisation::factory()->create(['slug' => 'acme']));

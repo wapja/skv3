@@ -25,7 +25,7 @@
             <flux:menu.heading>{{ __('Language') }}</flux:menu.heading>
             <flux:menu.radio.group data-test="user-menu-language">
                 @foreach ($locales as $locale)
-                    <flux:menu.radio :value="$locale->value" :checked="$user->locale === $locale" wire:click="setLocale('{{ $locale->value }}')">
+                    <flux:menu.radio :value="$locale->value" :checked="app()->getLocale() === $locale->value" data-test="user-menu-locale-{{ $locale->value }}" wire:click="setLocale('{{ $locale->value }}')">
                         {{ $locale->nativeName() }}
                     </flux:menu.radio>
                 @endforeach
