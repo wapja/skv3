@@ -5,9 +5,11 @@ declare(strict_types=1);
 /** covers §4.9 */
 
 use App\Console\Commands\BackupRunCommand;
+use App\Support\Backups\PrivateBackupTemp;
 use App\Support\Backups\RefuseUnencryptedBackups;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\Commands\BackupCommand;
 use Spatie\Backup\Config\Config;
@@ -77,3 +79,43 @@ it('hands an encrypted backup to the package (CD-7)', function (): void {
         ->and((string) preg_replace('/\s+/', ' ', $output))->not->toContain(RefuseUnencryptedBackups::MESSAGE);
     Exceptions::assertReported(BackupFailed::class);
 });
+
+it('prints its encryption refusal in the app\'s language (CD-7, M27)', function (): void {
+    app()->setLocale('nl');
+    config(['backup.backup.password' => '']);
+
+    $exit = Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true]);
+    $output = (string) preg_replace('/\s+/', ' ', Artisan::output());
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__(RefuseUnencryptedBackups::MESSAGE))
+        ->not->toContain(RefuseUnencryptedBackups::MESSAGE);
+});
+
+it('refuses with one translated line while its temporary directory is not private to this account (CD-10, M22)', function (Closure $share): void {
+    // Arrange: the directory the plaintext dump would go to is one the listener may not narrow to 0700.
+    app()->setLocale('nl');
+    $share($this->sandbox->path('backup-temp'));
+
+    $exit = Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true]);
+    $output = Artisan::output();
+
+    expect($exit)->toBe(1)
+        ->and((string) preg_replace('/\s+/', ' ', $output))->toContain(__(PrivateBackupTemp::MESSAGE))
+        ->not->toContain(PrivateBackupTemp::MESSAGE)
+        ->and($output)->not->toContain('Starting backup');
+    expect(Storage::disk('backups')->allFiles())->toBe([]);
+})->with([
+    'a symbolic link' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp.'-target');
+        symlink($temp.'-target', $temp);
+    }],
+    'a shared sticky directory' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp);
+        chmod($temp, 01777);
+    }],
+    'the system temporary directory' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp);
+        app()->instance(PrivateBackupTemp::class, new PrivateBackupTemp(systemTemp: $temp));
+    }],
+]);

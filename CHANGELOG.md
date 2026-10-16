@@ -52,7 +52,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Audit entries written by an Artisan command are tagged with the command, and the audit log shows them as *Command line*, or as the causer's name followed by *via the command line* when they have one.
 - `skv:create-organisation --as=<email>` picks the acting super admin.
 - `skv:flux-pro` marks `composer.json` with `extra.skv.flux-pro` before it requires the package, so an app that commits Flux Pro on purpose skips the kit's "never references Flux Pro in the committed composer files" test.
-- An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link.
+- An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link; `backup:run` refuses to start with one error line when the directory cannot be private (a symbolic link, a shared or the system temporary directory, or another account's).
 - `DB_CONNECT_TIMEOUT` (5 seconds, at least 1, because 0 waits forever) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
 
@@ -82,7 +82,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `/health-check` counts requests without the right key in one shared limit (300 a minute) and requests with it per key (60 a minute), so strangers cannot lock a monitor out; its 429 answers carry `Cache-Control: no-store`.
 - The System page and `/health-check` judge the running mail and health-key settings; `skv:doctor` and setup keep reading `.env`. The System page also runs the `apex` check.
 - With a PostgreSQL server on this machine the backups prefer Herd's newest `pg_dump` over the one on PATH, use a Herd binary only when it and its directories are no symbolic links, belong to you or root and are not group- or world-writable, and pass the connection's `sslmode` (`DB_SSLMODE`, or the one in `DB_URL`) to `pg_dump`.
-- `backup:run`, `backup:clean` and `backup:monitor` hold their overlap lock for 12 hours instead of 24, so a killed backup never skips the next night; `backup:run` refuses an unencrypted backup with one error line instead of an exception trace, also for a configuration chosen with `--config`.
+- `backup:run`, `backup:clean` and `backup:monitor` hold their overlap lock for 12 hours instead of 24, so a killed backup never skips the next night; `backup:run` refuses an unencrypted backup with one translated error line instead of an exception trace, also for a configuration chosen with `--config`.
 - The setup's super-admin password follows the app's password rules (`Password::default()`).
 - The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
 - The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.

@@ -740,6 +740,8 @@
     "Your unsaved changes are back. Save again to apply them.": "Je niet-opgeslagen wijzigingen staan er weer. Sla opnieuw op om ze door te voeren.",
     "[:command] failed.": "[:command] is mislukt.",
     "as :name": "als :name",
+    "backup:run refuses to start: its temporary directory (backup.backup.temporary_directory) is a symbolic link, a shared or the system temporary directory, or another account's, so the database dump would not be private. Choose a directory of this account.": "backup:run start niet: de tijdelijke map (backup.backup.temporary_directory) is een symbolische link, een gedeelde map, de tijdelijke map van het systeem of een map van een ander account, dus de databasedump zou niet privé zijn. Kies een map van dit account.",
+    "backup:run refuses to write an unencrypted backup: the running configuration has no BACKUP_ARCHIVE_PASSWORD, backup.backup.encryption turns encryption off, or this PHP zip has no AES-256. Run php artisan skv:doctor --fix, then php artisan config:cache (or config:clear) when the configuration is cached.": "backup:run weigert een onversleutelde back-up te schrijven: de draaiende configuratie heeft geen BACKUP_ARCHIVE_PASSWORD, backup.backup.encryption zet de versleuteling uit, of deze PHP-zip kent geen AES-256. Voer php artisan skv:doctor --fix uit, en daarna php artisan config:cache (of config:clear) als de configuratie gecachet is.",
     "done": "klaar",
     "e.g., MacBook Pro, iPhone": "bijv. MacBook Pro, iPhone",
     "failed": "mislukt",

@@ -6,7 +6,9 @@ declare(strict_types=1);
 
 use App\Support\Backups\PrivateBackupTemp;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
+use Spatie\Backup\Commands\BackupCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
 
@@ -188,3 +190,41 @@ it('never creates the target of a dangling temporary directory link (CD-10)', fu
     expect(file_exists($target))->toBeFalse()
         ->and(is_link($this->temp))->toBeTrue();
 });
+
+it('says whether the temporary directory is private once it is secured (CD-10, M22)', function (Closure $arrange, bool $private): void {
+    $arrange($this->temp);
+
+    expect(new PrivateBackupTemp(systemTemp: $this->sandbox->path('system-temp'))->secure())->toBe($private);
+})->with([
+    'created' => [function (string $temp): void {}, true],
+    'narrowed from 0755' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp);
+        chmod($temp, 0755);
+    }, true],
+    'a symbolic link' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp.'-target');
+        symlink($temp.'-target', $temp);
+    }, false],
+    'sticky' => [function (string $temp): void {
+        File::ensureDirectoryExists($temp);
+        chmod($temp, 01777);
+    }, false],
+]);
+
+it('still stops a backup:run that is not the app\'s command while the temporary directory is not private (CD-7, M22)', function () use ($starting): void {
+    File::ensureDirectoryExists($this->temp);
+    chmod($this->temp, 01777);
+    // Should the package's command hold the name again, the listener stays the backstop.
+    Artisan::registerCommand(app(BackupCommand::class));
+    $listener = new PrivateBackupTemp;
+
+    expect(fn () => $listener($starting('backup:run')))->toThrow(RuntimeException::class, PrivateBackupTemp::MESSAGE);
+});
+
+it('leaves the refusal to the app\'s backup:run, which prints it as one line (CD-7, M22)', function () use ($starting): void {
+    File::ensureDirectoryExists($this->temp);
+    chmod($this->temp, 01777);
+    $listener = new PrivateBackupTemp;
+
+    $listener($starting('backup:run'));
+})->throwsNoExceptions();

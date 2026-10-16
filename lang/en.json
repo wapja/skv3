@@ -740,6 +740,8 @@
     "Your unsaved changes are back. Save again to apply them.": "Your unsaved changes are back. Save again to apply them.",
     "[:command] failed.": "[:command] failed.",
     "as :name": "as :name",
+    "backup:run refuses to start: its temporary directory (backup.backup.temporary_directory) is a symbolic link, a shared or the system temporary directory, or another account's, so the database dump would not be private. Choose a directory of this account.": "backup:run refuses to start: its temporary directory (backup.backup.temporary_directory) is a symbolic link, a shared or the system temporary directory, or another account's, so the database dump would not be private. Choose a directory of this account.",
+    "backup:run refuses to write an unencrypted backup: the running configuration has no BACKUP_ARCHIVE_PASSWORD, backup.backup.encryption turns encryption off, or this PHP zip has no AES-256. Run php artisan skv:doctor --fix, then php artisan config:cache (or config:clear) when the configuration is cached.": "backup:run refuses to write an unencrypted backup: the running configuration has no BACKUP_ARCHIVE_PASSWORD, backup.backup.encryption turns encryption off, or this PHP zip has no AES-256. Run php artisan skv:doctor --fix, then php artisan config:cache (or config:clear) when the configuration is cached.",
     "done": "done",
     "e.g., MacBook Pro, iPhone": "e.g., MacBook Pro, iPhone",
     "failed": "failed",

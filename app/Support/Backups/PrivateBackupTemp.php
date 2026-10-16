@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Support\Backups;
 
+use App\Console\Commands\BackupRunCommand;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\File;
+use RuntimeException;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -20,11 +23,17 @@ use Symfony\Component\Finder\Finder;
  * A shared directory is never changed or emptied: the system temp directory, a sticky directory, or a directory
  * another account owns. Nothing here follows a symbolic link: a temporary directory or a temp/ that is one is left
  * alone, because whoever could once write the directory may have planted it to point at the application (lstat()).
+ * backup:run then refuses to start (M22): BackupRunCommand prints MESSAGE as one line, and this listener throws it
+ * should the package's command hold the name again, as RefuseUnencryptedBackups does.
  */
 final readonly class PrivateBackupTemp
 {
     /** Files older than this are left over from a killed run: a running backup keeps writing its own. */
     public const int STALE_AFTER_HOURS = 6;
+
+    public const string MESSAGE = 'backup:run refuses to start: its temporary directory (backup.backup.temporary_directory) is a symbolic link, '
+        .'a shared or the system temporary directory, or another account\'s, so the database dump would not be private. '
+        .'Choose a directory of this account.';
 
     /**
      * @param  ?string  $systemTemp  the system temporary directory; null for sys_get_temp_dir() (tests pass a sandbox)
@@ -33,13 +42,18 @@ final readonly class PrivateBackupTemp
 
     public function __invoke(CommandStarting $event): void
     {
-        if ($event->command === 'backup:run') {
-            $this->secure();
+        if ($event->command !== 'backup:run' || $this->secure() || Artisan::findCommand('backup:run') instanceof BackupRunCommand) {
+            return;
         }
+
+        throw new RuntimeException(self::MESSAGE);
     }
 
-    /** Creates the temporary directory with mode 0700, or narrows an existing one to 0700. */
-    public function secure(): void
+    /**
+     * Creates the temporary directory with mode 0700, or narrows an existing one to 0700; returns whether it is then
+     * private to this account. A shared directory or a link is left alone and is not.
+     */
+    public function secure(): bool
     {
         $directory = $this->directory();
 
@@ -47,7 +61,7 @@ final readonly class PrivateBackupTemp
             File::ensureDirectoryExists($directory, 0700);
         }
 
-        $this->narrow($directory);
+        return $this->narrow($directory) && $this->isPrivate($directory);
     }
 
     /**
