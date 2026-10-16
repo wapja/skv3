@@ -17,7 +17,7 @@ use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
 /*
  * The backups module (§4.9, §6.8, CD-6): the database only, encrypted with BACKUP_ARCHIVE_PASSWORD, on the dedicated
  * `backups` disk, mail on failure only, monitored for a backup at most a day old. Whether it runs is the module flag
- * (config('skv.modules.backups'), always off on SQLite); the schedule checks it (routes/console.php).
+ * (config('skv.modules.backups'), always off on SQLite); the schedule checks it (App\Support\Scheduler\OpsSchedule).
  */
 $name = Str::slug((string) env('APP_NAME', 'app')) ?: 'app';
 

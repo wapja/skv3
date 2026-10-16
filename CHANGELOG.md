@@ -64,19 +64,18 @@ All notable changes to this project are documented here. The format follows [Kee
 - The doctor step of setup reports the Herd site, HTTPS and the setup token as skipped, because the Herd step runs after it; `php artisan skv:doctor` checks them once setup is done.
 - The install marker is written atomically with mode 0600.
 - `skv:create-super-admin --password-stdin` reads the password from standard input and replaces `--password=`, so a password never travels in argv.
-- `skv:install --answers` also takes `@file` and `-` (standard input), and refuses inline JSON that holds a `super_admin_password`.
-- `skv:install` refuses to run in production.
-- `skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets (`HEALTH_CHECK_KEY`, `BACKUP_ARCHIVE_PASSWORD`) for a production `.env`.
+- `skv:install --answers` also takes `@file` and `-` (standard input), and refuses an inline `super_admin_password` of any type.
+- `skv:install` runs only in the `local`, `testing` and `staging` environments.
+- `skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets (`HEALTH_CHECK_KEY`, `BACKUP_ARCHIVE_PASSWORD`) for a production install: `.env` or the process environment names an `APP_ENV` outside `local`, `testing` and `staging` (`prod` and `live` too).
 - Demo data runs only in the `local` and `testing` environments; elsewhere `skv:install` refuses `start_with=demo` before anything is written.
 - The demo accounts use the app's default language.
 - `skv:create-organisation --locale` defaults to the app's default language instead of `nl`.
-- The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.1` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `X-Original-Host` or `Forwarded` header, check the pinned host on every request, start a new session when the token is accepted, and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
+- The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.0/8` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `X-Original-Host` or `Forwarded` header, check the pinned host on every request, start a new session when the token is accepted, and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
 - Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
 - The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
 - After setup, a super admin who confirmed two-factor sign-in is sent to the login page instead of signed in with the single-use link.
 - When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
 - The wizard no longer adds the demo data by default when a super admin already exists, as `skv:install` already refused.
-- `skv:install` runs only in the `local`, `testing` and `staging` environments, and refuses an inline `super_admin_password` of any type; `skv:bootstrap` treats an install as production when `.env` or the process environment names an `APP_ENV` outside `local`, `testing` and `staging` (`prod` and `live` too).
 - `skv:create-super-admin --password-stdin` refuses to read a password from a terminal, where it would echo; pipe it in.
 - A `HEALTH_CHECK_KEY` shorter than 32 characters counts as no key: `/health-check` answers 403, the doctor's `health-check-key` row fails, and `skv:doctor --fix` replaces it with a random 40-character key; setup and the production `skv:bootstrap` replace it too.
 - `/health-check` counts requests without the right key in one shared limit (300 a minute) and requests with it per key (60 a minute), so strangers cannot lock a monitor out; its 429 answers carry `Cache-Control: no-store`.

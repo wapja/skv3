@@ -8,7 +8,10 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/** The accept page's token and signature are in its URL, so it never leaks them as a referrer (RK-M12). */
+/**
+ * Pages whose URL carries a secret never leak it as a referrer: the invitation accept page's token and signature
+ * (RK-M12), the setup wizard's token and the Herd stage's secret (g3-13).
+ */
 final class SetReferrerPolicy
 {
     /** @param  Closure(Request): Response  $next */
