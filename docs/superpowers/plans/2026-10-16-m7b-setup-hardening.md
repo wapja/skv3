@@ -83,6 +83,7 @@ The rulings (RL-*) and the controller's decisions (CD-*) below are recorded as D
 - **Names:**
   - No hard-coded kit or site name (`skv`) in app-identity values.
   - The allowed forms and the state-file names are listed in `tests/Arch/NameLeakTest.php`; Task 11 tightens it to exact names.
+  - Tests set every `skv.*` key in its own `config(['skv.…' => …]);` call (one skv key per call, written first). No line under `tests/` or `app/` names `skv.` in any other form, apart from the allowed forms in `tests/Arch/NameLeakTest.php` (today `config('skv.…')` / `config(['skv.…` at the start of the call; Task 7 adds `->setting('X', 'skv.…')`).
 - **Copy and lang keys:**
   - Code, comments and docs are in English. UI copy goes through `__()`, `nl` by default, with `en`.
   - Every key goes into **both** `lang/nl.json` and `lang/en.json`: identical keys, the same order (PHP `sort()` order, byte-wise), Dutch informal "je".
@@ -128,7 +129,7 @@ The rulings (RL-*) and the controller's decisions (CD-*) below are recorded as D
   });
   ```
 
-  From Task 11 on, `tests/Pest.php` also calls `Process::preventStrayProcesses()` for every test under `Feature/Setup` and `Feature/Console` (RL-12).
+  From Task 11 on, `tests/Pest.php` also calls `Process::preventStrayProcesses()` and `Process::fake([])` for every test under `Feature/Setup`, `Feature/Console`, `Feature/Backups`, `Feature/Health` and `Feature/System` (RL-12).
 - **Process fake keys** use Symfony's single-quoted command line: `"*herd' 'secured'*"`, `"*'git' 'init'*"`. Bare spaces never match.
 - **Doctor tests** build checks directly (`new MailCheck()->run($context)`) against `new DoctorContext($sandbox->basePath, new Toolchain($sandbox->path('home')), Detection::none(), null)`.
 - **Wizard tests** use `useSetupWizard()`, `pageSnapshot()` and `callPageAction()` over HTTP, as `tests/Feature/Setup/Wizard/WizardPageTest.php` does.
@@ -201,6 +202,7 @@ Not in scope:
   - A Herd-glob candidate is accepted only when it and every directory up to `/Users/Shared/Herd` are owned by the current user or root and are not group- or world-writable.
   - No version probe: the System page must not start a process.
 - **CD-7, a clean refusal (O1):** the app registers `App\Console\Commands\BackupRunCommand`, which extends spatie's `BackupCommand` under the same `backup:run` signature. The kernel's discovered commands register after the package's, so the app command wins the name.
+  - It first resolves a `--config` option (`$this->config = $this->resolveConfig()`): the package swaps `config('backup')` for that configuration only inside `parent::handle()`, so the check below judges the configuration this run will use, and `backup:run --config=<other>` cannot write a plaintext archive.
   - While `BackupEncryption::available()` is false, it prints one error line (the M7a refusal text) and returns 1.
   - Otherwise it calls `parent::handle()`.
   - `RefuseUnencryptedBackups` stays as the backstop. `CommandStarting` fires before `handle()`, so the listener steps aside while `Artisan::findCommand('backup:run')` is the app's `BackupRunCommand`, and still throws when the package's command holds the name.
@@ -208,11 +210,11 @@ Not in scope:
 - **CD-8, the ops schedule (F1, F8, L-39):**
   - `App\Support\Scheduler\OpsSchedule::define(Schedule $schedule): void` holds the ops events: eight after Task 9, nine once Task 10 adds `backup-temp-cleanup`. `routes/console.php` calls it.
   - `ScheduledTasks` builds a fresh `Schedule`, calls `define()` and evaluates each event's filters after `preventOverlapsUsing(new InertEventMutex())`. These are copies, not the events the scheduler runs. So a System page render never boots the console kernel and never touches a real overlap lock.
-- **CD-9, sizes without intl (F20):** `App\Support\ByteSize::format(int|float $bytes): string` (1024-based, `B`, `KB`, `MB`, `GB`, `TB`, at most one decimal) replaces `Number::fileSize()`. An arch rule bans `Illuminate\Support\Number` in `app/` and `resources/views/pages`.
+- **CD-9, sizes without intl (F20):** `App\Support\ByteSize::format(int|float $bytes): string` (1024-based, `B`, `KB`, `MB`, `GB`, `TB`, at most one decimal) replaces `Number::fileSize()`. An arch rule bans `Illuminate\Support\Number` (and `Number::`) in `app/` and `resources/views`, comments included.
 - **CD-10, stale dumps and the overlap lock (F6, F18, L-07):**
   - `backup:run`, `backup:clean` and `backup:monitor` use `withoutOverlapping(720)`, so a killed run's lock has expired by the next night.
   - A `CommandStarting` listener for `backup:run`, `App\Support\Backups\PrivateBackupTemp`, creates the temporary directory with mode 0700, or chmods an existing one to 0700.
-  - A scheduled closure `backup-temp-cleanup` runs at 01:15 while the module is on. It empties the temporary directory of files older than six hours, files only. No new health check.
+  - A scheduled closure `backup-temp-cleanup` runs hourly at :15 (`hourlyAt(15)`), also while the module is off, so a dump left behind before the module was switched off still goes (F18). It removes only files older than six hours under the package's working directory, `<temporary_directory>/temp`, where every file the package writes goes; files only, never directories, and nothing else in the temporary directory. Without that directory it does nothing. No new health check.
   - The cleanup runs on every server, without `onOneServer()`, because each server has its own temporary directory.
   - `PrivateBackupTemp` never changes the mode of, or empties, the system temporary directory, a sticky directory or one another account owns.
 - **CD-11, AGENTS.md without Claude (g1-25, g1-26):** DEC-25 (3) is superseded. `laravel/boost` stays in `require-dev`, but `boost:install`, which writes `AGENTS.md`, runs only in setup's Claude step, so `AGENTS.md` exists only with the Claude answer. The CHANGELOG line is corrected; no code change.
@@ -252,6 +254,7 @@ Not in scope:
   - **With no pinned host (before `begin()`):** true when `SetupHost::forWizard()` accepts the request host.
 
   It is used by `SetupMode::homeRedirect()` and `HerdStage::state()` in both forms. `EnsureSetupAccess::authorised()` applies it only once a `WizardState` has pinned a host: before `begin()` the page must still render the host-problem callout (g4-15), and only `/` hands out the token, which is guarded. The pinned host is `WizardState::$host` or `HerdState::$host`.
+  - **`/` on a refused host before `begin()`:** never the token, but never a silent login page either. `SetupHostGuard::resolve()` also returns a `suggestion`, and `SetupMode::homeHostProblem()` hands it out with the problem. `/` then redirects token-less to the suggestion (`http://localhost[:port]` without Herd, `http://{folder}.{tld}` under Herd, g3-34). When there is none (a folder that is no DNS label, g3-10; a failed `herd tld`, g3-28), it renders `setup.host-problem` in `layouts::setup` with status 409. After `begin()`, a host other than the pinned one still lands on the login page.
 - **RL-6, `ShellArgument` (Task 3, g2-05):** `App\Setup\Support\ShellArgument::quote(string $value): string` returns `$value` unchanged when it matches `/^[A-Za-z0-9._\/:=@%+-]+$/`, else `escapeshellarg($value)`. It is used for every command the kit *prints* (manual and fix commands). Process argv is unchanged.
 - **RL-7, the manual Herd command (Task 3, g3-23):** `HerdSiteStep::manualCommand(SetupContext $context): ?string` returns:
   - `null` without Herd
@@ -261,13 +264,13 @@ Not in scope:
 
   The wizard runner, `SetupFinishController` and `RunStepCommand` use it.
 - **RL-8, the long step's process (Task 4, g3-12):**
-  - `StepLauncher::start()` gains `?string $pidFile = null`. The detached inner `sh -c` writes its own `$$` to `<step>.pid`, runs php and then writes the exit code, so the pid lives exactly as long as the step (no `exec`, which would leave nothing to write the exit code). `<step>.started` is written empty; only its mtime is read.
+  - `StepLauncher::start()` gains `?string $pidFile = null`. The detached inner `sh -c` writes its own `$$` into `<step>.started`, runs php and then writes the exit code, so the pid lives exactly as long as the step (no `exec`, which would leave nothing to write the exit code). `WizardRunner` writes `<step>.started` empty first; its mtime still marks the start.
   - `WizardRunner::recheck()` refuses with "This step is still running." while `posix_kill($pid, 0)` reports the process alive.
-  - The 30-minute stall rule reports a live pid as still running.
+  - The 30-minute stall rule reports a live pid as still running, for at most four hours after the step started (`WizardRunner::LIVE_PID_SECONDS = 14400`). A shell that died without writing the exit file (a reboot, an OOM kill) leaves a pid that another process of the same user can get later; after the bound the stall rule decides again, and Re-check works.
 - **RL-9, one super-admin creator (Task 5, g2-11, g2-13):** `App\Authorization\SetSuperAdmin::createNew(array $attributes): User`. In one `DB::transaction()`, it inserts a user with `is_super_admin = true`, `organisation_id = null` and status Active, then calls `handleCreated()`. Callers: DatabaseStep, `skv:create-super-admin` and DemoSeeder.
 - **RL-10, the generated secrets (Task 5, L-56):** `EnvironmentStep::missingSecrets(EnvFile $env): array<string, string>` returns a fresh random value (with the `GENERATED` length) for every blank `GENERATED` key. EnvironmentStep, Bootstrap and BackupPasswordCheck use it.
 - **RL-11, the ops store (Task 8, F7):** `App\Support\Health\OpsCache::store(): Illuminate\Contracts\Cache\Repository` returns `Cache::store((string) config('skv.ops_cache_store', 'file'))`. HealthReport, Heartbeat, ThrottleHealthChecks and the System page's limiter use it.
-- **RL-12, the stray-process guard (Task 11, g4-09):** `preventStrayProcesses()` refuses nothing until `Process::fake()` is recording, so `tests/Pest.php` adds `pest()->beforeEach(function (): void { Process::preventStrayProcesses(); Process::fake([]); })->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System')`. A new arch test fails on a catch-all fake anywhere under `tests/`: `Process::fake(['*' …`, a bare `Process::fake()` and closure forms. A test that must run a real process (only `BackupRunTest`'s real `pg_dump`) opts out explicitly.
+- **RL-12, the stray-process guard (Task 11, g4-09):** `preventStrayProcesses()` refuses nothing until `Process::fake()` is recording, so `tests/Pest.php` adds `pest()->beforeEach(function (): void { Process::preventStrayProcesses(); Process::fake([]); })->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System')`. A new arch test fails on a catch-all fake anywhere under `tests/`: a `'*'` key anywhere in a fake's array, a bare `Process::fake()` and closure forms. The scan reads raw text, so no comment under `tests/` may spell those forms either. A test that must run a real process (only `BackupRunTest`'s real `pg_dump`) opts out explicitly.
 
 ## Requirement traceability
 
@@ -385,6 +388,7 @@ These are facts from the code on `2473d50` that change or narrow what part0.md s
    - `SetupMode::homeRedirect()` (the token leak) uses `SetupHostGuard::allows($request, $pinned)` with the pinned host, or with null before `begin()`. This follows RL-5 exactly.
    - `HerdStage::state()` uses `HerdState::$host`. This also follows RL-5 exactly.
    - `authorised()` applies the guard only once a `WizardState` has pinned a host. Before that, the page renders the problem and `begin()` refuses to pin.
+   - `/` on a host `homeRedirect()` refuses goes through `SetupMode::homeHostProblem()` (RL-5's last bullet): a token-less redirect to the suggestion, or the problem with 409. Without it, a user who opens `http://127.0.0.1:8000` (what `php artisan serve` prints) would land on the login page with no hint, since the callout on `/welcome-setup` needs the token.
 
    Nothing leaks before `begin()`: the page itself never shows the token, and a token can be had only from the file or from `homeRedirect()`.
 2. **RL-1 "skv:flux-pro's composer edit" has no PHP write today.** `FluxProCommand` runs `composer config repositories.flux-pro …` and `composer require`, and Composer writes `composer.json` itself. Task 1 therefore changes nothing in that command. Task 11 (CD-13, writing `extra.skv.flux-pro: true`) should write through `ProjectFile::write()`, or run `composer config extra.skv.flux-pro true --json`.
@@ -396,7 +400,7 @@ These are facts from the code on `2473d50` that change or narrow what part0.md s
    - g1-13's PATH half stays: `which('claude')` still scans `/usr/local/bin:/opt/homebrew/bin`, a read-only `stat()`. RL-3 covers the probe only.
 5. **`Toolchain` stops being a `readonly` class.** PHP forbids static properties in readonly classes ("Static property … cannot be readonly"), and g3-09's memo needs one. Its two constructor properties stay `private readonly`.
 6. **g3-27's proposed fix does not work.** A middleware calling `setPreviousUrl()` gets overwritten: `StartSession::storeCurrentUrl()` stores `$request->fullUrl()` after the route middleware has returned, and `fullUrl()` reads `server['QUERY_STRING']`. Task 2 therefore removes `token` from both the query bag and `QUERY_STRING` before it redirects.
-7. **g3-34 plus RL-5 break `scripts/e2e-local.sh` for the entries that do not use Herd.** Those entries open `http://127.0.0.1:$PORT`. On a machine with Herd installed, the wizard pins only `{folder}.{tld}`, even for a site that `php artisan serve` serves (this is A19 as it is today). After RL-5, `/` there no longer hands out the token. Task 2 makes the script reach `artisan serve` through `curl --resolve`: under `{folder}.{tld}` (asking `herd tld`, read-only) when Herd is installed, else under `localhost`. CI's phase1 job runs on Linux without Herd, so it uses `localhost:$PORT`.
+7. **g3-34 plus RL-5 break `scripts/e2e-local.sh` for the entries that do not use Herd.** Those entries open `http://127.0.0.1:$PORT`. On a machine with Herd installed, the wizard pins only `{folder}.{tld}`, even for a site that `php artisan serve` serves (this is A19 as it is today). After RL-5, `/` there no longer hands out the token. Task 2 makes the script reach `artisan serve` through `curl --resolve`: under `{folder}.{tld}` (asking `herd tld`, read-only) when Herd is installed, else under `localhost`. CI's phase1 job runs on Linux without Herd, so it uses `localhost:$PORT`. RL-5's token-less redirect on a refused host does not make the wrapper unnecessary: the script checks that the first `Location` from `/` carries the token, and the suggested name must still reach this `artisan serve`.
 8. **RL-4 keeps `X-Original-Host`.** RL-4 lists the `x-forwarded-` and `x-expose-` prefixes plus `Forwarded`. `DirectRequest` also refuses `X-Original-Host` today, and SetupAccessTest/SetupModeTest have a dataset row for it, so Task 2 keeps it.
 9. **g1-17 is only half fixed.** Task 2 keeps the port of the current `APP_URL` when its host is the detected host and Herd is absent. The wizard half ("the request's port when Herd is absent") is not done: it needs a `port` in `Detection`. That port would come from the request host in `begin()` and from the stored snapshot in `advance()`, where step 1 runs, which is CD-15's `Detection::toArray()` in Task 4. With g3-34 now suggesting `http://localhost:8000`, a wizard run on `localhost:8000` with `APP_URL=http://localhost` still writes `http://localhost`. If the controller wants that half, Task 4 should:
    - add `public ?int $port = null` to `Detection` and `toArray()`
@@ -405,9 +409,9 @@ These are facts from the code on `2473d50` that change or narrow what part0.md s
 10. **g3-10's CLI half lives in `InstallCommand`, not in `InstallPreflight`.** `Detection::$host` comes from `basename(base_path())`, so the check reads the setup context's folder. Under Herd, a folder that is not one DNS label is refused before anything runs.
 11. **Docs for Task 12** (not edited here, per part0's split):
     - README:47 (now true: any `X-Forwarded-*`, plus loopback only)
-    - README:49 and handleiding:639 (no `127.0.0.1` without Herd; `localhost` on the same port)
+    - README:49 and handleiding:639 (no `127.0.0.1` without Herd; `localhost` on the same port). "On any other host the wizard names the address to use" now holds from `/` too: it redirects to that address without the token, or shows the folder or `herd tld` problem (409) when there is no address (RL-5).
     - README:73 (the detached `.log`/`.exit` files are now 0600, but not atomic)
-    - a DEC-33 sentence for RL-4 (loopback `REMOTE_ADDR`) and RL-5 (the pinned host; the guard waits for the pin, see note 1)
+    - a DEC-33 sentence for RL-4 (loopback `REMOTE_ADDR`) and RL-5 (the pinned host; the guard waits for the pin, see note 1; `/` on a refused host redirects token-less or answers 409), with its residual: without Herd, before `begin()`, a DNS-rebinding page on a `*.test` name can still be handed the token by `/`
 12. **`MarkerCheck` gets a third message**, "The install marker :file cannot be read", for a symlinked or unreadable marker (RL-2, F3 (4)). "is not valid JSON" would misdescribe both.
 
 ---
@@ -530,7 +534,7 @@ Facts checked against `main` `2473d50` and `vendor/` while writing Tasks 9 and 1
 4. **Additions to CD-10:**
    - `backup-temp-cleanup` has no `onOneServer()`, because the temporary directory is local to each server.
    - `PrivateBackupTemp` never chmods or empties the system temp directory, a sticky directory, or a directory owned by another account. This is a guard against a `temporary_directory` that points at `/tmp`.
-   - The cleanup removes files only, not directories. The package's `force()->create()` recreates `temp/` at the next run.
+   - The cleanup removes files only, not directories, and scans only `<temporary_directory>/temp`, never the rest of a `temporary_directory` that may be shared. The package's `force()->create()` recreates `temp/` at the next run.
    - A refused `backup:run` still runs the other `CommandStarting` listeners (`ConfigurePgDump`, `PrivateBackupTemp`) before `handle()` refuses. This is harmless.
 5. **Task 8 dependency (F4).** Task 9's test with a broken ops store (`skv.ops_cache_store = 'no-such-store'`) assumes two things:
    - `HealthReport::cached()` and `Heartbeat::last()` still throw when `OpsCache::store()` cannot resolve the store. Task 8's L-30 guards only `refresh()`'s `put()`.
@@ -553,7 +557,7 @@ Facts checked against `main` `2473d50` and `vendor/` while writing Tasks 9 and 1
 12. **Counts that Task 10 changes in Task 9's tests (as asked):**
     - `ScheduleTest` 'schedules exactly…' goes from 8 to 9 identifiers.
     - `ScheduleTest`'s timing dataset gains a row and two columns.
-    - `ScheduleTest`'s module test gains `backup-temp-cleanup`.
+    - `ScheduleTest`'s module test ('runs the backup jobs only while the backups module is on') does not list `backup-temp-cleanup`, which runs while the module is off too (CD-10).
     - `ScheduledTasksTest`'s expected list goes from 8 to 9 tasks.
 
     No `SystemPageTest` assertion counts the tasks.
@@ -565,7 +569,7 @@ Facts checked against `main` `2473d50` and `vendor/` while writing Tasks 9 and 1
 Facts from the code on `m7b-setup-hardening` (= `main` `2473d50`) that contradict or sharpen part0. Tasks 11 and 12 follow the code.
 
 1. **RL-12 as written guards nothing.** `PendingProcess::run()` and `start()` refuse a stray process only while `$this->factory->isRecording()`, and recording starts with `Process::fake()` (vendor `Illuminate/Process/PendingProcess.php:252-256`, `Factory::fake()`). So `Process::preventStrayProcesses()` alone is a no-op in a file that never fakes. Today that is `SetupHostTest`, `CheckStatusTest`, `SetupLayoutTest`, `BackupConfigTest`, `RefuseUnencryptedBackupsTest` and `BackupRunTest`. Task 11's hook therefore calls `Process::preventStrayProcesses()` **and** `Process::fake([])`. `BackupRunTest` needs an opt-out for its real `pg_dump --version` probe if Task 10 (F19) moved that probe onto the `Process` facade. spatie's dumper uses Symfony's `Process` directly, so the facade fake never touches `backup:run`.
-2. **Two more catch-alls.** Besides the 17 `Process::fake(['*' …])` in 9 files, `Process::fake()` with no argument installs a `'*'` handler too (`Factory::fake()` with `null`). There are two: `BootstrapTest.php:93` and `ClaudeStepTest.php:120`. The arch rule bans the bare form, closure forms and `'*'` keys. Its regex was validated against today's tree: 19 hits in 10 files, and no false hit on keys such as `"*'services:list'*"`.
+2. **Two more catch-alls.** Besides the 18 `'*'` keys in 10 files (one at `BootstrapTest.php:151`, not first in its array), `Process::fake()` with no argument installs a `'*'` handler too (`Factory::fake()` with `null`). There are two: `BootstrapTest.php:93` and `ClaudeStepTest.php:120`. The arch rule bans the bare form, closure forms and `'*'` keys. Its regex was validated against today's tree: 20 hits in 10 files, and no false hit on keys such as `"*'services:list'*"`.
 3. **g4-22's suggested fix does not work.** `Playwright::usingTimeout()` sets only the client's request timeout. `AwaitableWebpage::__call()` retries an assertion through `Execution::waitForExpectation()`, which reads `Playwright::timeout()`, the static assertion timeout (5 000 ms by default), and runs each attempt under `usingTimeout(1_000)`. So `usingTimeout(120_000, fn () => $page->assertPresent(…))` still gives up after 5 s. Task 11 raises `Playwright::setTimeout()` for one wait and restores it. Checked in vendor `pest-plugin-browser` v5.1.2; Larastan level 8 accepts the `@internal` class from tests (probed on a scratch file).
 4. **CD-13's mark goes through Composer, not `ProjectFile`.**
    - `skv:flux-pro` writes the mark with `composer config extra.skv.flux-pro true --json`. Composer then keeps the file's format, and the tests fake the command, so no test writes the repository's `composer.json`. `FluxProCommand` uses `base_path()` and has no seam for a sandbox.
@@ -593,6 +597,13 @@ Facts from the code on `m7b-setup-hardening` (= `main` `2473d50`) that contradic
 15. **Machine-dependent commands.** `Toolchain::which()` scans the real system PATH (`/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin…`). Doctor and install runs therefore start `node -v` where Node is installed (this machine: `/opt/homebrew/bin/node`), `claude plugin list` where Claude Code is on that PATH, and `composer config http-basic…` where Flux Pro is installed (CI's main job runs `skv:flux-pro` before `composer check`). Task 11's patterns cover each, so a test behaves the same everywhere.
 
 ---
+
+#### Notes from the plan review
+
+1. **`NameLeakTest` already scans `tests/`.** `tests/Arch/NameLeakTest.php` covers `base_path('tests')` today (minus itself), and a config key passes only as `config('skv.…` or `config(['skv.…`, with the key right after the opening; any `skv` left on a line once the allowed forms are stripped (case-insensitive) is a hit. So every task's test code must pass it at that task's own gate, not only after Task 11 widens the scan to `app/`. Follow the Names rule in Global Constraints: one `skv.*` key per `config([...])` call, written first. Task 7 adds the `->setting('X', 'skv.` allowed form for `DoctorContext::setting()` (CD-5), and Task 11 carries it into its rewritten `$allowed`.
+2. **Runtime rows are set with `config()`.** After Task 7 (CD-5), the System page and `/health-check` read `MAIL_*` and `HEALTH_CHECK_KEY` from the running configuration, not from `.env`. Tests of those rows (Tasks 7–9) set them with `config(['skv.health_check.key' => …])` / `config(['mail.…' => …])`, never by editing a sandbox `.env`, and never depend on the developer's own `.env`.
+3. **spatie's `Config` is a cached object.** spatie/laravel-backup 10 resolves `Spatie\Backup\Config\Config` once. Tests that change `backup.*` after boot (Task 10's `BackupRunCommandTest` and `RefuseUnencryptedBackupsTest`) call `Config::rebind()` after their `config([...])` call, or the command reads the boot-time configuration.
+4. **No interactive git.** `git add -p` and other interactive commands do not work in an agent shell. Where two commits of a task touch the same file, fold the overlap into the later commit.
 
 ---
 
@@ -1769,11 +1780,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: The setup gate and hosts (g4-01, g3-17, g3-25, g3-26, g3-27, g3-28, g3-10, g3-34, g1-17, g3-13, g3-35, g4-17, g4-15, g3-33; RL-4, RL-5)
 
 **Files:**
-- Create: `app/Setup/Http/SetupHostGuard.php`
+- Create:
+  - `app/Setup/Http/SetupHostGuard.php`
+  - `resources/views/setup/host-problem.blade.php` (`/` on a refused host with no address to suggest)
 - Modify:
   - `app/Setup/Http/DirectRequest.php` (RL-4)
   - `app/Setup/Http/EnsureSetupAccess.php` (session regeneration, no token in `_previous.url`, the pinned host)
-  - `app/Setup/SetupMode.php` (`homeRedirect()` only on an allowed host)
+  - `app/Setup/SetupMode.php` (`homeRedirect()` only on an allowed host; `homeHostProblem()` for the others)
+  - `routes/web.php` (`/` on a refused host: a token-less redirect to the suggestion, or the problem with 409)
   - `app/Setup/SetupHost.php` (no IP without Herd; `folderProblem()`)
   - `app/Setup/Wizard/HerdStage.php` (`state()` checks the pinned host)
   - `app/Setup/Wizard/WizardRunner.php` (`defaults()`, `begin()` and `host()` through `SetupHostGuard::resolve()`)
@@ -1783,7 +1797,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `app/Console/Commands/InstallCommand.php` (the folder under Herd)
   - `scripts/e2e-local.sh` (the entries without Herd reach the wizard under a host it pins)
   - `lang/nl.json`, `lang/en.json`
-  - `resources/setup/setup.css`, only if `npm run build:setup` changes it
+  - `resources/setup/setup.css`, after `npm run build:setup` (the new view sits under `resources/views/setup`)
 - Test:
   - `tests/Feature/Setup/Wizard/SetupAccessTest.php`, `tests/Feature/Setup/Wizard/HerdStageTest.php`
   - `tests/Feature/Setup/SetupModeTest.php`, `tests/Feature/Setup/SetupHostTest.php`
@@ -1803,7 +1817,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `App\Setup\Http\SetupHostGuard`:
     - `allows(Request $request, ?string $pinned): bool` (RL-5)
     - `pinnedWizardHost(string $basePath): ?string`
-    - `resolve(string $httpHost, Toolchain $toolchain, string $folder): array{host: ?string, problem: ?string}`
+    - `resolve(string $httpHost, Toolchain $toolchain, string $folder): array{host: ?string, problem: ?string, suggestion: ?string}`. `suggestion` is the address to open on refusal: `http://localhost[:port]` without Herd, `http://{folder}.{tld}` under Herd, null for a folder that is no DNS label or a failed `herd tld`.
+  - `SetupMode::homeHostProblem(Request $request): ?array` (`array{suggestion: ?string, problem: string}|null`): non-null only in setup mode, for a direct request, with a token, while no super admin exists and no host is pinned, when `resolve()` refuses the host
+  - `/` on such a host: a token-less `redirect()->away()` to the suggestion, or the `setup.host-problem` view (in `layouts::setup`) with status 409 when there is none
   - `SetupHost::folderProblem(string $folder): ?string`
   - `SetupHost::forWizard()` without Herd: `localhost`, `*.localhost` or `*.test`, never an IP address (g3-34)
   - `WizardRunner::defaults(string $requestHost): array{answers: Answers, host: ?string, problem: ?string}`. The page passes `getHttpHost()` (host[:port]) to `defaults()` and `begin()`.
@@ -1885,7 +1901,7 @@ it('answers only on the pinned host and its admin host once setup has started (R
     callPageAction($snapshot, '$refresh', host: Hosts::admin())->assertOk();
     callPageAction($snapshot, 'advance', host: Hosts::tenant('acme'))->assertNotFound();
     $this->get(Hosts::url(Hosts::tenant('acme'), '/welcome-setup'))->assertNotFound();
-    $this->get('/welcome-setup')->assertOk();
+    $this->get(Hosts::url(Hosts::apex(), '/welcome-setup'))->assertOk();
 });
 
 it('opens on the apex, the admin host and a tenant host until the marker exists (§6.2, g3-35)', function (string $host): void {
@@ -1904,6 +1920,8 @@ it('opens on the apex, the admin host and a tenant host until the marker exists 
     'tenant' => fn (): string => Hosts::tenant('acme'),
 ]);
 ```
+
+> After a request to another host, the test client resolves a relative URI against that host: `url()` follows the last request. So in 'answers only on the pinned host…', every request after the cross-host one spells its host with `Hosts::url()`; a bare `'/welcome-setup'` there would go to `acme.localhost` and get the guard's 404.
 
 `tests/Feature/Setup/Wizard/HerdStageTest.php`: add `use App\Models\Organisation;`, then:
 
@@ -1975,7 +1993,26 @@ it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URL
 });
 ```
 
-`tests/Feature/Setup/SetupModeTest.php`: add:
+`tests/Feature/Setup/SetupModeTest.php`:
+- Add `use App\Setup\SetupContext;` and `use Illuminate\Support\Facades\File;`.
+- After the `beforeEach`, add the file-local Herd stub:
+
+```php
+// Herd installed in the sandbox home; `herd tld` answers "test", or fails with $tldExitCode.
+$withHerd = function (SetupContext $context, int $tldExitCode = 0): void {
+    $herd = $context->path('home/Library/Application Support/Herd/bin/herd');
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    app()->instance(Toolchain::class, new Toolchain($context->path('home'), $context->basePath));
+    Process::fake([
+        "*herd' 'tld'*" => Process::result($tldExitCode === 0 ? "test\n" : '', exitCode: $tldExitCode),
+        "*herd' 'services:list' '--json'*" => Process::result(''),
+    ]);
+};
+```
+
+- Add:
 
 ```php
 it('hands the token out only on a host the wizard can pin (RL-5, g3-25)', function (): void {
@@ -1987,7 +2024,38 @@ it('hands the token out only on a host the wizard can pin (RL-5, g3-25)', functi
     expect($refused)->not->toContain('token=');
     $this->get('http://acme.localhost/')->assertRedirectContains('/welcome-setup?token='.$token);
 });
+
+it('sends / on a host the wizard refuses to the address to use, without the token (§5.3.4, g3-34)', function (): void {
+    useSetupWizard();
+
+    $location = (string) $this->get('http://127.0.0.1:8000/')->assertRedirect('http://localhost:8000/')->headers->get('Location');
+
+    expect($location)->not->toContain('token=');
+});
+
+it('shows the folder problem on / under Herd, where no address would work (§5.3.4, g3-10)', function () use ($withHerd): void {
+    $context = useSetupWizard(setupSandbox(prefix: 'my_app_'));
+    $withHerd($context);
+
+    $this->get('/')->assertStatus(409)
+        ->assertSee(__('The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.', [
+            'folder' => $context->folderName(),
+            'name' => Str::slug($context->folderName()),
+        ]))
+        ->assertDontSee((string) new SetupToken($context->basePath)->value());
+});
+
+it('shows on / that Herd did not answer while herd tld fails (§5.3.4, g3-28)', function () use ($withHerd): void {
+    $context = useSetupWizard();
+    $withHerd($context, tldExitCode: 1);
+
+    $this->get('/')->assertStatus(409)
+        ->assertSee(__('Herd did not answer. Reload the page in a moment.'))
+        ->assertDontSee((string) new SetupToken($context->basePath)->value());
+});
 ```
+
+> 'hands the token out only on a host the wizard can pin' keeps passing after `homeHostProblem()`: `example.com` now redirects to `http://localhost/`, still without a token. The two Herd cases assert the token's value, not `token=`, because the setup layout's Livewire and Flux tags are not under this test's control.
 
 `tests/Feature/Setup/SetupHostTest.php`:
 - Add `use App\Setup\Http\SetupHostGuard;` and `use Illuminate\Http\Request;`.
@@ -2150,7 +2218,10 @@ Expected: FAIL, as follows:
   - There is no `Referrer-Policy` header.
   - The tenant-host `advance` answers 200.
 - **HerdStageTest:** the tenant host and the remote address answer 200, and there is no `Referrer-Policy` header.
-- **SetupModeTest:** `example.com` gets the token.
+- **SetupModeTest:**
+  - `example.com` gets the token.
+  - `127.0.0.1:8000` gets the token redirect instead of `http://localhost:8000/`.
+  - The `my_app_` folder and the failing `herd tld` get the token redirect, not a 409 with the problem.
 - **SetupHostTest:** the loopback row gives `127.0.0.1`, and `folderProblem()` and `SetupHostGuard` do not exist.
 - **WizardRunnerTest:** `begin()` accepts `admin.<folder>.test` when `herd tld` fails.
 - **WizardPageTest:**
@@ -2306,8 +2377,10 @@ use JsonException;
 
 /**
  * The host rule of the wizard and the Herd stage (RL-5, g3-25). Once begin() pinned a host, a request must come on
- * that host or its admin host; before that, on a host the wizard would pin. A page on another name that resolves to
- * this machine (DNS rebinding) therefore never reads the token from `/` and never drives a running setup.
+ * that host or its admin host; before that, on a host the wizard would pin. Under Herd, and on localhost / *.localhost
+ * (which browsers resolve to this machine without DNS), a page on another name that resolves here (DNS rebinding)
+ * therefore never reads the token from `/` and never drives a running setup. Without Herd a *.test name is also
+ * accepted before begin(); a rebound *.test name can still reach `/` then (residual, DEC-33 (21)).
  */
 final class SetupHostGuard
 {
@@ -2333,13 +2406,14 @@ final class SetupHostGuard
     }
 
     /**
-     * The host the wizard pins for a request on $httpHost (host[:port]), or null and the problem to show instead
-     * (A19, RL-3):
+     * The host the wizard pins for a request on $httpHost (host[:port]); on refusal null, the problem to show instead
+     * and the address to open, when there is one (A19, RL-3):
      * - Without Herd: a local name, and on refusal localhost on the request's port (g3-34).
-     * - Under Herd: {folder}.{tld} or its admin host. A folder that is no DNS label can never be that address (g3-10),
-     *   and a `herd tld` without an answer is no reason to fall back to the names without Herd (g3-28).
+     * - Under Herd: {folder}.{tld} or its admin host, and on refusal {folder}.{tld}. A folder that is no DNS label can
+     *   never be that address (g3-10), and a `herd tld` without an answer is no reason to fall back to the names
+     *   without Herd (g3-28); neither has an address to suggest.
      *
-     * @return array{host: ?string, problem: ?string}
+     * @return array{host: ?string, problem: ?string, suggestion: ?string}
      */
     public static function resolve(string $httpHost, Toolchain $toolchain, string $folder): array
     {
@@ -2347,24 +2421,36 @@ final class SetupHostGuard
             $host = SetupHost::forWizard($httpHost, null, $folder);
             $port = preg_match('/:(\d{1,5})$/', $httpHost, $matches) === 1 ? ':'.$matches[1] : '';
 
-            return ['host' => $host, 'problem' => $host === null ? __('Open the setup on :url.', ['url' => 'http://localhost'.$port]) : null];
+            if ($host === null) {
+                $suggestion = 'http://localhost'.$port;
+
+                return ['host' => null, 'problem' => __('Open the setup on :url.', ['url' => $suggestion]), 'suggestion' => $suggestion];
+            }
+
+            return ['host' => $host, 'problem' => null, 'suggestion' => null];
         }
 
         $folderProblem = SetupHost::folderProblem($folder);
 
         if ($folderProblem !== null) {
-            return ['host' => null, 'problem' => $folderProblem];
+            return ['host' => null, 'problem' => $folderProblem, 'suggestion' => null];
         }
 
         $tld = HerdTld::read($toolchain);
 
         if ($tld === null) {
-            return ['host' => null, 'problem' => __('Herd did not answer. Reload the page in a moment.')];
+            return ['host' => null, 'problem' => __('Herd did not answer. Reload the page in a moment.'), 'suggestion' => null];
         }
 
         $host = SetupHost::forWizard($httpHost, $tld, $folder);
 
-        return ['host' => $host, 'problem' => $host === null ? __('Open the setup on :url.', ['url' => 'http://'.Str::lower($folder).'.'.$tld]) : null];
+        if ($host === null) {
+            $suggestion = 'http://'.Str::lower($folder).'.'.$tld;
+
+            return ['host' => null, 'problem' => __('Open the setup on :url.', ['url' => $suggestion]), 'suggestion' => $suggestion];
+        }
+
+        return ['host' => $host, 'problem' => null, 'suggestion' => null];
     }
 }
 ```
@@ -2454,8 +2540,8 @@ final readonly class EnsureSetupAccess
 ```
 
 `app/Setup/SetupMode.php`:
-- add `use App\Setup\Http\SetupHostGuard;`
-- replace `homeRedirect()`:
+- add `use App\Setup\Http\SetupHostGuard;` and `use App\Setup\Support\Toolchain;`
+- replace `homeRedirect()`, and add `homeHostProblem()` right after it:
 
 ```php
     /**
@@ -2477,6 +2563,68 @@ final readonly class EnsureSetupAccess
 
         return SetupHostGuard::allows($request, SetupHostGuard::pinnedWizardHost($this->basePath)) ? '/welcome-setup?token='.$token : null;
     }
+
+    /**
+     * Why `/` hands a direct visitor no token before begin() (§5.3.4, RL-5): the host is one the wizard cannot pin.
+     * `suggestion` is the address to open instead (g3-34: localhost on the request's port without Herd; {folder}.{tld}
+     * under Herd), or null when no address would do (g3-10: the folder; g3-28: `herd tld`). Null when `/` has nothing
+     * to explain: not setup mode, not direct, no token, a super admin exists, a host is pinned, or the host is fine.
+     *
+     * @return array{suggestion: ?string, problem: string}|null
+     */
+    public function homeHostProblem(Request $request): ?array
+    {
+        if ($request->attributes->get(self::ATTRIBUTE) !== true || ! DirectRequest::isDirect($request)
+            || $this->token()->value() === null || $this->superAdminExists()
+            || SetupHostGuard::pinnedWizardHost($this->basePath) !== null) {
+            return null;
+        }
+
+        $resolved = SetupHostGuard::resolve($request->getHttpHost(), app(Toolchain::class), app(SetupContext::class)->folderName());
+
+        return $resolved['host'] === null ? ['suggestion' => $resolved['suggestion'], 'problem' => (string) $resolved['problem']] : null;
+    }
+```
+
+`routes/web.php`:
+- add `use Illuminate\Http\Response;`
+- replace the comment above `/` and its closure's opening, up to the `$user = auth()->user();` line:
+
+```php
+// §6.2: guests sign in; super admins on a central host start at the organisations index (TEN-1);
+// everyone else (and super admins on a tenant host) lands on the dashboard. In setup mode a direct visitor goes
+// to the wizard, with the token, until a super admin exists (§5.3.4); on a host the wizard cannot pin, `/` names
+// the address to use instead, never with the token (RL-5).
+Route::get('/', function (): RedirectResponse|Response {
+    $setup = app(SetupMode::class);
+
+    // §5.3.4: before setup, `/` leads to the wizard.
+    if (($wizard = $setup->homeRedirect(request())) !== null) {
+        return redirect($wizard);
+    }
+
+    // g3-34: a token-less redirect to the address the wizard pins; g3-10, g3-28: no address would do, so say why.
+    if (($refused = $setup->homeHostProblem(request())) !== null) {
+        return $refused['suggestion'] !== null
+            ? redirect()->away(rtrim($refused['suggestion'], '/').'/')
+            : response()->view('setup.host-problem', ['problem' => $refused['problem']], 409);
+    }
+
+```
+
+  The rest of the closure stays as it is.
+
+`resources/views/setup/host-problem.blade.php` (new). It never carries the token:
+
+```blade
+{{-- §5.3.4, RL-5: `/` on a host the wizard cannot pin and no address to suggest (g3-10, g3-28). Never the token. --}}
+<x-layouts::setup>
+    <div data-test="setup-host-problem" class="space-y-4">
+        <flux:heading size="xl" level="1">{{ __('The setup cannot start on this address.') }}</flux:heading>
+
+        <flux:callout variant="warning" icon="exclamation-triangle" :heading="$problem" />
+    </div>
+</x-layouts::setup>
 ```
 
 `app/Setup/Wizard/HerdStage.php`:
@@ -2585,9 +2733,10 @@ with:
 
 ```php
     /**
-     * The host to pin for $requestHost (host[:port]) and, when it is refused, why (SetupHostGuard::resolve()).
+     * The host to pin for $requestHost (host[:port]) and, when it is refused, why and where to go instead
+     * (SetupHostGuard::resolve()); the page and begin() show only the problem.
      *
-     * @return array{host: ?string, problem: ?string}
+     * @return array{host: ?string, problem: ?string, suggestion: ?string}
      */
     private function host(string $requestHost): array
     {
@@ -2713,6 +2862,8 @@ fi
 
 Run `bash -n scripts/e2e-local.sh` to check the syntax. `CiWorkflowTest` still finds `php artisan serve`, `/welcome-setup` and `SetupToken::PATH` in the script.
 
+The `curl --resolve` wrapper stays necessary with `homeHostProblem()`: on `127.0.0.1`, `/` now redirects to the suggested address without the token, but `home_redirects` checks that the first `Location` carries the token, and the suggested `localhost:$PORT` or `{name}.{tld}` must still reach this `artisan serve`.
+
 - [ ] **Step 6: Copy and the setup stylesheet**
 
 Lang keys, in both files, at their sorted positions:
@@ -2721,10 +2872,11 @@ Lang keys, in both files, at their sorted positions:
 |---|---|---|
 | `Herd did not answer. Reload the page in a moment.` | `Herd gaf geen antwoord. Laad de pagina zo opnieuw.` | right after `Herd could not link the site.` |
 | `The folder name :folder is not a valid web address under Herd. Rename the folder to :name, then start the setup again.` | `De mapnaam :folder is onder Herd geen geldig webadres. Hernoem de map naar :name en start de installatie daarna opnieuw.` | right before `The folder name gives no usable PostgreSQL database name (":name"); rename the folder or choose SQLite.` |
+| `The setup cannot start on this address.` | `De installatie kan op dit adres niet starten.` | right after `The session driver is :driver` |
 
 In `en.json` each value equals its key. `Open the setup on :url.` already exists.
 
-`resources/views/pages/setup/wizard/wizard.php` sits under `resources/views/pages/setup`, so run `npm run build:setup`. If `resources/setup/setup.css` changes, commit it with this task. The task adds no class, so no diff is expected.
+`resources/views/pages/setup/wizard/wizard.php` sits under `resources/views/pages/setup` and the new `host-problem.blade.php` under `resources/views/setup`, so run `npm run build:setup` and commit `resources/setup/setup.css` with this task when it changes. The new view uses only classes the setup pages already have (`space-y-4`, as `manual.blade.php`), so no diff is expected; the gate's `git diff --exit-code` decides.
 
 - [ ] **Step 7: Run the tests to verify they pass, then verify by mutation**
 
@@ -2733,12 +2885,13 @@ Run: `php artisan test --compact tests/Feature/Setup tests/Feature/Console tests
 Expected: PASS. `tests/Feature/Auth` covers the quick login, which also uses `DirectRequest`. Test requests come from `127.0.0.1` by default, as do the browser suite's in-process requests.
 
 Verify by mutation:
-1. Wrap the `setup.wizard` route in `Route::central(function (): void { … })`. Expect the `tenant` row of 'opens on the apex, the admin host and a tenant host until the marker exists' to fail. Then try `Route::tenant(...)` and expect the `apex` and `admin` rows to fail.
+1. Wrap the `setup.wizard` route in `Route::tenant(function (): void { … })`. Expect all three rows of 'opens on the apex, the admin host and a tenant host until the marker exists' to fail. (`Route::central()` cannot be observed in setup mode: no tenant is ever bound, so every row still passes. Record that in the report instead of running it as a mutation.)
 2. Remove `:disabled="$hostProblem !== null"` from `wizard.blade.php`. Expect 'names the address to use and disables the start' to fail.
 3. Remove `|| str_ends_with($host, '.test')` from `SetupHost::forWizard()`. Expect the `no herd .test` row to fail.
 4. Remove `$request->session()->regenerate();`. Expect 'issues a new session id when it accepts the token' to fail.
 5. Remove the two `QUERY_STRING`/query lines. Expect 'never stores the token in the session' to fail.
 6. Remove the `REMOTE_ADDR` check. Expect 'answers 404 to a request from another machine' (both files) to fail.
+7. Remove the `homeHostProblem()` branch from the `/` closure. Expect the three new `/` cases in `SetupModeTest` (the `127.0.0.1:8000` redirect, the folder problem, `herd tld`) to fail: each lands on the login page.
 
 The commit contains the fixed code only. Name each mutation and its result in the report.
 
@@ -2755,7 +2908,8 @@ Run the Global Constraints gate:
 ```bash
 git add app/Setup/Http app/Setup/SetupHost.php app/Setup/SetupMode.php app/Setup/Wizard/HerdStage.php app/Setup/Wizard/WizardRunner.php \
     app/Setup/Steps/EnvironmentStep.php app/Console/Commands/InstallCommand.php resources/views/pages/setup/wizard/wizard.php \
-    routes/setup.php scripts/e2e-local.sh lang/nl.json lang/en.json tests/Feature/Setup tests/Feature/Console/InstallCommandTest.php
+    resources/views/setup/host-problem.blade.php routes/web.php routes/setup.php scripts/e2e-local.sh lang/nl.json lang/en.json \
+    tests/Feature/Setup tests/Feature/Console/InstallCommandTest.php
 git add resources/setup/setup.css   # only when build:setup changed it
 git commit -m "fix: pin the setup gate to loopback, direct requests and the pinned host
 
@@ -3720,7 +3874,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     - the detached shell writes its `$$` into `$pidFile`, or into `/dev/null` when there is none
   - **The runner (RL-8, g3-11, g3-31, g3-32):**
     - `WizardRunner::recheck()` throws `RuntimeException(__('This step is still running.'))` while the step's pid lives
-    - the stall rule reports a live pid as running
+    - the stall rule reports a live pid as running, for at most `LIVE_PID_SECONDS` (14400, four hours) after the step started
     - `advanceLong()` reads the exit file before the result
     - `advance()` reports anything a long step throws as `failed`
     - `finish()` records the Herd step and the HTTPS consequence in the marker when anything after step 9 throws, then rethrows
@@ -3960,6 +4114,26 @@ it('refuses a re-check while the step\'s process lives, so no second one starts 
         ->and(app(WizardRunner::class)->state()->results)->toHaveKey('frontend');
 });
 
+it('stops trusting the pid four hours after the step started, so a reused pid never wedges the step (RL-8)', function () use ($beforeFrontend): void {
+    // Arrange: the shell died without writing the exit file, and its pid now belongs to another live process
+    // (this test's own); the step started five hours ago and its log is gone.
+    $context = useSetupWizard();
+    $steps = $beforeFrontend($context);
+    File::put($steps.'/frontend.started', getmypid()."\n");
+    touch($steps.'/frontend.started', time() - 5 * 3600);
+
+    expect(app(WizardRunner::class)->advance())->toBe([
+        'key' => 'frontend',
+        'state' => 'done',
+        'message' => __('The step has not finished; see :log.', ['log' => WizardState::STEPS.'/frontend.log']),
+    ])->and(app(WizardRunner::class)->state()?->results['frontend']->status ?? null)->toBe('manual');
+
+    app(WizardRunner::class)->recheck('frontend');
+
+    expect($steps.'/frontend.started')->not->toBeFile()
+        ->and(app(WizardRunner::class)->state()?->results)->not->toHaveKey('frontend');
+});
+
 it('detects the machine once per setup, not on every poll (CD-15, g3-29)', function (): void {
     // Arrange: count the Detector's PostgreSQL probes, one per detect().
     $context = useSetupWizard();
@@ -4178,6 +4352,7 @@ Expected: FAIL.
   - the g3-32 marker still says `https: true`
   - the port test fails on the `WizardState` constructor
   - 'records the result of a detached step that exited' passes already: note 11
+  - 'stops trusting the pid four hours after the step started' passes already, because today's stall rule ignores the pid; Step 8 mutation-checks the bound
 - **WizardPageTest:**
   - the locked start answers 500 ("Could not write skv-setup.lock.")
   - the untouched radio still sends `start_with`, so a state file appears
@@ -4590,18 +4765,32 @@ final readonly class DetachedStepLauncher implements StepLauncher
         if (! $this->launcher->start($basePath, $key, $resultFile, $this->stepFile($basePath, $key, 'log'), $this->stepFile($basePath, $key, 'exit'), $started)) {
 ```
 
+- **`LIVE_PID_SECONDS`:** add it right after `STALL_SECONDS`:
+
+```php
+    /** RL-8: a pid in `<step>.started` older than four hours is no longer trusted; the stall rule decides again. */
+    private const int LIVE_PID_SECONDS = 14400;
+```
+
 - **`isRunning()`:** add it right before `record()`:
 
 ```php
     /**
      * RL-8: whether the process the launcher's shell wrote into `<step>.started` still runs. It does not once the exit
      * file exists, when the file holds no pid (the inline launcher, or a shell that never started), or without posix.
+     * Nor once the step started LIVE_PID_SECONDS ago: a shell that died without writing the exit file (a reboot, an
+     * OOM kill) leaves its pid behind, and another process of this user can get that pid later. The shell's `echo $$`
+     * refreshes the file's mtime at launch, so the bound counts from the step's start.
      */
     private function isRunning(string $basePath, string $key): bool
     {
         $started = $this->stepFile($basePath, $key, 'started');
 
         if (! is_file($started) || is_file($this->stepFile($basePath, $key, 'exit')) || ! function_exists('posix_kill')) {
+            return false;
+        }
+
+        if (Date::now()->getTimestamp() - (int) @filemtime($started) >= self::LIVE_PID_SECONDS) {
             return false;
         }
 
@@ -4612,7 +4801,7 @@ final readonly class DetachedStepLauncher implements StepLauncher
     }
 ```
 
-> `Date` is still used by the stall rule. The existing dataset rows that write `(string) time()` into `.started` stay valid, because a Unix timestamp is far above any pid limit (99998 on macOS, at most 2^22 on Linux), so `posix_kill()` reports no such process.
+> `Date` is used by the stall rule and the live-pid bound. The live-pid test travels 31 minutes, far below `LIVE_PID_SECONDS`. The existing dataset rows that write `(string) time()` into `.started` stay valid, because a Unix timestamp is far above any pid limit (99998 on macOS, at most 2^22 on Linux), so `posix_kill()` reports no such process.
 
 - [ ] **Step 6: Implement the page**
 
@@ -4753,6 +4942,7 @@ Revert each change locally, run the named test, and expect it to fail. Then rest
 5. **`start()`:** always send `start_with`. Expect the g4-04 page case to fail.
 6. **`GitStep::run()`:** make it throw first. Expect 'runs one step from the wizard state and writes its result (RL-4, g4-19)' to fail; before this task it passed with `manual`.
 7. **`EnvironmentStep`:** drop `$detection->port ??`. Expect 'writes the port the wizard was opened on into APP_URL without Herd' to fail.
+8. **`isRunning()`:** drop the `LIVE_PID_SECONDS` check. Expect 'stops trusting the pid four hours after the step started' to fail: `advance()` reports `running` and `recheck()` throws "This step is still running.".
 
 - [ ] **Step 9: The gate, then commit**
 
@@ -6086,6 +6276,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `app/Support/Backups/ConfigurePgDump.php` (docblock only)
   - `config/database.php` (pgsql `options`), `.env.example` (`DB_CONNECT_TIMEOUT`)
   - `lang/nl.json`, `lang/en.json`
+  - `tests/Arch/NameLeakTest.php` (`$allowed`: the `->setting(` form, CD-5)
 - Test:
   - `tests/Feature/Health/HealthChecksTest.php`, `tests/Feature/Health/HealthReportTest.php`
   - `tests/Feature/Setup/Doctor/ChecksTest.php`, `tests/Feature/Setup/Doctor/DoctorTest.php`
@@ -6110,7 +6301,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `DoctorContext::defaultConnectionDown(?string $connection): bool`: true when `$connection` (null or `''` mean the default) is the default connection and it does not open (F2).
   - `App\Support\Health\HealthCheckKey` (CD-4):
     - `MIN_LENGTH = 32`, `HEADER = 'X-Health-Check-Key'`
-    - `isUsable(mixed $key): bool`, with `@phpstan-assert-if-true string $key`
+    - `isUsable(mixed $key): bool`, with `@phpstan-assert-if-true =string $key` (narrows on true only, so callers that pass a string stay clean at level 8)
     - `configured(): ?string`
     - `matches(mixed $given): bool` (`hash_equals()`, never true without a usable configured key)
   - `HealthCheckKeyCheck`:
@@ -6359,7 +6550,8 @@ Then add at the end:
 it('reads a setting from the running configuration only in a runtime context (CD-5, F10)', function (): void {
     app()->instance(Toolchain::class, new Toolchain($this->sandbox->path('home')));
     new EnvFile($this->sandbox->path('.env'))->set(['MAIL_HOST' => 'from-env.test', 'MAIL_PORT' => '']);
-    config(['mail.mailers.smtp.host' => 'from-config.test', 'mail.mailers.smtp.port' => 2525, 'skv.health_check.key' => true]);
+    config(['skv.health_check.key' => true]);
+    config(['mail.mailers.smtp.host' => 'from-config.test', 'mail.mailers.smtp.port' => 2525]);
     $runtime = DoctorContext::withoutDetection($this->sandbox->basePath);
 
     expect($this->context->runtime)->toBeFalse()
@@ -6706,7 +6898,7 @@ final readonly class HealthCheckKey
 
     public const string HEADER = 'X-Health-Check-Key';
 
-    /** @phpstan-assert-if-true string $key */
+    /** @phpstan-assert-if-true =string $key */
     public static function isUsable(mixed $key): bool
     {
         return is_string($key) && strlen($key) >= self::MIN_LENGTH;
@@ -6850,6 +7042,14 @@ final readonly class HealthCheckKeyCheck implements Check
     }
 }
 ```
+
+`tests/Arch/NameLeakTest.php` already scans `tests/`, and Task 11 widens it to `app/`. `DoctorContext::setting()` names its config key as its second argument (HealthCheckKeyCheck above, DoctorTest's 'reads a setting…'), a form the list does not allow yet. Add it to `$allowed`, right after the `config(` entry:
+
+```php
+        "/->setting\\('[A-Z_]+', 'skv\\./", // DoctorContext::setting()'s config key (CD-5)
+```
+
+Every other `skv.` key in a test stays in its own `config(['skv.…' => …]);` call, written first (Global Constraints).
 
 `app/Setup/Doctor/Checks/MailCheck.php`: replace the docblock and `run()`:
 
@@ -7191,7 +7391,8 @@ git add app/Support/Health/HealthCheckKey.php app/Support/Health/SystemChecks.ph
   config/database.php .env.example lang/nl.json lang/en.json \
   tests/Fixtures/FailingCheckWithThrowingFix.php tests/Feature/Health tests/Feature/Setup/Doctor \
   tests/Feature/Setup/Steps/EnvironmentStepTest.php \
-  tests/Feature/Console/DoctorCommandTest.php tests/Feature/Backups/ConfigurePgDumpTest.php tests/Feature/System/SystemPageTest.php
+  tests/Feature/Console/DoctorCommandTest.php tests/Feature/Backups/ConfigurePgDumpTest.php tests/Feature/System/SystemPageTest.php \
+  tests/Arch/NameLeakTest.php
 git commit -m "fix: keep the doctor honest during outages, on the web and with herd's pg_dump
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -7309,7 +7510,9 @@ beforeEach(function (): void {
 it('keeps the health report, the throttle and the heartbeat on the ops store, never the default store (RL-11, F7)', function (): void {
     // A named store distinct from the default one: the suite's CACHE_STORE and OPS_CACHE_STORE are both `array`.
     $key = str_repeat('k', 40);
-    config(['cache.stores.ops-test' => ['driver' => 'array'], 'skv.ops_cache_store' => 'ops-test', 'skv.health_check.key' => $key]);
+    config(['skv.ops_cache_store' => 'ops-test']);
+    config(['skv.health_check.key' => $key]);
+    config(['cache.stores.ops-test' => ['driver' => 'array']]);
     $bucket = ThrottleHealthChecks::KEY_BUCKET_PREFIX.hash('sha256', $key);
     $ops = Cache::store('ops-test');
     $default = Cache::store();
@@ -7521,7 +7724,8 @@ it('still answers 403 to a wrong key while the ops cache store is broken (CD-5)'
 it('answers with the fresh report while the ops store reads but cannot be written (L-30)', function (): void {
     Exceptions::fake();
     Cache::extend('unwritable', fn (): Repository => Cache::repository(new UnwritableCacheStore));
-    config(['cache.stores.unwritable' => ['driver' => 'unwritable'], 'skv.ops_cache_store' => 'unwritable']);
+    config(['skv.ops_cache_store' => 'unwritable']);
+    config(['cache.stores.unwritable' => ['driver' => 'unwritable']]);
 
     $this->withHeaders([HealthCheckKey::HEADER => $this->key])->getJson('/health-check')
         ->assertOk()
@@ -7652,7 +7856,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * The ops layer's cache store (RL-11, DEC-32 CD-5): the health report, the /health-check throttle, the scheduler
  * heartbeat and the System page's limiter. Not the default database store, so /health-check still answers while the
- * database is down. The only place that reads skv.ops_cache_store.
+ * database is down. The only place that reads config('skv.ops_cache_store').
  */
 final readonly class OpsCache
 {
@@ -7925,7 +8129,7 @@ Expected: PASS.
 
 Verify by mutation (revert each locally, confirm the named test fails, restore, confirm it passes; report each):
 1. **Ops store (F7):** `OpsCache::store()` → `return Cache::store();`. "keeps the health report, the throttle and the heartbeat on the ops store" fails.
-2. **Key first (F14):** in the middleware, always use `self::DENIED_BUCKET`. "throttles the configured key…" fails: the 61st request is 403, not 429.
+2. **Key first (F14):** in the middleware, replace the ternary with `[$bucket, $limit] = [self::DENIED_BUCKET, self::DENIED_PER_MINUTE];`. "answers 429 to wrong keys…" fails (the monitor gets 429, not 200), and "throttles the configured key…" fails (the 61st key request gets 200, not 429).
 3. **Per-key bucket (L-28):** in the middleware, restore the per-address bucket `'health-check:'.$request->ip()` with 60. "counts requests without the key in one shared bucket" and "answers 429 to wrong keys…" fail.
 4. **No-store (L-27):** drop `'Cache-Control' => 'no-store'` from the 429. Both throttle cases fail.
 5. **Minimum length (F15):** in the controller, compare `config('skv.health_check.key')` directly again. The `monitor` and 31-character rows fail.
@@ -8201,8 +8405,11 @@ it('shows each task\'s cron, next run and whether it is off (L-42)', function (b
 })->with(['module on' => true, 'module off' => false]);
 
 it('allows six doctor runs a minute per user, counted on the ops store (CD-16, L-45)', function (): void {
-    config(['cache.stores.ops-test' => ['driver' => 'array'], 'skv.ops_cache_store' => 'ops-test']);
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => '']);
+    config(['skv.ops_cache_store' => 'ops-test']);
+    config(['cache.stores.ops-test' => ['driver' => 'array']]);
+    // CD-5: the page's health-check-key row judges the running configuration, never the sandbox .env, so the
+    // developer's own HEALTH_CHECK_KEY never decides this test.
+    config(['skv.health_check.key' => '']);
     $admin = asSuperAdmin();
     onAdminHost();
     $page = Livewire::test('pages::system.index');
@@ -8211,8 +8418,8 @@ it('allows six doctor runs a minute per user, counted on the ops store (CD-16, L
         $page->call('runDoctor')->assertDontSee(__('Too many attempts. Try again in a minute.'));
     }
 
-    // The seventh run would see the new key; a refused run keeps the old rows.
-    new EnvFile($this->sandbox->path('.env'))->set(['HEALTH_CHECK_KEY' => str_repeat('k', 40)]);
+    // The seventh run would see a usable key; a refused run keeps the old rows.
+    config(['skv.health_check.key' => str_repeat('k', 40)]);
     $page->call('runDoctor')->assertSee(__('Too many attempts. Try again in a minute.'));
     /** @var list<array{key: string, label: string, status: string, message: string}> $rows */
     $rows = $page->get('doctorRows');
@@ -8251,6 +8458,8 @@ it('names the doctor section apart from the check column in Dutch (CD-12, L-44)'
 ```
 
 > The 'unavailable' test runs `refreshHealth` with the store still broken. The limiter fails open (it reports and lets the call through), `refresh()` is guarded, and `health()` then shows "unavailable" again.
+>
+> The CD-16 doctor test sets `skv.health_check.key` through `config()`, never the sandbox `.env`: since Task 7 (CD-5) the page's checks run in a runtime context and read the configuration, which the suite loads from the developer's own `.env` (phpunit.xml pins no `HEALTH_CHECK_KEY`). `EnvFile` stays imported for Task 7's test. Each `skv.*` key gets its own `config(['skv.…' => …]);` call, because `NameLeakTest` (which scans `tests/`) allows `skv.` only right after `config(['` or `config('`.
 
 `tests/Feature/Navigation/NavigationTest.php`: append:
 
@@ -8267,13 +8476,24 @@ it('hides System status from a super admin on a tenant host (§6.2, F26)', funct
 });
 ```
 
-`tests/Browser/SystemPageTest.php`: add `use Illuminate\Support\Facades\Process;` to the imports, and make these the first lines of the test body (F27):
+`tests/Browser/SystemPageTest.php`: add `use Illuminate\Support\Facades\Process;` and `use Illuminate\Support\Str;` to the imports, and make these the first lines of the test body (F27):
 
 ```php
-    // RL-7: the page's doctor starts no process; a check that does would throw here (F27).
+    // RL-7: the page's doctor starts no process; a check that tries gets a 'could not run' row, which fails below (F27).
     Process::preventStrayProcesses();
     Process::fake([]);
 ```
+
+At the end of the test body, after the `$page->click('@system-run-checks')…->assertNoJavaScriptErrors();` chain, append:
+
+```php
+    // Doctor::run() turns a check's exception (a stray process too) into a 'could not run' row; none may appear.
+    foreach (['en', 'nl'] as $locale) {
+        $page->assertDontSee(Str::before(__('The check could not run (:exception).', locale: $locale), '('));
+    }
+```
+
+> The fake alone cannot fail the test: `Doctor::run()` catches every `Throwable` from a check and renders it as a row, so the page still shows `@system-doctor-row-database`. The row text is checked in both locales, because the browser's locale is not pinned.
 
 `tests/Arch/KitRulesTest.php`: append:
 
@@ -8486,8 +8706,8 @@ declare(strict_types=1);
 namespace App\Support;
 
 /**
- * A size in bytes for people (CD-9, F20): 1024-based, B to TB, at most one decimal with a point. Number::fileSize()
- * needs ext-intl, which the kit does not require.
+ * A size in bytes for people (CD-9, F20): 1024-based, B to TB, at most one decimal with a point. Laravel's own
+ * file-size helper needs ext-intl, which the kit does not require.
  */
 final readonly class ByteSize
 {
@@ -8510,6 +8730,8 @@ final readonly class ByteSize
     }
 }
 ```
+
+> The `Number` arch rule reads raw file contents, comments included. Never write `Number::` or `Illuminate\Support\Number` in a comment or docblock under `app/` or `resources/views`; name Laravel's helper in words, as this docblock does.
 
 - [ ] **Step 5: The page**
 
@@ -8913,7 +9135,7 @@ Revert each change locally, confirm the named test fails, then restore it and co
 | Remove the `@if (! $task['active'])` badge | 'shows each task's cron, next run and whether it is off' (module off) |
 | Call `$callback()` directly in `withinRateLimit()` | both CD-16 tests |
 | Remove `centralOnly: true` from the `system.index` item | 'hides System status from a super admin on a tenant host' |
-| Add `'git-hooks'` to `SystemChecks::KEYS` | the browser 'lets a super admin read the system status…' (stray process) |
+| Add `'node'` to `SystemChecks::KEYS` (NodeCheck starts `node -v` wherever Node is on the toolchain PATH, e.g. Homebrew's `/opt/homebrew/bin`) | the browser 'lets a super admin read the system status…' (a 'could not run' row) |
 
 - [ ] **Step 9: The gate, then commit**
 
@@ -8952,18 +9174,18 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `Spatie\Backup\Commands\BackupCommand` (signature `backup:run …`, `handle(): int`, `Isolatable`, `Retryable`)
   - `Artisan::findCommand(string): ?Command`, `Artisan::registerCommand(Command)`, `Connection::getServerVersion(): string`
 - Produces:
-  - `App\Console\Commands\BackupRunCommand extends BackupCommand`: owns `backup:run`. While `! BackupEncryption::available()` it prints one `components->error(RefuseUnencryptedBackups::MESSAGE)` line and returns 1; otherwise it returns `parent::handle()`.
+  - `App\Console\Commands\BackupRunCommand extends BackupCommand`: owns `backup:run`. It first resolves `--config` (as `parent::handle()` would), so it judges the configuration the run will use. While `! BackupEncryption::available()` it prints one `components->error(RefuseUnencryptedBackups::MESSAGE)` line and returns 1; otherwise it returns `parent::handle()`.
   - `RefuseUnencryptedBackups::MESSAGE` (the M7a refusal text). The listener throws only while `backup:run` is not the app's command.
   - `BackupEncryption::available(?bool $zipHasAes256 = null): bool`
   - `App\Support\Backups\PrivateBackupTemp`:
     - `STALE_AFTER_HOURS = 6`
     - `__invoke(CommandStarting $event): void`
     - `secure(): void`
-    - `removeStale(): int` (the number of files removed)
+    - `removeStale(): int` (the number of files removed, only under the package's working directory `<temporary_directory>/temp`)
   - `ConfigurePgDump` puts the first PostgreSQL backup source's `sslmode` into `PGSSLMODE` before `backup:run`
   - The schedule:
     - `backup:clean`, `backup:run --only-db` and `backup:monitor` use `withoutOverlapping(720)`
-    - `backup-temp-cleanup` (a call) runs at 01:15 while the module is on, on every server, without an overlap lock
+    - `backup-temp-cleanup` (a call) runs every hour at :15 (`hourlyAt(15)`), also while the module is off, on every server, without an overlap lock
   - `config('backup.backup.source.databases')` defaults to `[env('DB_CONNECTION', 'sqlite')]`
 
 - [ ] **Step 1: Write the failing tests**
@@ -9202,6 +9424,7 @@ use Illuminate\Foundation\Testing\WithConsoleEvents;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\Commands\BackupCommand;
+use Spatie\Backup\Config\Config;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\NullOutput;
@@ -9221,6 +9444,9 @@ beforeEach(function (): void {
         // at "no files to back up" instead of dumping.
         'backup.backup.source.databases' => [],
     ]);
+    // The package's command takes its Config at construction, from an instance RefreshDatabase's migrate run already
+    // built: rebuild it from the configuration above, as BackupRunTest does.
+    Config::rebind();
 });
 
 /** O1: the refusal is the one message, with no exception class and no stack frame. */
@@ -9295,6 +9521,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\Commands\BackupCommand;
+use Spatie\Backup\Config\Config;
 use Spatie\Backup\Exceptions\BackupFailed;
 
 beforeEach(function (): void {
@@ -9307,6 +9534,9 @@ beforeEach(function (): void {
         // No source connection: a run that starts stops at "no files to back up" and dumps nothing.
         'backup.backup.source.databases' => [],
     ]);
+    // The package's command takes its Config at construction, from an instance RefreshDatabase's migrate run already
+    // built: rebuild it from the configuration above, as BackupRunTest does. Without this, a run backs up :memory:.
+    Config::rebind();
 });
 
 it('owns the backup:run name over the package\'s command (CD-7, O1)', function (): void {
@@ -9331,6 +9561,21 @@ it('refuses by itself, without the CommandStarting backstop (CD-7, O1)', functio
     'encryption off' => [['backup.backup.encryption' => 'none']],
 ]);
 
+it('judges the configuration that --config names, not the default one (CD-7)', function (): void {
+    // The default configuration encrypts (useBackupsModule() sets a password); the one --config names would not.
+    /** @var array<string, mixed> $backup */
+    $backup = config('backup');
+    config(['backup_plain' => array_replace_recursive($backup, ['backup' => ['password' => '']])]);
+
+    $exit = Artisan::call('backup:run', ['--only-db' => true, '--config' => 'backup_plain', '--disable-notifications' => true]);
+    $output = Artisan::output();
+
+    expect($exit)->toBe(1)
+        ->and((string) preg_replace('/\s+/', ' ', $output))->toContain(RefuseUnencryptedBackups::MESSAGE)
+        ->and($output)->not->toContain('Starting backup');
+    expect(Storage::disk('backups')->allFiles())->toBe([]);
+});
+
 it('hands an encrypted backup to the package (CD-7)', function (): void {
     Exceptions::fake();
 
@@ -9344,6 +9589,8 @@ it('hands an encrypted backup to the package (CD-7)', function (): void {
     Exceptions::assertReported(BackupFailed::class);
 });
 ```
+
+> spatie's backup commands receive a scoped `Config` that RefreshDatabase's migrate run has already built, so a `config()` call in `beforeEach` never reaches them. Every test file that changes `backup.*` before `backup:run` runs calls `Config::rebind()` before the first Artisan call. Without it, 'hands an encrypted backup to the package' backs up the SQLite `:memory:` database and exits 0.
 
 `tests/Feature/Backups/PrivateBackupTempTest.php` (new; L-07, F18):
 
@@ -9376,7 +9623,8 @@ $mode = function (string $path): int {
 };
 
 it('creates the temporary directory private to this account before backup:run (CD-10, L-07)', function () use ($starting, $mode): void {
-    new PrivateBackupTemp()($starting('backup:run'));
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:run'));
 
     expect(is_dir($this->temp))->toBeTrue()
         ->and($mode($this->temp))->toBe(0700);
@@ -9386,13 +9634,15 @@ it('narrows an existing temporary directory to 0700 (CD-10, L-07)', function () 
     File::ensureDirectoryExists($this->temp);
     chmod($this->temp, 0755);
 
-    new PrivateBackupTemp()($starting('backup:run'));
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:run'));
 
     expect($mode($this->temp))->toBe(0700);
 });
 
 it('leaves the directory alone for other commands (CD-10)', function () use ($starting): void {
-    new PrivateBackupTemp()($starting('backup:list'));
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:list'));
 
     expect(is_dir($this->temp))->toBeFalse();
 });
@@ -9410,31 +9660,38 @@ it('runs as a CommandStarting listener (CD-10)', function () use ($starting, $mo
     expect($mode($this->temp))->toBe(0700);
 });
 
-it('removes the files a killed run left behind, only those older than six hours (CD-10, F18)', function (): void {
+it('removes the files a killed run left behind, only those older than six hours and only under temp/ (CD-10, F18)', function (): void {
     File::ensureDirectoryExists($this->temp.'/temp/db-dumps');
     File::put($this->temp.'/temp/db-dumps/database.sql', 'plaintext');
     touch($this->temp.'/temp/db-dumps/database.sql', now()->subHours(7)->getTimestamp());
     File::put($this->temp.'/temp/manifest.txt', 'a running backup');
     touch($this->temp.'/temp/manifest.txt', now()->subHours(5)->getTimestamp());
+    // The package writes only under temp/: a file beside it is not a backup's, however old.
+    File::put($this->temp.'/keep.txt', 'not a backup file');
+    touch($this->temp.'/keep.txt', now()->subHours(7)->getTimestamp());
 
     expect(new PrivateBackupTemp()->removeStale())->toBe(1)
         ->and(is_file($this->temp.'/temp/db-dumps/database.sql'))->toBeFalse()
-        ->and(is_file($this->temp.'/temp/manifest.txt'))->toBeTrue();
+        ->and(is_file($this->temp.'/temp/manifest.txt'))->toBeTrue()
+        ->and(is_file($this->temp.'/keep.txt'))->toBeTrue();
 });
 
 it('never changes or empties a shared sticky directory (CD-10)', function () use ($starting, $mode): void {
-    File::ensureDirectoryExists($this->temp);
+    File::ensureDirectoryExists($this->temp.'/temp');
     chmod($this->temp, 01777);
-    File::put($this->temp.'/someone-else.sql', 'theirs');
-    touch($this->temp.'/someone-else.sql', now()->subDay()->getTimestamp());
+    File::put($this->temp.'/temp/someone-else.sql', 'theirs');
+    touch($this->temp.'/temp/someone-else.sql', now()->subDay()->getTimestamp());
 
-    new PrivateBackupTemp()($starting('backup:run'));
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:run'));
 
     expect($mode($this->temp))->toBe(01777)
         ->and(new PrivateBackupTemp()->removeStale())->toBe(0)
-        ->and(is_file($this->temp.'/someone-else.sql'))->toBeTrue();
+        ->and(is_file($this->temp.'/temp/someone-else.sql'))->toBeTrue();
 });
 ```
+
+> The listener is called through a variable, as `RefuseUnencryptedBackupsTest` does. Pint's `new_with_parentheses` would rewrite `new PrivateBackupTemp()($event)` to `new PrivateBackupTemp($event)`, which passes the event to a constructor the class does not have, so `__invoke()` would never run. `new PrivateBackupTemp()->removeStale()` is safe.
 
 `tests/Feature/Backups/BackupEncryptionTest.php` (new; L-23 (1)):
 
@@ -9609,8 +9866,8 @@ it('runs each job at its time, on the right servers, never twice at once (§4.9,
         ->and($event->expiresAt)->toBe($lockMinutes);
 })->with([
     ['activitylog:clean --force', '0 1 * * *', true, true, 1440],
-    // Each server empties its own temporary directory.
-    ['backup-temp-cleanup', '15 1 * * *', false, false, 1440],
+    // Each server empties its own temporary directory, every hour.
+    ['backup-temp-cleanup', '15 * * * *', false, false, 1440],
     // A killed backup's lock expires before the next night (F6).
     ['backup:clean', '30 1 * * *', true, true, 720],
     ['backup:run --only-db', '0 2 * * *', true, true, 720],
@@ -9622,13 +9879,17 @@ it('runs each job at its time, on the right servers, never twice at once (§4.9,
 ]);
 ```
 
-In 'runs the backup jobs only while the backups module is on (§6.8)', change the loop's list to `['backup-temp-cleanup', 'backup:clean', 'backup:run --only-db', 'backup:monitor']`.
+In 'runs the backup jobs only while the backups module is on (§6.8)', keep the loop's list (`backup:clean`, `backup:run --only-db`, `backup:monitor`). Below the `activitylog:clean --force` expectation, add:
+
+```php
+    // F18: a dump left from before the module was switched off must still go.
+    expect($all['backup-temp-cleanup']->filtersPass(app()))->toBeTrue();
+```
 
 Append:
 
 ```php
 it('empties the stale files of the backup temp directory (CD-10, F18)', function () use ($events): void {
-    useBackupsModule(true);
     $temp = setupSandbox()->path('backup-temp');
     config(['backup.backup.temporary_directory' => $temp]);
     File::ensureDirectoryExists($temp.'/temp/db-dumps');
@@ -9641,7 +9902,7 @@ it('empties the stale files of the backup temp directory (CD-10, F18)', function
 });
 ```
 
-`tests/Feature/Scheduler/ScheduledTasksTest.php` (Task 9's list, 8 → 9). In 'lists the ops schedule from its own copy…', change `toHaveCount(8)` to `toHaveCount(9)`. Then add `'backup-temp-cleanup' => '15 1 * * *',` right after `'activitylog:clean --force' => '0 1 * * *',`.
+`tests/Feature/Scheduler/ScheduledTasksTest.php` (Task 9's list, 8 → 9). In 'lists the ops schedule from its own copy…', change `toHaveCount(8)` to `toHaveCount(9)`. Then add `'backup-temp-cleanup' => '15 * * * *',` right after `'activitylog:clean --force' => '0 1 * * *',`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -9748,6 +10009,11 @@ final class BackupRunCommand extends BackupCommand
 {
     public function handle(): int
     {
+        // --config swaps config('backup') only inside parent::handle(); judge the configuration this run will use (CD-7).
+        if ($this->option('config')) {
+            $this->config = $this->resolveConfig();
+        }
+
         if (! BackupEncryption::available()) {
             $this->components->error(RefuseUnencryptedBackups::MESSAGE);
 
@@ -9758,6 +10024,8 @@ final class BackupRunCommand extends BackupCommand
     }
 }
 ```
+
+> `resolveConfig()` sets `config('backup')` to the named array and rebinds `Config`; `parent::handle()` runs it again on the same array, which only rebuilds the same objects. Without this, `backup:run --config=<a configuration without a password>` would pass the check on the default configuration and write a plaintext archive, and the backstop listener steps aside for the app's command.
 
 `app/Support/Backups/RefuseUnencryptedBackups.php` (the whole file):
 
@@ -9806,37 +10074,27 @@ final readonly class RefuseUnencryptedBackups
 
 - [ ] **Step 6: PGSSLMODE (L-05)**
 
-`app/Support/Backups/ConfigurePgDump.php` (the whole file):
+`app/Support/Backups/ConfigurePgDump.php`: three targeted edits. The rest of the file stays as Task 7 left it, including its CD-6 search order.
+
+Replace the class docblock (Task 7's) with this one. Its second paragraph is Task 7's text, unchanged:
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Support\Backups;
-
-use App\Setup\Doctor\DoctorContext;
-use App\Setup\Doctor\PostgresBinaries;
-use Illuminate\Console\Events\CommandStarting;
-
 /**
  * Before backup:run, prepares pg_dump.
  *
  * It fills an empty `database.connections.pgsql.dump.dump_binary_path` with the directory of the pg_dump the doctor
- * finds (RL-4): PG_DUMP_BINARY_PATH, the toolchain PATH, then Herd's newest PostgreSQL service. A cron job has no Herd
- * PATH, so without this the nightly backup would not find Herd's pg_dump.
+ * finds (RL-4, CD-6): PG_DUMP_BINARY_PATH, then for a server on this machine Herd's newest trusted PostgreSQL service
+ * before the toolchain PATH, else the PATH first (PostgresBinaries). A cron job has no Herd PATH, so without this the
+ * nightly backup would not find Herd's pg_dump.
  *
  * It also passes the source connection's sslmode as PGSSLMODE (L-05), because pg_dump reads its TLS mode from the
  * environment, not from the Laravel connection.
  */
-final readonly class ConfigurePgDump
-{
-    /** @param  string|null  $basePath  the project whose .env is read; tests pass a sandbox */
-    public function __construct(
-        private string $herdServices = PostgresBinaries::HERD_SERVICES,
-        private ?string $basePath = null,
-    ) {}
+```
 
+Replace `__invoke()` with:
+
+```php
     public function __invoke(CommandStarting $event): void
     {
         if ($event->command !== 'backup:run') {
@@ -9855,7 +10113,11 @@ final readonly class ConfigurePgDump
             config(['database.connections.pgsql.dump.dump_binary_path' => dirname($path)]);
         }
     }
+```
 
+Add this method below `__invoke()`:
+
+```php
     /**
      * L-05: the first PostgreSQL backup source's sslmode, as the app's own connection uses it. The package's Symfony
      * Process inherits the getenv() keys that $_SERVER also holds, plus every $_ENV key, so all three are set.
@@ -9879,8 +10141,9 @@ final readonly class ConfigurePgDump
             return;
         }
     }
-}
 ```
+
+> If Task 7 changed `__invoke()`'s body (for example the `find()` call), keep Task 7's version and only move the `dump_binary_path` check below `$this->passSslMode();`.
 
 - [ ] **Step 7: The private temporary directory and its cleanup (CD-10, L-07, F18)**
 
@@ -9902,8 +10165,9 @@ use Symfony\Component\Finder\Finder;
  * CD-10: backup:run's working directory holds the plaintext dump until the archive is encrypted.
  *
  * Before every backup:run, this listener creates the directory with mode 0700, or narrows an existing one to 0700. The
- * package's own subdirectories (0777 & umask) then sit under a private parent (L-07). The schedule's
- * backup-temp-cleanup removes what a killed run left behind (F18).
+ * package's own subdirectories (0777 & umask) then sit under a private parent (L-07). The schedule's hourly
+ * backup-temp-cleanup removes what a killed run left in the package's temp/ subdirectory, also while the backups
+ * module is off (F18).
  *
  * A shared directory is never changed or emptied: the system temp directory, a sticky directory, or a directory
  * another account owns.
@@ -9934,7 +10198,10 @@ final readonly class PrivateBackupTemp
         }
     }
 
-    /** Removes the files under the temporary directory older than STALE_AFTER_HOURS; returns how many. */
+    /**
+     * Removes the files under the package's working directory (<temporary_directory>/temp) older than
+     * STALE_AFTER_HOURS; returns how many. The package writes nowhere else, so the rest of the directory is left alone.
+     */
     public function removeStale(): int
     {
         $directory = $this->directory();
@@ -9943,10 +10210,16 @@ final readonly class PrivateBackupTemp
             return 0;
         }
 
+        $working = $directory.'/temp';
+
+        if (! is_dir($working)) {
+            return 0;
+        }
+
         $cutoff = Date::now()->subHours(self::STALE_AFTER_HOURS)->getTimestamp();
         $removed = 0;
 
-        foreach (Finder::create()->files()->ignoreDotFiles(false)->ignoreVCS(false)->in($directory) as $file) {
+        foreach (Finder::create()->files()->ignoreDotFiles(false)->ignoreVCS(false)->in($working) as $file) {
             if ($file->getMTime() < $cutoff && File::delete($file->getPathname())) {
                 $removed++;
             }
@@ -9981,6 +10254,8 @@ final readonly class PrivateBackupTemp
 ```
 
 > Finder lists symlinked files, but `File::delete()` unlinks the link, never its target. Finder does not follow symlinked directories. Directories stay, because the package's `force()->create()` replaces `temp/` at the next run.
+>
+> Only `temp/` is scanned: `BackupJob` writes the dump, the manifest and the zip there (`TemporaryDirectory::name('temp')`), so a `temporary_directory` pointed at a shared project directory loses nothing else. Every `backup:run` force-deletes `temp/` at its start anyway; the hourly cleanup shortens the window a killed run's plaintext dump stays on disk from a day to at most about seven hours.
 
 `app/Providers/AppServiceProvider.php`: import `App\Support\Backups\PrivateBackupTemp`. In `configureOperations()`, right after the `ConfigurePgDump` line, add:
 
@@ -9995,7 +10270,8 @@ final readonly class PrivateBackupTemp
 
 ```php
  * The jobs run on one server and never twice at once, except the heartbeat (no overlap lock) and backup-temp-cleanup
- * (on every server, because each has its own temporary directory). The backup jobs' overlap lock expires after 12
+ * (hourly on every server, because each has its own temporary directory, and also while the backups module is off,
+ * so a dump left from before it was switched off still goes). The backup jobs' overlap lock expires after 12
  * hours, so a killed run never blocks the next night (F6). The backup jobs run only while the backups module is on
  * (§6.8; always off on SQLite), and backup:run only while it would encrypt the archive (DEC-32 CD-10): the package
  * writes a plaintext dump for a blank password and still exits 0. backup:monitor keeps running, so a missing backup
@@ -10007,10 +10283,11 @@ Replace the `activitylog:clean` through `backup:monitor` lines with:
 
 ```php
         $schedule->command('activitylog:clean --force')->dailyAt('01:00')->onOneServer()->withoutOverlapping();
-        // CD-10, F18: a killed backup:run leaves its plaintext dump behind; each server empties its own stale files.
+        // CD-10, F18: a killed backup:run leaves its plaintext dump behind; each server empties its own stale files
+        // every hour. No module filter: removeStale() does nothing without the directory.
         $schedule->call(function (): void {
             app(PrivateBackupTemp::class)->removeStale();
-        })->dailyAt('01:15')->name('backup-temp-cleanup')->when($backupsEnabled);
+        })->hourlyAt(15)->name('backup-temp-cleanup');
         $schedule->command('backup:clean')->dailyAt('01:30')->when($backupsEnabled)->onOneServer()->withoutOverlapping(720);
         $schedule->command('backup:run --only-db')->dailyAt('02:00')->when($encryptedBackupsEnabled)->onOneServer()->withoutOverlapping(720);
         $schedule->command('backup:monitor')->dailyAt('03:00')->when($backupsEnabled)->onOneServer()->withoutOverlapping(720);
@@ -10020,7 +10297,7 @@ Replace the `activitylog:clean` through `backup:monitor` lines with:
 
 Run:
 - `php artisan test --compact tests/Feature/Backups tests/Feature/Scheduler tests/Feature/System tests/Feature/Health tests/Arch`
-- `php artisan schedule:list`. Expected: nine rows, with `backup-temp-cleanup` at `15 1 * * *` (it only reads).
+- `php artisan schedule:list`. Expected: nine rows, with `backup-temp-cleanup` at `15 * * * *` (it only reads).
 - `php artisan list backup`. Expected: `backup:run` is listed once. Never run it in the repository.
 
 Then the pgsql line directly (Composer appends script arguments to every command of a script):
@@ -10042,9 +10319,12 @@ Revert each change locally, confirm the named test fails, then restore it and co
 | Drop the `in_array(... Default, Aes256 ...)` clause in `BackupEncryption` | 'counts default and aes256 archives as unencrypted…' |
 | Drop `|| $this->appCommandRefuses()` in `RefuseUnencryptedBackups` | 'refuses to start backup:run with one error line…' (the trace returns) |
 | Drop the encryption check in `BackupRunCommand::handle()` | 'refuses by itself, without the CommandStarting backstop' |
+| Drop the `--config` block at the top of `BackupRunCommand::handle()` | 'judges the configuration that --config names, not the default one' (the package starts the run) |
 | `return self::FAILURE;` instead of `parent::handle()` | 'hands an encrypted backup to the package' |
 | Drop `chmod($directory, 0700)` in `secure()` | 'narrows an existing temporary directory to 0700' |
 | Drop the sticky check in `isOurs()` | 'never changes or empties a shared sticky directory' |
+| Scan `$directory` instead of `$working` in `removeStale()` | 'removes the files a killed run left behind…' (`keep.txt` goes) |
+| Add `->when($backupsEnabled)` to `backup-temp-cleanup` | 'runs the backup jobs only while the backups module is on' (module off) |
 | `withoutOverlapping()` on `backup:run` | the schedule dataset row `backup:run --only-db` (1440) |
 | With `$_SERVER['BACKUP_NOTIFY_EMAIL'] = 'ops@example.com'` set at the top of the old F28 test, and `filter_var` removed from `$notifyTo` | the new test fails; the old one passed |
 | In `BackupRunCommand::handle()`, `$this->line((string) config('backup.backup.password'));` before `parent::handle()` | `BackupRunTest` on PostgreSQL (F23; report it if the test is skipped on this machine) |
@@ -10093,7 +10373,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Produces:
   - A `tests/Pest.php` hook: `Process::preventStrayProcesses()` + `Process::fake([])` before every test under `Feature/Setup`, `Feature/Console`, `Feature/Backups`, `Feature/Health` and `Feature/System` (RL-12).
   - Arch rules in `KitRulesTest`:
-    - no `Process::fake(['*' …])`, no bare `Process::fake()`, no closure catch-all under `tests/`
+    - no `Process::fake(['*' …])`, no `'*'` key anywhere in a fake's array, no bare `Process::fake()`, no closure catch-all under `tests/`
     - no `@vite`, `Vite::`, `/build/`, `@fonts` or `hasFluxPro` in the setup views
   - `NameLeakTest` over `app/`, `resources/views` and `lang/`, with exact state-file names.
   - `skv:flux-pro` writes `extra.skv.flux-pro: true` into `composer.json` before the require, and removes `extra.skv` again when the install fails (CD-13). The test "never references Flux Pro in the committed composer files (committed)" skips when the committed `composer.json` carries the mark.
@@ -10108,14 +10388,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 it('fakes processes by name, never with a catch-all, so the stray-process guard stays on (g2-10, RL-12)', function (): void {
     $files = array_values(array_diff(kitSourceFiles('tests'), ['tests/Arch/KitRulesTest.php']));
 
-    // Factory::fake() fakes every command for no argument, a closure, a '*' key or a list value (a numeric key is '*').
-    expect(filesMatching($files, '/Process::fake\(\s*(?:\)|(?:static\s+)?(?:fn|function)\b|\[\s*(?:([\'"])\*\1|Process::|(?:static\s+)?(?:fn|function)\b))/'))->toBe([]);
+    // Factory::fake() fakes every command for no argument, a closure, a '*' key or a list value (a numeric key is '*'),
+    // or a '*' key anywhere in the array.
+    expect(filesMatching($files, '/Process::fake\(\s*(?:\)|(?:static\s+)?(?:fn|function)\b|\[\s*(?:([\'"])\*\1|Process::|(?:static\s+)?(?:fn|function)\b))|Process::fake\(\s*\[[^;]*?([\'"])\*\2\s*=>/s'))->toBe([]);
 });
 ```
 
+> The scan reads raw text, comments included (`filesMatching()` matches whole file contents, and `tests/Pest.php` is in the list). Comments under `tests/` never spell `Process::fake()` or a catch-all key. The last alternative needs the same quote on both sides of the `*`, so named keys such as `"*herd' 'tld'*" =>` never match it (validated against today's tree: 20 hits in 10 files).
+
 Run: `php artisan test --compact tests/Arch/KitRulesTest.php`
 
-Expected: FAIL, listing these ten files:
+Expected: FAIL, listing these ten files (`BootstrapTest.php` for its bare fake at line 93 and the `'*'` second key at line 151):
 - `tests/Browser/SetupWizardTest.php`
 - `tests/Feature/Setup/Doctor/DoctorTest.php`
 - `tests/Feature/Setup/Wizard/WizardPageTest.php`
@@ -10209,7 +10492,13 @@ Each file below lists the commands its tests actually reach, read from the code 
     ]);
 ```
 
-**`tests/Feature/Setup/BootstrapTest.php`.** In 'leaves a non-default APP_URL and a non-sqlite database alone', delete `Process::fake();` (line 93). The `beforeEach`'s `Process::fake([])` refuses any process, and `Process::assertNothingRan()` stays.
+**`tests/Feature/Setup/BootstrapTest.php`.**
+- In 'leaves a non-default APP_URL and a non-sqlite database alone', delete `Process::fake();` (line 93). The `beforeEach`'s `Process::fake([])` refuses any process, and `Process::assertNothingRan()` stays.
+- In 'survives a herd tld that times out (A5)', replace line 151. `Bootstrap::run()` starts only `herd tld` and the migration, so a named migrate pattern replaces the `'*'` second key:
+
+```php
+    Process::fake(["*herd' 'tld'*" => fn () => throw new RuntimeException('timed out'), "*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
+```
 
 **`tests/Feature/Setup/Steps/ClaudeStepTest.php`.**
 - **g2-23.** In 'installs Boost, registers the Herd MCP server as herd …', delete the key `"*composer' 'require' '--dev' 'laravel/boost'*" => Process::result(''),`. It never matched (the argument is `'laravel/boost:^2.10'`), and the kit's `composer.json` lists `^2.10`, so the step never requires. `Process::assertDidntRun(… 'composer require')` pins that.
@@ -10309,7 +10598,7 @@ Expected: FAIL. `Process::run(['true'])` runs the real `true` and succeeds, and 
 ```php
 /*
 | RL-12: every setup, console, backup, health and System-page test refuses a process it did not fake. Recording starts
-| with fake([]): preventStrayProcesses() alone guards nothing until something calls Process::fake(). A file's own
+| with fake([]): preventStrayProcesses() alone guards nothing until a fake is recording. A file's own
 | Process::fake([...]) adds its named patterns; catch-alls are banned (tests/Arch/KitRulesTest.php).
 */
 pest()->beforeEach(function (): void {
@@ -10318,7 +10607,7 @@ pest()->beforeEach(function (): void {
 })->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System');
 ```
 
-> `pest()->beforeEach()` reaches `UsesCall::beforeEach()` through `Configuration::__call()`, and `in()` merges with the `Feature` configuration (Pest 5.3 `TestRepository::use()`). Larastan level 8 accepts it (probed). `Process` is already imported in `tests/Pest.php`.
+> `pest()->beforeEach()` reaches `UsesCall::beforeEach()` through `Configuration::__call()`, and `in()` merges with the `Feature` configuration (Pest 5.3 `TestRepository::use()`). Larastan level 8 accepts it (probed). `Process` is already imported in `tests/Pest.php`. The comment says "until a fake is recording", not the method call: Step 1's ban scans `tests/Pest.php` too, comments included.
 
 **`tests/Feature/Backups/BackupRunTest.php`.** Read the `$usablePgDump` closure first:
 - If Task 10 (F19) made its `pg_dump --version` probe run through the `Process` facade, the hook now refuses it. Add these lines right before the probe, after the closure's `if ($path === null) { return null; }`:
@@ -10361,6 +10650,7 @@ use Illuminate\Support\Facades\File;
 $allowed = [
     '/skv:[a-z-]+/',                     // artisan command namespace
     "/config\\(\\[?['\"]skv\\./",        // config('skv.…') keys, read or set
+    "/->setting\\('[A-Z_]+', 'skv\\./",  // DoctorContext::setting()'s config key (CD-5)
     '/config\/skv\.php/',
     "/->alias\\('Skv', /",               // the global Skv alias (RL-1)
     '/\bSkv::/',
@@ -10412,7 +10702,7 @@ it('finds a kit name planted in app code (g2-12)', function () use ($leaks): voi
 
 Run: `php artisan test --compact tests/Arch/NameLeakTest.php`
 
-Expected: FAIL with one hit, `LastBackupCheck.php:17: * skv.health_check.backup_grace_minutes: …`. Any further hit is a name that Tasks 1–10 added:
+Expected: FAIL with `LastBackupCheck.php:17: * skv.health_check.backup_grace_minutes: …` as the only hit (checked against today's tree with this list). Anything else is a name that Tasks 1–10 added:
 - Fix it in the code: a constant, `config('skv.…')`, or the derived app name.
 - Widen `$allowed` only for a form that is not an app-identity value, with an exact pattern and a comment.
 - Name each such case in the task report.
@@ -10871,7 +11161,6 @@ git commit -m "test: fake setup processes by name, guard setup tests against str
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 git add tests/Arch/NameLeakTest.php app/Setup/Doctor/Checks/LastBackupCheck.php scripts/e2e-local.sh tests/Feature/Tooling/ComposerScriptsTest.php
-git add -p tests/Feature/Tooling/CiWorkflowTest.php   # only the g1-14 test
 git commit -m "test: scan app code for the kit name and pin the e2e script and its clone route
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -10882,7 +11171,7 @@ git commit -m "feat: mark composer.json when skv:flux-pro installs flux pro
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-> If the staged sets overlap (for example `NameLeakTest.php` in the second and third commit, or `CiWorkflowTest.php`'s g1-14 test), stage with `git add -p`. Otherwise fold the overlap into the later commit. The pre-commit hook runs Pint and Larastan on the staged files; never bypass it.
+> The staged sets overlap (`NameLeakTest.php` in the second and third commit, `CiWorkflowTest.php`'s g1-14 test in the third): stage whole files only and fold the overlap into the later commit, because `git add -p` is interactive and does not work in an agent shell. The pre-commit hook runs Pint and Larastan on the staged files; never bypass it.
 
 The task report names:
 - each mutation and its result (Steps 4–8)
@@ -10919,7 +11208,7 @@ The task report names:
 it('keeps the Dutch glossary: installatie for setup, and Diagnose apart from Controle (CD-12)', function (): void {
     /** @var array<string, string> $dutch */
     $dutch = json_decode((string) file_get_contents(lang_path('nl.json')), true, flags: JSON_THROW_ON_ERROR);
-    $setup = array_keys(array_filter($dutch, fn (string $value): bool => stripos((string) preg_replace('#skv:[a-z-]+|/welcome-setup|composer setup|build:setup#', '', $value), 'setup') !== false));
+    $setup = array_keys(array_filter($dutch, fn (string $value): bool => stripos((string) preg_replace('#[a-z]+:[a-z-]+|/welcome-setup|composer setup#', '', $value), 'setup') !== false));
 
     expect($setup)->toBe([])
         ->and($dutch['Doctor'])->toBe('Diagnose')
@@ -10955,7 +11244,7 @@ it('leaves the Boost guidelines to the Claude step of skv:install, never to boos
 Run: `php artisan test --compact tests/Feature/LangFilesTest.php tests/Feature/Tooling`
 
 Expected:
-- The glossary test FAILs: ten `setup` values, and `Doctor` is `Controle`.
+- The glossary test FAILs on the ten `setup` values (`Doctor` is already `Diagnose` since Task 9). The regex strips every `namespace:command` (`skv:…`, `build:setup`) without spelling the kit name: a literal `skv:[a-z-]+` in a test is a `NameLeakTest` hit, because `skv:[` is no allowed form.
 - The CiWorkflowTest case FAILs: the guideline names none of the four packages.
 - The ComposerScriptsTest case PASSes: it pins today's script.
 
@@ -10967,7 +11256,6 @@ Values only; keys untouched. `lang/en.json` is unchanged (its values equal its k
 |---|---|---|
 | `A super admin already exists, so setup does not add the demo data by default. Pass \"start_with\": \"demo\" to add it anyway, or \"super_admin\" with your own login.` (line 23) | `Er bestaat al een superbeheerder, dus setup voegt de demodata niet standaard toe. Geef \"start_with\": \"demo\" mee om ze toch toe te voegen, of \"super_admin\" met je eigen login.` | `Er bestaat al een superbeheerder, dus de installatie voegt de demodata niet standaard toe. Geef \"start_with\": \"demo\" mee om ze toch toe te voegen, of \"super_admin\" met je eigen login.` |
 | `Created the one-time setup token` (147) | `Eenmalige setup-token aangemaakt` | `Eenmalig installatietoken aangemaakt` |
-| `Doctor` (170) | `Controle` | `Diagnose` |
 | `Remove database/schema/pgsql-schema.* first: setup runs plain migrations (§7.3).` (441) | `Verwijder eerst database/schema/pgsql-schema.*: setup draait gewone migraties (§7.3).` | `Verwijder eerst database/schema/pgsql-schema.*: de installatie draait gewone migraties (§7.3).` |
 | `Setup changed :keys in .env.` (499) | `Setup heeft :keys in .env gewijzigd.` | `De installatie heeft :keys in .env gewijzigd.` |
 | `Setup has not finished yet` (500) | `De setup is nog niet klaar` | `De installatie is nog niet klaar` |
@@ -10977,13 +11265,15 @@ Values only; keys untouched. `lang/en.json` is unchanged (its values equal its k
 | `The setup token is still there` (600) | `Het setup-token staat er nog` | `Het installatietoken staat er nog` |
 | `Unknown setup answers: :keys` (666) | `Onbekende setup-antwoorden: :keys` | `Onbekende installatieantwoorden: :keys` |
 
+`Doctor` → `Diagnose` was done in Task 9 (L-44); check that it is still there.
+
 Then list every `nl` value that still holds "setup":
 
 ```bash
-php -r '$nl = json_decode(file_get_contents("lang/nl.json"), true); foreach ($nl as $k => $v) { if (stripos(preg_replace("#skv:[a-z-]+|/welcome-setup|composer setup|build:setup#", "", $v), "setup") !== false) echo $k, " => ", $v, PHP_EOL; }'
+php -r '$nl = json_decode(file_get_contents("lang/nl.json"), true); foreach ($nl as $k => $v) { if (stripos(preg_replace("#[a-z]+:[a-z-]+|/welcome-setup|composer setup#", "", $v), "setup") !== false) echo $k, " => ", $v, PHP_EOL; }'
 ```
 
-Any line it prints is a key that Tasks 1–10 added. Examples: Task 2's host messages, Task 4's "This step is still running.", Task 6's "skv:install runs only in the local, testing and staging environments (APP_ENV=:env)." Translate each with "installatie" or "installatietoken" (het-woord: "het installatietoken", "eenmalig installatietoken") and the informal "je". Keep command names (`skv:install`, `/welcome-setup`) as they are.
+Any line it prints is a key that Tasks 1–10 added. Examples: Task 2's host messages and its host-problem page, Task 4's "This step is still running.", Task 6's "skv:install runs only in the local, testing and staging environments (APP_ENV=:env)." Translate each with "installatie" or "installatietoken" (het-woord: "het installatietoken", "eenmalig installatietoken") and the informal "je". Keep command names (`skv:install`, `/welcome-setup`) as they are.
 
 Run: `php artisan test --compact tests/Feature/LangFilesTest.php tests/Feature/LangCoverageTest.php`
 
@@ -11011,7 +11301,7 @@ Make each edit below. **Before the Scheduler and System page edits**, read `App\
 
 4. **The host (line 49, g3-34, g1-17, g3-10, g3-28, g3-25).** Replace the whole bullet with:
 
-   `- **The host.** Under Herd, open the setup on \`myapp.test\` or \`admin.myapp.test\`; without Herd on \`localhost\` or a name ending in \`.localhost\` or \`.test\`, with the port you serve it on. Without Herd an IP address such as \`127.0.0.1\` is refused and the wizard names \`http://localhost:<port>\` instead; \`APP_URL\` keeps its port. On any other host the wizard names the address to use and does not start. A folder whose name is not a valid host name (for example \`my_app\`) cannot be served as \`my_app.test\`: the wizard asks you to rename the folder (\`my-app\`) or to link it under such a name (\`herd link my-app\`). When \`herd tld\` does not answer, it asks you to reload instead of guessing. Under Herd the app's address is pinned to \`myapp.test\`, whichever of the two you started on. From then on every wizard and Herd-stage request must use that host or its \`admin.\` form.`
+   `- **The host.** Under Herd, open the setup on \`myapp.test\` or \`admin.myapp.test\`; without Herd on \`localhost\` or a name ending in \`.localhost\` or \`.test\`, with the port you serve it on (\`APP_URL\` keeps that port). On any other host \`/\` hands out no token and sends you to the address to use: without Herd to \`http://localhost:<port>/\`, also from an IP address such as \`127.0.0.1\` (the address \`php artisan serve\` prints), and under Herd to \`http://myapp.test/\`. Where no address can be named, \`/\` answers 409 with a page that names the problem: a folder whose name is not a valid host name (for example \`my_app\`) cannot be served as \`my_app.test\`, so the page asks you to rename the folder (\`my-app\`) or to link it under such a name (\`herd link my-app\`); when \`herd tld\` does not answer, it asks you to reload instead of guessing. Under Herd the app's address is pinned to \`myapp.test\`, whichever of the two you started on. From then on every wizard and Herd-stage request must use that host or its \`admin.\` form.`
 
 5. **The questions (line 50, g4-04).** Append to the bullet:
 
@@ -11019,7 +11309,7 @@ Make each edit below. **Before the Scheduler and System page edits**, read `App\
 
 6. **The steps (line 51, RL-8, g3-30, g3-31).** Replace the bullet's last sentence (`A step that fails shows *Setup stopped* with its message and *Try again*.`) with:
 
-   `A step that fails, or a start that cannot write its state, shows *Setup stopped* with its message and *Try again*, never an error page. A long step whose process still runs cannot be re-checked until it ends.`
+   `A step that fails, or a start that cannot write its state, shows *Setup stopped* with its message and *Try again*, never an error page. A long step whose process still runs cannot be re-checked until it ends; after four hours its process is no longer trusted, and *Re-check* works again.`
 
 7. **The Herd stage (line 53, CD-14, g3-13, g3-22).**
    - Old: `*Log in as \`<email>\`* signs your new super admin in on the admin host with a single-use link;`
@@ -11084,7 +11374,7 @@ Make each edit below. **Before the Scheduler and System page edits**, read `App\
       `- **\`PG_DUMP_BINARY_PATH\`** is the directory that holds \`pg_dump\`. Blank finds it: when the \`pgsql\` connection's host is \`127.0.0.1\`, \`localhost\` or \`::1\` and Herd's PostgreSQL services exist, Herd's newest client comes first, because that server is the one being dumped; otherwise the one on PATH. Both work under cron, which has no Herd PATH. A Herd binary is used only when it and every directory above it up to \`/Users/Shared/Herd\` belong to you or root and are not group- or world-writable. \`pg_dump\` uses the connection's \`sslmode\` (\`DB_SSLMODE\`).`
     - After line 108, add:
 
-      `- **The temporary dump.** \`backup:run\` writes the plain dump to \`storage/app/backup-temp\` (\`backup.backup.temporary_directory\`) before it zips it. A backup makes that directory private (mode 0700) when it starts, and every night at 01:15 the scheduler removes files older than six hours from it; only a killed backup leaves them behind.`
+      `- **The temporary dump.** \`backup:run\` writes the plain dump to \`storage/app/backup-temp\` (\`backup.backup.temporary_directory\`) before it zips it. A backup makes that directory private (mode 0700) when it starts, and every hour at :15 the scheduler removes the files older than six hours from the package's working directory under it (\`storage/app/backup-temp/temp\`), also while the backups module is off. Only a killed backup leaves files there; the next \`backup:run\` empties the directory too.`
 
 14. **Scheduler (lines 115–128, CD-8, CD-10).**
     - Line 115. Replace with:
@@ -11092,16 +11382,16 @@ Make each edit below. **Before the Scheduler and System page edits**, read `App\
       `The kit schedules the ops jobs in \`App\Support\Scheduler\OpsSchedule::define()\`, which \`routes/console.php\` calls; the System page reads the same definition without booting the console kernel. Every job runs on one server (\`onOneServer()\`), and every job but the heartbeat never twice at once (\`withoutOverlapping()\`). The backup jobs' overlap lock expires after 12 hours instead of 24, so a killed backup never skips the next night. The times are in \`config('app.timezone')\` (UTC by default).`
 
       Name the cleanup closure among the exceptions if `OpsSchedule::define()` gives it no `withoutOverlapping()` or no `onOneServer()`.
-    - Table: insert after the `activitylog:clean --force` row:
+    - Table: insert before the `auth:clear-resets` row:
 
-      `| \`backup-temp-cleanup\` | 01:15 | while the backups module is on (removes files older than six hours from the backup temporary directory) |`
+      `| \`backup-temp-cleanup\` | every hour at :15 | always, also while the backups module is off (removes files older than six hours from \`storage/app/backup-temp/temp\`) |`
 
 15. **System page (lines 138–143, F3 (3), F12, CD-16, F4).**
     - Line 138. Old: `in the *Systeem* group of the sidebar`
       New: `in the *System* group of the sidebar, *Systeem* in Dutch`
     - Doctor bullet. Replace it with:
 
-      `- **Doctor:** *Run checks* runs a selection of the doctor checks that start no process; the development-only ones stay out. The selection: \`php\`, \`gd\`, \`apex\`, \`app-key\`, \`marker\`, \`database\`, \`migrations\`, \`permissions\`, \`organisation-admin-role\`, \`super-admin\`, \`super-admin-badges\`, \`session-driver\`, \`authenticate-session\`, \`health-check-key\`, \`backup-password\`, \`assets\`, \`mail\`, \`pg-dump\`, \`queue\`, \`failed-jobs\` and \`storage-link\`. Their repairs are not offered there: run \`php artisan skv:doctor --fix\`.`
+      `- **Doctor:** *Run checks* runs a selection of the doctor checks that start no process; the development-only ones stay out. The selection: \`php\`, \`gd\`, \`app-key\`, \`marker\`, \`apex\`, \`database\`, \`migrations\`, \`permissions\`, \`organisation-admin-role\`, \`super-admin\`, \`super-admin-badges\`, \`session-driver\`, \`authenticate-session\`, \`health-check-key\`, \`backup-password\`, \`assets\`, \`mail\`, \`pg-dump\`, \`queue\`, \`failed-jobs\` and \`storage-link\`. Their repairs are not offered there: run \`php artisan skv:doctor --fix\`.`
 
       Use the key list exactly as `App\Support\Health\SystemChecks::KEYS` holds it after Task 7.
     - Append after the list:
@@ -11160,7 +11450,7 @@ Append to **Added**:
 
 ```markdown
 - `skv:flux-pro` marks `composer.json` with `extra.skv.flux-pro` before it requires the package, so an app that commits Flux Pro on purpose skips the kit's "never references Flux Pro (committed)" test.
-- A nightly clean-up (`backup-temp-cleanup`, 01:15) removes dumps older than six hours that a killed backup left in the backup temporary directory, which `backup:run` now keeps private (mode 0700).
+- An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700).
 - `DB_CONNECT_TIMEOUT` (5 seconds) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
 ```
@@ -11169,7 +11459,7 @@ Append to **Changed**:
 
 ```markdown
 - The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.1` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `X-Original-Host` or `Forwarded` header, check the pinned host on every request, start a new session when the token is accepted, and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
-- Without Herd, the wizard refuses an IP address as the host and names `http://localhost:<port>`, and setup keeps `APP_URL`'s port; a folder name that is not a valid host name and a `herd tld` that does not answer each get their own message.
+- Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
 - The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
 - After setup, a super admin who confirmed two-factor sign-in is sent to the login page instead of signed in with the single-use link.
 - When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it.
@@ -11179,7 +11469,7 @@ Append to **Changed**:
 - `/health-check` counts requests without the right key in one shared limit (300 a minute) and requests with it per key (60 a minute), so strangers cannot lock a monitor out; its 429 answers carry `Cache-Control: no-store`.
 - The System page and `/health-check` judge the running mail and health-key settings; `skv:doctor` and setup keep reading `.env`. The System page also runs the `apex` check.
 - With a PostgreSQL server on this machine the backups prefer Herd's newest `pg_dump` over the one on PATH, use a Herd binary only when it and its directories belong to you or root and are not group- or world-writable, and pass `DB_SSLMODE` to `pg_dump`.
-- `backup:run`, `backup:clean` and `backup:monitor` hold their overlap lock for 12 hours instead of 24, so a killed backup never skips the next night; `backup:run` refuses an unencrypted backup with one error line instead of an exception trace.
+- `backup:run`, `backup:clean` and `backup:monitor` hold their overlap lock for 12 hours instead of 24, so a killed backup never skips the next night; `backup:run` refuses an unencrypted backup with one error line instead of an exception trace, also for a configuration chosen with `--config`.
 - The setup's super-admin password follows the app's password rules (`Password::default()`).
 - The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
 - The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.
@@ -11195,7 +11485,7 @@ Append to **Fixed**:
 - Setup and the doctor no longer crash on an unparsable `.env`, and read it once per change instead of on every child process.
 - A state file that is a symbolic link or cannot be read counts as damaged: the doctor's `marker` row fails instead of the doctor crashing, and a setup token left next to such a marker is still reported.
 - `herd.yml`, `.mcp.json`, `composer.json`, `.claude/settings.local.json`, `.env.testing` and the bootstrap's `.env` are written atomically and replace a symbolic link instead of writing through it; the long steps' logs and exit codes are created with mode 0600.
-- A re-check of a long step whose process still runs is refused instead of starting it twice, and a step that finished between two polls keeps its result.
+- A re-check of a long step whose process still runs is refused instead of starting it twice (for at most four hours after the step started, so a reused process id cannot block the step for good), and a step that finished between two polls keeps its result.
 - The setup errors that still answered 500 (a start that cannot write its state, a long step whose completion check throws, a failure after the marker) show a message the page can act on.
 - The wizard detects Herd and PostgreSQL once per setup instead of on every poll, and its page title no longer repeats *Installatie*.
 - `POST /quick-login` with a malformed email answers 404 instead of 500.
@@ -11222,13 +11512,13 @@ Old → new substrings; each old string is unique in the file.
 3. **Line 638.** Replace the `<li><strong>Wanneer hij opent.</strong> …</li>` item with:
 
    ```html
-   <li><strong>Wanneer hij opent.</strong> Alleen lokaal (<code>APP_ENV=local</code>), zolang de marker <code>storage/app/skv-installed</code> ontbreekt en het installatietoken bestaat, en alleen voor verzoeken van deze computer zelf (<code>127.0.0.1</code> of <code>::1</code>). Anders antwoordt <code>/welcome-setup</code> met 404, ook vanaf een andere computer en via een proxy of een tunnel zoals <code>herd share</code> (met een header <code>X-Forwarded-*</code>, <code>X-Expose-*</code>, <code>X-Original-Host</code> of <code>Forwarded</code>). De startpagina geeft het token alleen zolang er nog geen superbeheerder is. De wizard bewaart een hash van het token in een nieuwe sessie en haalt het token uit de adresbalk.</li>
+   <li><strong>Wanneer hij opent.</strong> Alleen lokaal (<code>APP_ENV=local</code>), zolang de marker <code>storage/app/skv-installed</code> ontbreekt en het installatietoken bestaat, en alleen voor verzoeken van deze computer zelf (<code>127.0.0.1</code> of <code>::1</code>). Anders antwoordt <code>/welcome-setup</code> met 404, ook vanaf een andere computer en via een proxy of een tunnel zoals <code>herd share</code> (met een header <code>X-Forwarded-*</code>, <code>X-Expose-*</code>, <code>X-Original-Host</code> of <code>Forwarded</code>). De startpagina geeft het token alleen zolang er nog geen superbeheerder is, en alleen op een adres dat de wizard accepteert. De wizard bewaart een hash van het token in een nieuwe sessie en haalt het token uit de adresbalk.</li>
    ```
 
 4. **Line 639.** Replace the `<li><strong>Het adres.</strong> …</li>` item with:
 
    ```html
-   <li><strong>Het adres.</strong> Open de wizard met Herd op <code>mijnapp.test</code> of <code>admin.mijnapp.test</code>, zonder Herd op <code>localhost</code> of een naam die eindigt op <code>.localhost</code> of <code>.test</code>, met de poort waarop je de site serveert. Een IP-adres zoals <code>127.0.0.1</code> weigert hij zonder Herd; hij noemt dan <code>http://localhost:&lt;poort&gt;</code>, en <code>APP_URL</code> houdt zijn poort. Op een ander adres zegt hij <span class="ui">Open de installatie op &hellip;</span> en start hij niet. Is de mapnaam geen geldige hostnaam (zoals <code>mijn_app</code>), dan vraagt hij je de map te hernoemen (<code>mijn-app</code>) of hem onder zo&rsquo;n naam te koppelen met <code>herd link mijn-app</code>. Geeft <code>herd tld</code> geen antwoord, dan vraagt hij je de pagina te herladen. Met Herd ligt het adres daarna vast op <code>mijnapp.test</code>, en elk verzoek van de wizard en de Herd-stap moet dat adres of zijn <code>admin.</code>-vorm gebruiken.</li>
+   <li><strong>Het adres.</strong> Open de wizard met Herd op <code>mijnapp.test</code> of <code>admin.mijnapp.test</code>, zonder Herd op <code>localhost</code> of een naam die eindigt op <code>.localhost</code> of <code>.test</code>, met de poort waarop je de site serveert (<code>APP_URL</code> houdt die poort). Op een ander adres geeft de startpagina geen token en stuurt hij je naar het adres dat je moet gebruiken: zonder Herd naar <code>http://localhost:&lt;poort&gt;/</code>, ook vanaf een IP-adres zoals <code>127.0.0.1</code> (het adres dat <code>php artisan serve</code> noemt), en met Herd naar <code>http://mijnapp.test/</code>. Valt er geen adres te noemen, dan antwoordt de startpagina met 409 en een pagina die het probleem noemt: is de mapnaam geen geldige hostnaam (zoals <code>mijn_app</code>), dan vraagt die je de map te hernoemen (<code>mijn-app</code>) of hem onder zo&rsquo;n naam te koppelen met <code>herd link mijn-app</code>; geeft <code>herd tld</code> geen antwoord, dan vraagt die je de pagina te herladen. Met Herd ligt het adres daarna vast op <code>mijnapp.test</code>, en elk verzoek van de wizard en de Herd-stap moet dat adres of zijn <code>admin.</code>-vorm gebruiken.</li>
    ```
 
 5. **Line 640 (questions).**
@@ -11236,7 +11526,7 @@ Old → new substrings; each old string is unique in the file.
    - New: `Het wachtwoord wordt direct gehasht; alleen de hash wordt bewaard. Bestaat er al een superbeheerder, dan voegt de wizard de demodata niet vanzelf toe: kies <span class="ui">Demodata</span> zelf als je ze toch wilt.</li>`
 6. **Line 641 (steps).**
    - Old: `Gaat een stap fout, dan zie je <span class="ui">Installatie gestopt</span> met de melding en <span class="ui">Probeer het opnieuw</span>.</li>`
-   - New: `Gaat een stap fout, dan zie je <span class="ui">Installatie gestopt</span> met de melding en <span class="ui">Probeer het opnieuw</span>, nooit een foutpagina. Een lange stap waarvan het proces nog loopt, kun je pas opnieuw controleren als hij klaar is.</li>`
+   - New: `Gaat een stap fout, dan zie je <span class="ui">Installatie gestopt</span> met de melding en <span class="ui">Probeer het opnieuw</span>, nooit een foutpagina. Een lange stap waarvan het proces nog loopt, kun je pas opnieuw controleren als hij klaar is; na vier uur vertrouwt de wizard dat proces niet meer en kun je weer opnieuw controleren.</li>`
 7. **Line 643 (Herd stage).**
    - Old: `logt je nieuwe superbeheerder &eacute;&eacute;n keer in op de admin-host;`
    - New: `logt je nieuwe superbeheerder &eacute;&eacute;n keer in op de admin-host (heeft die al tweestapsverificatie ingesteld, dan ga je naar de inlogpagina, zodat de tweede stap nooit wordt overgeslagen);`
@@ -11311,7 +11601,7 @@ Old → new substrings; each old string is unique in the file.
 
 24. **Line 1267 (Back-ups paragraph, CD-7, CD-10).**
     - Old: `dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>.</p>`
-    - New: `dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>. Weigert <code>backup:run</code>, dan zie je één foutregel, geen stacktrace. Tijdens een back-up staat de onversleutelde dump even in <code>storage/app/backup-temp</code>; die map is dan alleen voor jou leesbaar (modus 0700), en elke nacht om 01:15 ruimt de planner er bestanden ouder dan zes uur op, die alleen een afgebroken back-up achterlaat. Het slot tegen een dubbele back-up vervalt na 12 uur, zodat een afgebroken back-up de volgende nacht niet overslaat.</p>`
+    - New: `dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>. Weigert <code>backup:run</code>, dan zie je één foutregel, geen stacktrace. Tijdens een back-up staat de onversleutelde dump even in <code>storage/app/backup-temp</code>; die map is dan alleen voor jou leesbaar (modus 0700). Elk uur om kwart over ruimt de planner in de werkmap <code>storage/app/backup-temp/temp</code> bestanden ouder dan zes uur op, ook als de back-upmodule uitstaat; alleen een afgebroken back-up laat ze achter. Het slot tegen een dubbele back-up vervalt na 12 uur, zodat een afgebroken back-up de volgende nacht niet overslaat.</p>`
 25. **Line 1542 (status).** Replace the paragraph with:
 
     ```html
@@ -11347,7 +11637,7 @@ Check every new `<span class="ui">…</span>` against the final `lang/nl.json`.
 
 1. **Setup, the "External commands" bullet (line 48).** Replace its last sentence (`Tests fake every command (\`Process::preventStrayProcesses()\` + \`Process::fake([])\` + a sandbox \`Toolchain\`).`) with:
 
-   `Tests fake every command they expect by name, on Symfony's single-quoted command line (\`Process::fake(["*git' 'init'*" => …])\`), on top of \`Process::preventStrayProcesses()\` + \`Process::fake([])\` and a sandbox \`Toolchain\`. Never \`Process::fake(['*' => …])\`, a closure or a bare \`Process::fake()\`: each fakes every command (\`tests/Arch/KitRulesTest.php\`). \`tests/Pest.php\` applies the guard to every test under \`Feature/Setup\`, \`Feature/Console\`, \`Feature/Backups\`, \`Feature/Health\` and \`Feature/System\`.`
+   `Tests fake every command they expect by name, on Symfony's single-quoted command line (\`Process::fake(["*git' 'init'*" => …])\`), on top of \`Process::preventStrayProcesses()\` + \`Process::fake([])\` and a sandbox \`Toolchain\`. Never \`Process::fake(['*' => …])\`, a \`'*'\` key anywhere in the array, a closure or a bare \`Process::fake()\`: each fakes every command (\`tests/Arch/KitRulesTest.php\`). \`tests/Pest.php\` applies the guard to every test under \`Feature/Setup\`, \`Feature/Console\`, \`Feature/Backups\`, \`Feature/Health\` and \`Feature/System\`.`
 
 2. **Setup, after that bullet**, add:
 
@@ -11401,8 +11691,8 @@ Expected: `git status` lists only the files this task changed. `AGENTS.md` is gi
 
    ` M7b done (DEC-33): the carried M6b minors were re-triaged against \`main\` \`2473d50\` and fixed in M7b or deferred as DEC-33 (29) and its Consequence record. The session id is now regenerated when the token is accepted, the step logs and exit codes are written with mode 0600, and the Herd stage compares the request host with the pinned host on every request. DEC-33 (20) replaces (2)'s "The IP is not checked", and (30) drops (3)'s \`127.0.0.1\` without Herd.`
 4. **DEC-32 (17), F12.**
-   - Old: `` lists the twenty checks that start no process (`php`, `gd`, `app-key`, ``
-   - New: `` lists a selection of the checks that start no process, without the development-only ones (`php`, `gd`, `apex` (added in M7b, DEC-33 (31)), `app-key`, ``
+   - Old: `` lists the twenty checks that start no process (`php`, `gd`, `app-key`, `marker`, ``
+   - New: `` lists a selection of the checks that start no process, without the development-only ones (`php`, `gd`, `app-key`, `marker`, `apex` (added in M7b, DEC-33 (31)), ``
 5. **DEC-32 (24), the A8 sentence.**
    - Old: `` A8, an unreadable install marker no longer crashes the doctor: `DoctorContext` reads it as absent and the new `marker` row fails ("Restore it from a backup, or delete it and run php artisan skv:install"); ``
    - New: `` A8, an install marker that is not a JSON object no longer crashes the doctor: `DoctorContext` reads it as absent and the new `marker` row fails ("Restore it from a backup, or delete it and run php artisan skv:install"); a marker that permissions made unreadable still crashed it until M7b (DEC-33 (18)); ``
@@ -11414,13 +11704,13 @@ Expected: `git status` lists only the files this task changed. `AGENTS.md` is gi
 
 Append after DEC-32. One blank line before the heading. The Answer is one paragraph, as in DEC-32.
 
-> Write the two marked placeholders exactly as `(filled in after execution)`. The controller replaces them from the task reports, the review fix rounds and Task 13's real run. If Task 11 did not need `BackupRunTest`'s opt-out, drop that clause from (28). If Task 2 dropped `X-Original-Host` (note 8), adjust (20).
+> Write the three marked placeholders ((32), (34) and the Consequence's last sentence) exactly as `(filled in after execution)`. The controller replaces them from the task reports, the review fix rounds and Task 13's real run. If Task 11 did not need `BackupRunTest`'s opt-out, drop that clause from (28). If Task 2 dropped `X-Original-Host` (note 8), adjust (20).
 
 ```markdown
 ### DEC-33 — Setup hardening build rulings (M7b)
 
 **Question:** Which choices made while building M7b refine the spec or earlier decisions, what did the controller decide under the owner's delegation, and what is deferred?
-**Answer:** Items (1)–(16) are the controller's decisions CD-1…CD-16, taken under the owner's delegation of every non-destructive M7 decision (2026-10-15); the owner can overrule each of them. Items (17)–(28) are the M7b plan's rulings RL-1…RL-12 (`docs/superpowers/plans/2026-10-16-m7b-setup-hardening.md`) as built, (29) the triage and how it replaces DEC-32's lost numbering, (30) the deviations from the spec with their reasons, (31) the earlier decisions this one supersedes or amends, (32) the deviations from the plan that the task reports and the review fix rounds recorded, with the controller's rulings during the run, (33) the documentation, and (34) the controller's real wizard run. (1) CD-1, a fresh triage: DEC-32 named the M7b scope as "A12–A56, A59, A61–A63, A65–A79 and T1–T8", but that numbering lived only in a working report that was lost when the session's context was compacted, so M7b re-triaged the source lists against `main` `2473d50`: the M6a and M6b final-review lists, the M7a final review (F1–F28, O1–O3) and the M7a build ledger's 66 deferred minors (L-01…L-66); (29) gives the outcome. (2) CD-2, won't fix: `?secret=` in the Herd-stage URLs (g3-03), because DEC-31 (6) keeps it there (single use, 30 minutes, local only), a cookie cannot cross the http→https origin change, and the Referer leak is closed by the stage's `Referrer-Policy: no-referrer` (g3-13); a stale Claude plugin-registry entry (g3-04), which is Claude Code's machine state, not something the kit writes (the owner removes it by hand); `/health-check` on tenant hosts and the SMTP address in its JSON (O2), both behind the key by design (DEC-32 (15)), with the key hardened by CD-4; a crashed repair's trace that may log 15 characters of `.env` (L-12), which needs `zend.exception_ignore_args=Off` plus a failing `EnvFile`, and stays in the local log; and a duplicated test closure (L-53), file-local by the M7a brief. (3) CD-3, where install and bootstrap run (L-60, L-61): `skv:install` runs only while `app()->environment()` is `local`, `testing` or `staging` and refuses every other name with "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).", an allowlist instead of DEC-32 (9)'s refusal of the literal `production`, so `live` or `prod` is refused too; `skv:bootstrap` takes its production half when `.env` or the process environment (`getenv('APP_ENV')`, `$_SERVER['APP_ENV']`) says `production`, which closes DEC-32 (33)'s gap for a server that sets `APP_ENV` only in its environment. (4) CD-4, the health key and the throttle (F14, F15, L-28): `App\Support\Health\HealthCheckKey` holds the key rule with `MIN_LENGTH = 32`; a configured key shorter than that counts as not configured, so the endpoint answers 403, the doctor's `health-check-key` row fails ("HEALTH_CHECK_KEY is too short") and its repair replaces the short key with `Str::random(40)`, and `EnvironmentStep::missingSecrets()` counts a short key as missing, so setup and the production bootstrap replace it too. The throttle checks the key first: requests without a matching key count in one global bucket, `health-check:denied`, at 300 a minute (429 above that), and requests with it per key hash, `health-check:ok:<sha256(key)>` (`sha1` is banned in `App` by the security preset), at 60 a minute, so strangers never lock the monitor out and key-less traffic leaves one cache entry instead of one per address. (5) CD-5, runtime settings (F10): `DoctorContext` gains `public bool $runtime`, true only from `withoutDetection()`, and `setting(string $envKey, string $configKey): ?string`, which reads the running configuration in a runtime context and `.env` otherwise; `MailCheck` and `HealthCheckKeyCheck` use it, so `/health-check` and the System page judge what the app runs with, while `skv:doctor` and setup keep reading `.env`, because they judge the file they are about to write. (6) CD-6, which `pg_dump` (F5, F13): `PG_DUMP_BINARY_PATH` still wins; otherwise Herd's newest service binary is preferred over the toolchain PATH when the `pgsql` connection's host is `127.0.0.1`, `localhost` or `::1` and Herd's services exist, because Herd's server is then the one being dumped; a Herd-glob candidate is accepted only when it and every directory up to `/Users/Shared/Herd` are owned by the current user or root and are not group- or world-writable; there is no version probe, because the System page must not start a process. (7) CD-7, a clean refusal (O1): `App\Console\Commands\BackupRunCommand` extends spatie's `BackupCommand` under the same `backup:run` signature (the kernel's discovered commands register after the package's, so the app's command wins the name); while `BackupEncryption::available()` is false it prints one error line (the M7a refusal text) and returns 1, otherwise it calls `parent::handle()`; it carries no `#[AsCommand]`, because a lazily registered command would lose the name to the package's eagerly added one. `RefuseUnencryptedBackups` stays as the backstop: `CommandStarting` fires before `handle()`, so the listener steps aside while `Artisan::findCommand('backup:run')` is the app's command and still throws when the package's command holds the name. (8) CD-8, the ops schedule (F1, F8, L-39): `App\Support\Scheduler\OpsSchedule::define(Schedule $schedule): void` holds the ops events and `routes/console.php` calls it; `ScheduledTasks` builds a fresh `Schedule`, calls `define()` and evaluates each event's filters after `preventOverlapsUsing(new InertEventMutex())`, on copies, not the events the scheduler runs, so a System page render never boots the console kernel and never touches a real overlap lock. (9) CD-9, sizes without intl (F20): `App\Support\ByteSize::format(int|float $bytes): string` (1024-based, `B`, `KB`, `MB`, `GB`, `TB`, at most one decimal) replaces `Number::fileSize()`, which needs ext-intl that nothing requires; an arch rule bans `Illuminate\Support\Number` in `app/` and `resources/views/pages`. (10) CD-10, stale dumps and the overlap lock (F6, F18, L-07): `backup:run`, `backup:clean` and `backup:monitor` use `withoutOverlapping(720)`, so a killed run's lock has expired by the next night; a `CommandStarting` listener for `backup:run`, `App\Support\Backups\PrivateBackupTemp`, creates the temporary directory with mode 0700 or chmods an existing one to 0700; and a scheduled closure, `backup-temp-cleanup`, runs at 01:15 on every server (each has its own temporary directory) while the module is on and removes files older than six hours from it, never directories; `PrivateBackupTemp` never touches the system temporary directory, a sticky directory or one another account owns; there is no new health check. (11) CD-11, `AGENTS.md` without Claude (g1-25, g1-26): DEC-25 (3)'s "`composer setup` runs `boost:update` once" is superseded: the script never ran it (`ComposerScriptsTest` pins it), and `boost:install`, which writes `AGENTS.md`, runs only in setup's Claude step (`laravel/boost` itself stays in `require-dev`, DEC-25 (2)), so `AGENTS.md` exists only with the Claude answer, and `CLAUDE.md`'s import of it matters only to Claude Code; the CHANGELOG line is corrected, with no code change. (12) CD-12, copy: every Dutch "setup" and "Setup-token" in `lang/nl.json` became "installatie" and "installatietoken", with the het-form ("Eenmalig installatietoken aangemaakt"), and "Doctor" became "Diagnose", so the System page's doctor heading and the wizard's doctor step no longer read the same as a check ("Controle"); the keys are unchanged, and a `LangFilesTest` case keeps the glossary. (13) CD-13, the Flux Pro committed-files test in generated apps (g1-16): `skv:flux-pro` writes `"extra": {"skv": {"flux-pro": true}}` into `composer.json` with `composer config extra.skv.flux-pro true --json` before it requires the package, because Composer's lock hash covers `extra` and the require then leaves the lock current; when the repository or the require step fails, `composer config --unset extra.skv` removes the mark again. The test "never references Flux Pro in the committed composer files (committed)" skips when the committed `composer.json` carries the mark ("this app committed Flux Pro on purpose with skv:flux-pro"); the kit never commits it, so the kit's own run, and CI after `skv:flux-pro` changed only the working tree, still check. Composer edits the file itself, so no test writes the repository's `composer.json`, and RL-1's `ProjectFile` has no caller in `skv:flux-pro`. (14) CD-14, second-factor accounts after setup (g4-03): when the answered super admin has `two_factor_confirmed_at`, the Herd stage's login sends the browser to the apex login page instead of issuing a handoff, as a demo install already does. (15) CD-15, detection once (g3-29): `WizardRunner::begin()` detects once and stores the `Detection` in `WizardState` (`Detection::toArray()` / `fromArray()`); `advance()`, `finish()`, `settleWithoutHttps()` and `confirmHerd()` rebuild their context from that snapshot, and the Herd stage keeps its own copy in `HerdState`. (16) CD-16, System page limits (L-45): `refreshHealth` and `runDoctor` allow six calls a minute per user each (`RateLimiter::attempt('system:<action>:<user id>', 6, …)` on the ops store); above that the page keeps its rows and shows "Too many attempts. Try again in a minute." (17) RL-1, `ProjectFile` (g2-07, g2-08): `App\Setup\Support\ProjectFile::write(string $path, string $contents): void` writes through `StateFile::write($path, $contents, $mode)`, which gained `int $mode = 0600`; the mode is the existing regular file's, else 0644, and a symlink at `$path` is replaced, not followed; `herd.yml` (`HerdManifestStep`), `.mcp.json`, `composer.json` and `.claude/settings.local.json` (`ClaudeStep`) use it, and `.env.testing` (`DatabaseStep`) goes through `StateFile::write()` with `.env`'s mode, the bootstrap's `.env` copy with `.env.example`'s. (18) RL-2, `StateFile::readJson()` (g3-07, L-09, F3 (4)): a symlink throws `JsonException(":file is a symbolic link.")` and a file that exists but cannot be read throws `JsonException(":file is not readable.")`, so `DoctorContext`, `MarkerCheck`, `WizardState` and `HerdState`, which catch `JsonException`, treat both like a damaged file; this makes DEC-32 (24)'s A8 true for a marker that permissions make unreadable. (19) RL-3, the probe seam (g1-13, g4-08): `Detector::__construct(Toolchain $toolchain, ?Closure $postgresProbe = null)`, where a given probe `fn (string $host, int $port): bool` replaces the PDO probe; `withoutPostgresProbe(bool $reachable = false): void` in `tests/Pest.php` binds a `Detector` with that probe, and `useSetupWizard()` calls it, so wizard tests never open a socket; the PostgreSQL wizard cases rebind `Detector` themselves. (20) RL-4, `DirectRequest` (g4-01, g3-17): a request is direct only when the app is local, `REMOTE_ADDR` is in `127.0.0.0/8` or is `::1`, no header name starts with `x-forwarded-` or `x-expose-`, and no `Forwarded` or `X-Original-Host` header is present (§5.3.4 and DEC-31 (2) list the latter); `herd share` traffic arrives from loopback too, so the header rule stays. This replaces DEC-31 (2)'s "The IP is not checked" and its three `X-Forwarded-*` names, because a server bound to every address (`php artisan serve --host=0.0.0.0`) would otherwise let another machine on the network run the wizard. (21) RL-5, the pinned host (g3-25): `App\Setup\Http\SetupHostGuard::allows(Request $request, ?string $pinned): bool` holds when `SetupHost::normalise()` of the request host equals the pinned host or its `admin.` form, or, before `begin()` pins one, when `SetupHost::forWizard()` accepts it; `SetupMode::homeRedirect()` and `HerdStage::state()` use it in both forms, and `EnsureSetupAccess::authorised()` only once a `WizardState` has pinned a host, so the page can still show the host-problem callout before `begin()`; the pinned host is `WizardState::$host` or `HerdState::$host`. (22) RL-6, `ShellArgument` (g2-05): `App\Setup\Support\ShellArgument::quote(string $value): string` returns the value unchanged when it matches `/^[A-Za-z0-9._\/:=@%+-]+$/`, else `escapeshellarg($value)`; every command the kit prints (manual and fix commands) uses it, and process argv is unchanged. (23) RL-7, the manual Herd command (g3-23): `HerdSiteStep::manualCommand(SetupContext $context): ?string` returns null without Herd, `herd link <name>` when the site is not served, `herd secure <name>` when HTTPS was chosen, else null; the wizard runner, `SetupFinishController` and `RunStepCommand` use it. (24) RL-8, the long step's process (g3-12): `StepLauncher::start()` gained `?string $pidFile = null`, and the detached inner `sh -c` writes its own `$$` to `<step>.pid`, runs php and then writes the exit code, so the pid lives exactly as long as the step (`exec php` would leave nothing to write the exit code); `WizardRunner::recheck()` refuses with "This step is still running." while `posix_kill($pid, 0)` reports the process alive, and the 30-minute stall rule reports a live pid as still running. (25) RL-9, one super-admin creator (g2-11, g2-13): `App\Authorization\SetSuperAdmin::createNew(array $attributes): User` inserts a user with `is_super_admin = true`, `organisation_id = null` and status Active and calls `handleCreated()`, in one `DB::transaction()`; `DatabaseStep`, `skv:create-super-admin` and `DemoSeeder` call it. (26) RL-10, the generated secrets (L-56): `EnvironmentStep::missingSecrets(EnvFile $env): array<string, string>` returns a fresh random value of the `GENERATED` length for every blank `GENERATED` key, and for a `HEALTH_CHECK_KEY` that fails `HealthCheckKey::isUsable()` (CD-4); `EnvironmentStep`, `Bootstrap` and `BackupPasswordCheck` use it. (27) RL-11, the ops store (F7): `App\Support\Health\OpsCache::store(): Illuminate\Contracts\Cache\Repository` returns `Cache::store((string) config('skv.ops_cache_store', 'file'))`; `HealthReport`, `Heartbeat`, `ThrottleHealthChecks` and the System page's limiter use it. (28) RL-12, the stray-process guard (g4-09, g2-10): `tests/Pest.php` runs `Process::preventStrayProcesses()` and `Process::fake([])` before every test under `Feature/Setup`, `Feature/Console`, `Feature/Backups`, `Feature/Health` and `Feature/System`. The plan named only `preventStrayProcesses()`, but Laravel 13.35's `PendingProcess::run()` refuses a stray process only while the factory records, which `Process::fake()` starts, so the hook calls both; a file's own `Process::fake([...])` adds its named patterns, and `BackupRunTest`'s version probe of the real `pg_dump` opts out with `Process::preventStrayProcesses(false)`. `KitRulesTest` fails on `Process::fake(['*' …])`, on a bare `Process::fake()` and on a closure catch-all anywhere under `tests/`; the 17 catch-alls in 9 files and the 2 bare fakes were replaced by named patterns for the commands each test reaches, including those that run only where Node, Claude Code or Flux Pro is installed, because `Toolchain::which()` scans the system PATH. (29) The triage: six read-only agents checked every item of the four source lists against `main` `2473d50`, 221 entries after splitting bundled lines. 48 were already fixed (most by M6b's fix waves and M7a), 1 was obsolete (g1-11, after spec §5.2 changed), 15 duplicated another item (L-14, L-15, L-19, L-25, L-32's store half, L-33, L-34, L-35, L-37, L-38, L-43, L-62, L-63, L-64 and L-65, each closed with its F or O item), 141 were in scope for M7b (Tasks 1–12), 4 went to M7c, 7 to M8 and 5 are won't-fix (CD-2). The ids of the plan's triage table (`g1-NN`/`g2-NN` from M6a, `g3-NN`/`g4-NN` from M6b, `F1`–`F28` and `O1`–`O3` from the M7a final review, `L-NN` from the M7a ledger) replace DEC-32's A/T numbering; the plan's requirement table maps every in-scope id to its task. Two of the triage's suggested fixes changed during planning: the browser wizard tests wait with a raised `Playwright::setTimeout()` instead of `Playwright::usingTimeout()`, which changes only each request's timeout while pest-plugin-browser 5.1 retries an assertion for `Playwright::timeout()` (g4-22), and `NameLeakTest` allows `extra.skv` (CD-13) besides the exact state-file names (g4-05). (30) The deviations from the spec, each with its reason: (a) §5.3.4's access gate also requires a loopback `REMOTE_ADDR` (RL-4), so a server that listens on every address never lets another machine run the wizard; (b) without Herd the wizard no longer opens on `127.0.0.1` or another IP host (g3-34) and names `http://localhost:<port>` instead, because the host becomes `TENANCY_APEX_DOMAIN` and an IP cannot carry organisation subdomains, while `*.localhost` resolves in browsers (DEC-29); (c) §5.3.4 / §6.5's local quick login also follows the direct-request rule (g3-15), so a `herd share` visitor never sees or uses the demo accounts; (d) §4.9's health-check throttle counts by key, not by address (CD-4), so strangers cannot lock a monitor out; (e) §4.9's scheduler gains `backup-temp-cleanup` at 01:15 and gives the backup jobs a 12-hour overlap lock instead of the default 24 hours (CD-10), so a killed backup neither leaves a plaintext dump behind nor skips the next night. (31) Earlier decisions superseded or amended: DEC-25 (3) by CD-11 (marked in place); DEC-30's Consequence names the secret-bound Herd stage and the single-use handoff instead of "the signed login URL" (g3-20); DEC-31 (2)'s "The IP is not checked" by RL-4, and DEC-31 (3)'s `127.0.0.1` without Herd by (30) (b); DEC-32 (5)'s 60 requests a minute per address by CD-4; DEC-32 (9)'s refusal of the literal `production` by CD-3; DEC-32 (14)'s order (`.env`, PATH, Herd) by CD-6; DEC-32 (17)'s `SystemChecks::KEYS` gains `apex` after `marker`, its place in `Doctor::checks()` (F12), so it is a selection of the checks that start no process, without the development-only ones (amended in place); DEC-32 (24)'s A8 sentence is corrected in place (an unreadable marker still crashed the doctor until RL-2); DEC-32 (30)'s console-kernel `bootstrap()` by CD-8. (32) The deviations from the plan that the task reports and the review fix rounds recorded, and the controller's rulings during the run: (filled in after execution). (33) The documentation (Task 12): the README describes the wizard's loopback and header rule, the pinned host on every request, the IP host and port rules, the folder-name and `herd tld` messages, the default demo choice, the Herd stage's second-factor login, `Referrer-Policy` and manual command, the quick login's direct-request rule and the account that stays listed (g3-18), the setup files' `<step>.started` and modes (g3-19), `skv:install`'s allowlist and inline-password refusal, the production bootstrap from the process environment, the `--fix` list with the short health key, the `marker` and outage rows, the health key's 32 characters, the split throttle with `Cache-Control: no-store` on 429, `DB_CONNECT_TIMEOUT`, the runtime settings, a `curl` example that reads the key from standard input (F17), `pg_dump`'s choice and `DB_SSLMODE`, the one-line refusal, the private temporary dump and its clean-up, the 12-hour lock, the schedule in `OpsSchedule`, the System page's *System* group (F3 (3)), `apex`, limits and unavailable states, the answers file outside the project (F16), the Flux Pro mark (CD-13), `AGENTS.md` only with Claude (CD-11), `ext-zip` (F21) and the dependency updates that need `npm run build:setup` (g4-07). `docs/handleiding.html` got the same in Dutch and lost its stale lines (F3 (1), (2), (5)); the CHANGELOG lists every change and corrects its `boost:update` line (g1-26); the guideline got the process-fake rule, `ProjectFile`, `ShellArgument`, `DirectRequest`, the qualified doctor-check rule (F22), the probe seam, `OpsCache`, `OpsSchedule`, `HealthCheckKey` and the exec and `Number` bans; `AGENTS.md` (git-ignored) was regenerated with `php artisan boost:update --no-discover --ignore-skills --no-interaction`. (34) The controller's real wizard run on a throwaway Herd site (Task 13): (filled in after execution).
+**Answer:** Items (1)–(16) are the controller's decisions CD-1…CD-16, taken under the owner's delegation of every non-destructive M7 decision (2026-10-15); the owner can overrule each of them. Items (17)–(28) are the M7b plan's rulings RL-1…RL-12 (`docs/superpowers/plans/2026-10-16-m7b-setup-hardening.md`) as built, (29) the triage and how it replaces DEC-32's lost numbering, (30) the deviations from the spec with their reasons, (31) the earlier decisions this one supersedes or amends, (32) the deviations from the plan that the task reports and the review fix rounds recorded, with the controller's rulings during the run, (33) the documentation, and (34) the controller's real wizard run. (1) CD-1, a fresh triage: DEC-32 named the M7b scope as "A12–A56, A59, A61–A63, A65–A79 and T1–T8", but that numbering lived only in a working report that was lost when the session's context was compacted, so M7b re-triaged the source lists against `main` `2473d50`: the M6a and M6b final-review lists, the M7a final review (F1–F28, O1–O3) and the M7a build ledger's 66 deferred minors (L-01…L-66); (29) gives the outcome. (2) CD-2, won't fix: `?secret=` in the Herd-stage URLs (g3-03), because DEC-31 (6) keeps it there (single use, 30 minutes, local only), a cookie cannot cross the http→https origin change, and the Referer leak is closed by the stage's `Referrer-Policy: no-referrer` (g3-13); a stale Claude plugin-registry entry (g3-04), which is Claude Code's machine state, not something the kit writes (the owner removes it by hand); `/health-check` on tenant hosts and the SMTP address in its JSON (O2), both behind the key by design (DEC-32 (15)), with the key hardened by CD-4; a crashed repair's trace that may log 15 characters of `.env` (L-12), which needs `zend.exception_ignore_args=Off` plus a failing `EnvFile`, and stays in the local log; and a duplicated test closure (L-53), file-local by the M7a brief. (3) CD-3, where install and bootstrap run (L-60, L-61): `skv:install` runs only while `app()->environment()` is `local`, `testing` or `staging` and refuses every other name with "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).", an allowlist instead of DEC-32 (9)'s refusal of the literal `production`, so `live` or `prod` is refused too; `skv:bootstrap` takes its production half when `.env` or the process environment (`getenv('APP_ENV')`, `$_SERVER['APP_ENV']`) says `production`, which closes DEC-32 (33)'s gap for a server that sets `APP_ENV` only in its environment. (4) CD-4, the health key and the throttle (F14, F15, L-28): `App\Support\Health\HealthCheckKey` holds the key rule with `MIN_LENGTH = 32`; a configured key shorter than that counts as not configured, so the endpoint answers 403, the doctor's `health-check-key` row fails ("HEALTH_CHECK_KEY is too short") and its repair replaces the short key with `Str::random(40)`, and `EnvironmentStep::missingSecrets()` counts a short key as missing, so setup and the production bootstrap replace it too. The throttle checks the key first: requests without a matching key count in one global bucket, `health-check:denied`, at 300 a minute (429 above that), and requests with it per key hash, `health-check:ok:<sha256(key)>` (`sha1` is banned in `App` by the security preset), at 60 a minute, so strangers never lock the monitor out and key-less traffic leaves one cache entry instead of one per address. (5) CD-5, runtime settings (F10): `DoctorContext` gains `public bool $runtime`, true only from `withoutDetection()`, and `setting(string $envKey, string $configKey): ?string`, which reads the running configuration in a runtime context and `.env` otherwise; `MailCheck` and `HealthCheckKeyCheck` use it, so `/health-check` and the System page judge what the app runs with, while `skv:doctor` and setup keep reading `.env`, because they judge the file they are about to write. (6) CD-6, which `pg_dump` (F5, F13): `PG_DUMP_BINARY_PATH` still wins; otherwise Herd's newest service binary is preferred over the toolchain PATH when the `pgsql` connection's host is `127.0.0.1`, `localhost` or `::1` and Herd's services exist, because Herd's server is then the one being dumped; a Herd-glob candidate is accepted only when it and every directory up to `/Users/Shared/Herd` are owned by the current user or root and are not group- or world-writable; there is no version probe, because the System page must not start a process. (7) CD-7, a clean refusal (O1): `App\Console\Commands\BackupRunCommand` extends spatie's `BackupCommand` under the same `backup:run` signature (the kernel's discovered commands register after the package's, so the app's command wins the name); it first resolves a `--config=<name>` configuration itself (`resolveConfig()`, which the package's `handle()` runs only after the check), so the check judges the configuration the run will use and `backup:run --config=<a configuration without a password>` refuses too; while `BackupEncryption::available()` is false it prints one error line (the M7a refusal text) and returns 1, otherwise it calls `parent::handle()`; it carries no `#[AsCommand]`, because a lazily registered command would lose the name to the package's eagerly added one. `RefuseUnencryptedBackups` stays as the backstop: `CommandStarting` fires before `handle()`, so the listener steps aside while `Artisan::findCommand('backup:run')` is the app's command and still throws when the package's command holds the name. (8) CD-8, the ops schedule (F1, F8, L-39): `App\Support\Scheduler\OpsSchedule::define(Schedule $schedule): void` holds the ops events and `routes/console.php` calls it; `ScheduledTasks` builds a fresh `Schedule`, calls `define()` and evaluates each event's filters after `preventOverlapsUsing(new InertEventMutex())`, on copies, not the events the scheduler runs, so a System page render never boots the console kernel and never touches a real overlap lock. (9) CD-9, sizes without intl (F20): `App\Support\ByteSize::format(int|float $bytes): string` (1024-based, `B`, `KB`, `MB`, `GB`, `TB`, at most one decimal) replaces `Number::fileSize()`, which needs ext-intl that nothing requires; an arch rule bans `Illuminate\Support\Number` in `app/` and `resources/views/pages`. (10) CD-10, stale dumps and the overlap lock (F6, F18, L-07): `backup:run`, `backup:clean` and `backup:monitor` use `withoutOverlapping(720)`, so a killed run's lock has expired by the next night; a `CommandStarting` listener for `backup:run`, `App\Support\Backups\PrivateBackupTemp`, creates the temporary directory with mode 0700 or chmods an existing one to 0700; and a scheduled closure, `backup-temp-cleanup`, runs hourly at :15 on every server (each has its own temporary directory), also while the module is off, so a dump left behind before the module was switched off still goes; it removes files older than six hours only under the package's working directory `<temporary_directory>/temp`, never directories and never the rest of a temporary directory pointed at a shared folder; spatie's `BackupJob` already empties `temp/` at the start of every run, so the cleanup covers the hours until the next one; `PrivateBackupTemp` never touches the system temporary directory, a sticky directory or one another account owns; there is no new health check. (11) CD-11, `AGENTS.md` without Claude (g1-25, g1-26): DEC-25 (3)'s "`composer setup` runs `boost:update` once" is superseded: the script never ran it (`ComposerScriptsTest` pins it), and `boost:install`, which writes `AGENTS.md`, runs only in setup's Claude step (`laravel/boost` itself stays in `require-dev`, DEC-25 (2)), so `AGENTS.md` exists only with the Claude answer, and `CLAUDE.md`'s import of it matters only to Claude Code; the CHANGELOG line is corrected, with no code change. (12) CD-12, copy: every Dutch "setup" and "Setup-token" in `lang/nl.json` became "installatie" and "installatietoken", with the het-form ("Eenmalig installatietoken aangemaakt"), and "Doctor" became "Diagnose", so the System page's doctor heading and the wizard's doctor step no longer read the same as a check ("Controle"); the keys are unchanged, and a `LangFilesTest` case keeps the glossary. (13) CD-13, the Flux Pro committed-files test in generated apps (g1-16): `skv:flux-pro` writes `"extra": {"skv": {"flux-pro": true}}` into `composer.json` with `composer config extra.skv.flux-pro true --json` before it requires the package, because Composer's lock hash covers `extra` and the require then leaves the lock current; when the repository or the require step fails, `composer config --unset extra.skv` removes the mark again. The test "never references Flux Pro in the committed composer files (committed)" skips when the committed `composer.json` carries the mark ("this app committed Flux Pro on purpose with skv:flux-pro"); the kit never commits it, so the kit's own run, and CI after `skv:flux-pro` changed only the working tree, still check. Composer edits the file itself, so no test writes the repository's `composer.json`, and RL-1's `ProjectFile` has no caller in `skv:flux-pro`. (14) CD-14, second-factor accounts after setup (g4-03): when the answered super admin has `two_factor_confirmed_at`, the Herd stage's login sends the browser to the apex login page instead of issuing a handoff, as a demo install already does. (15) CD-15, detection once (g3-29): `WizardRunner::begin()` detects once and stores the `Detection` in `WizardState` (`Detection::toArray()` / `fromArray()`); `advance()`, `finish()`, `settleWithoutHttps()` and `confirmHerd()` rebuild their context from that snapshot, and the Herd stage keeps its own copy in `HerdState`. (16) CD-16, System page limits (L-45): `refreshHealth` and `runDoctor` allow six calls a minute per user each (`RateLimiter::attempt('system:<action>:<user id>', 6, …)` on the ops store); above that the page keeps its rows and shows "Too many attempts. Try again in a minute." (17) RL-1, `ProjectFile` (g2-07, g2-08): `App\Setup\Support\ProjectFile::write(string $path, string $contents): void` writes through `StateFile::write($path, $contents, $mode)`, which gained `int $mode = 0600`; the mode is the existing regular file's, else 0644, and a symlink at `$path` is replaced, not followed; `herd.yml` (`HerdManifestStep`), `.mcp.json`, `composer.json` and `.claude/settings.local.json` (`ClaudeStep`) use it, and `.env.testing` (`DatabaseStep`) goes through `StateFile::write()` with `.env`'s mode, the bootstrap's `.env` copy with `.env.example`'s. (18) RL-2, `StateFile::readJson()` (g3-07, L-09, F3 (4)): a symlink throws `JsonException(":file is a symbolic link.")` and a file that exists but cannot be read throws `JsonException(":file is not readable.")`, so `DoctorContext`, `MarkerCheck`, `WizardState` and `HerdState`, which catch `JsonException`, treat both like a damaged file; this makes DEC-32 (24)'s A8 true for a marker that permissions make unreadable. (19) RL-3, the probe seam (g1-13, g4-08): `Detector::__construct(Toolchain $toolchain, ?Closure $postgresProbe = null)`, where a given probe `fn (string $host, int $port): bool` replaces the PDO probe; `withoutPostgresProbe(bool $reachable = false): void` in `tests/Pest.php` binds a `Detector` with that probe, and `useSetupWizard()` calls it, so wizard tests never open a socket; the PostgreSQL wizard cases rebind `Detector` themselves. (20) RL-4, `DirectRequest` (g4-01, g3-17): a request is direct only when the app is local, `REMOTE_ADDR` is in `127.0.0.0/8` or is `::1`, no header name starts with `x-forwarded-` or `x-expose-`, and no `Forwarded` or `X-Original-Host` header is present (§5.3.4 and DEC-31 (2) list the latter); `herd share` traffic arrives from loopback too, so the header rule stays. This replaces DEC-31 (2)'s "The IP is not checked" and its three `X-Forwarded-*` names, because a server bound to every address (`php artisan serve --host=0.0.0.0`) would otherwise let another machine on the network run the wizard. (21) RL-5, the pinned host (g3-25): `App\Setup\Http\SetupHostGuard::allows(Request $request, ?string $pinned): bool` holds when `SetupHost::normalise()` of the request host equals the pinned host or its `admin.` form, or, before `begin()` pins one, when `SetupHost::forWizard()` accepts it; `SetupMode::homeRedirect()` and `HerdStage::state()` use it in both forms, and `EnsureSetupAccess::authorised()` only once a `WizardState` has pinned a host, so the page can still show the host-problem callout before `begin()`; the pinned host is `WizardState::$host` or `HerdState::$host`. On a host the wizard cannot pin (an IP address such as `127.0.0.1`, a folder that is no DNS label, a failed `herd tld`), `/` hands out no token either: `SetupMode::homeHostProblem()` makes it redirect token-less to the suggested address (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answer 409 with the `setup.host-problem` page naming the problem where no address can be suggested; that page never carries the token. Residual: without Herd, before `begin()`, a DNS-rebinding page on a `*.test` name can still be handed the token by `/`; it needs control of the developer's DNS during the pre-install window, and the loopback rule (RL-4) still applies. (22) RL-6, `ShellArgument` (g2-05): `App\Setup\Support\ShellArgument::quote(string $value): string` returns the value unchanged when it matches `/^[A-Za-z0-9._\/:=@%+-]+$/`, else `escapeshellarg($value)`; every command the kit prints (manual and fix commands) uses it, and process argv is unchanged. (23) RL-7, the manual Herd command (g3-23): `HerdSiteStep::manualCommand(SetupContext $context): ?string` returns null without Herd, `herd link <name>` when the site is not served, `herd secure <name>` when HTTPS was chosen, else null; the wizard runner, `SetupFinishController` and `RunStepCommand` use it. (24) RL-8, the long step's process (g3-12): `StepLauncher::start()` gained `?string $pidFile = null`, and the detached inner `sh -c` writes its own `$$` into `<step>.started` (written empty first; its mtime still marks the start), runs php and then writes the exit code, so the pid lives exactly as long as the step (`exec php` would leave nothing to write the exit code); `WizardRunner::recheck()` refuses with "This step is still running." while `posix_kill($pid, 0)` reports the process alive, and the 30-minute stall rule reports a live pid as still running, for at most four hours after the step started (`LIVE_PID_SECONDS`): a shell that died without writing the exit file (a reboot, an OOM kill) can leave a pid that another process reuses, so an older pid is no longer trusted and the step ends manual. (25) RL-9, one super-admin creator (g2-11, g2-13): `App\Authorization\SetSuperAdmin::createNew(array $attributes): User` inserts a user with `is_super_admin = true`, `organisation_id = null` and status Active and calls `handleCreated()`, in one `DB::transaction()`; `DatabaseStep`, `skv:create-super-admin` and `DemoSeeder` call it. (26) RL-10, the generated secrets (L-56): `EnvironmentStep::missingSecrets(EnvFile $env): array<string, string>` returns a fresh random value of the `GENERATED` length for every blank `GENERATED` key, and for a `HEALTH_CHECK_KEY` that fails `HealthCheckKey::isUsable()` (CD-4); `EnvironmentStep`, `Bootstrap` and `BackupPasswordCheck` use it. (27) RL-11, the ops store (F7): `App\Support\Health\OpsCache::store(): Illuminate\Contracts\Cache\Repository` returns `Cache::store((string) config('skv.ops_cache_store', 'file'))`; `HealthReport`, `Heartbeat`, `ThrottleHealthChecks` and the System page's limiter use it. (28) RL-12, the stray-process guard (g4-09, g2-10): `tests/Pest.php` runs `Process::preventStrayProcesses()` and `Process::fake([])` before every test under `Feature/Setup`, `Feature/Console`, `Feature/Backups`, `Feature/Health` and `Feature/System`. The plan named only `preventStrayProcesses()`, but Laravel 13.35's `PendingProcess::run()` refuses a stray process only while the factory records, which `Process::fake()` starts, so the hook calls both; a file's own `Process::fake([...])` adds its named patterns, and `BackupRunTest`'s version probe of the real `pg_dump` opts out with `Process::preventStrayProcesses(false)`. `KitRulesTest` fails on `Process::fake(['*' …])`, on a `'*'` key anywhere in a fake's array, on a bare `Process::fake()` and on a closure catch-all anywhere under `tests/`; the 18 `'*'` keys in 10 files (one of them, `BootstrapTest.php:151`, the second key of its array) and the 2 bare fakes were replaced by named patterns for the commands each test reaches, including those that run only where Node, Claude Code or Flux Pro is installed, because `Toolchain::which()` scans the system PATH. (29) The triage: six read-only agents checked every item of the four source lists against `main` `2473d50`, 221 entries after splitting bundled lines. 48 were already fixed (most by M6b's fix waves and M7a), 1 was obsolete (g1-11, after spec §5.2 changed), 15 duplicated another item (L-14, L-15, L-19, L-25, L-32's store half, L-33, L-34, L-35, L-37, L-38, L-43, L-62, L-63, L-64 and L-65, each closed with its F or O item), 141 were in scope for M7b (Tasks 1–12), 4 went to M7c, 7 to M8 and 5 are won't-fix (CD-2). The ids of the plan's triage table (`g1-NN`/`g2-NN` from M6a, `g3-NN`/`g4-NN` from M6b, `F1`–`F28` and `O1`–`O3` from the M7a final review, `L-NN` from the M7a ledger) replace DEC-32's A/T numbering; the plan's requirement table maps every in-scope id to its task. Two of the triage's suggested fixes changed during planning: the browser wizard tests wait with a raised `Playwright::setTimeout()` instead of `Playwright::usingTimeout()`, which changes only each request's timeout while pest-plugin-browser 5.1 retries an assertion for `Playwright::timeout()` (g4-22), and `NameLeakTest` allows `extra.skv` (CD-13) besides the exact state-file names (g4-05). (30) The deviations from the spec, each with its reason: (a) §5.3.4's access gate also requires a loopback `REMOTE_ADDR` (RL-4), so a server that listens on every address never lets another machine run the wizard; (b) without Herd the wizard no longer opens on `127.0.0.1` or another IP host (g3-34) and `/` sends the browser to `http://localhost:<port>/` instead, because the host becomes `TENANCY_APEX_DOMAIN` and an IP cannot carry organisation subdomains, while `*.localhost` resolves in browsers (DEC-29); (c) §5.3.4 / §6.5's local quick login also follows the direct-request rule (g3-15), so a `herd share` visitor never sees or uses the demo accounts; (d) §4.9's health-check throttle counts by key, not by address (CD-4), so strangers cannot lock a monitor out; (e) §4.9's scheduler gains an hourly `backup-temp-cleanup` (at :15, also while the backups module is off) and gives the backup jobs a 12-hour overlap lock instead of the default 24 hours (CD-10), so a killed backup neither leaves a plaintext dump behind nor skips the next night. (31) Earlier decisions superseded or amended: DEC-25 (3) by CD-11 (marked in place); DEC-30's Consequence names the secret-bound Herd stage and the single-use handoff instead of "the signed login URL" (g3-20); DEC-31 (2)'s "The IP is not checked" by RL-4, and DEC-31 (3)'s `127.0.0.1` without Herd by (30) (b); DEC-32 (5)'s 60 requests a minute per address by CD-4; DEC-32 (9)'s refusal of the literal `production` by CD-3; DEC-32 (14)'s order (`.env`, PATH, Herd) by CD-6; DEC-32 (17)'s `SystemChecks::KEYS` gains `apex` after `marker`, its place in `Doctor::checks()` (F12), so it is a selection of the checks that start no process, without the development-only ones (amended in place); DEC-32 (24)'s A8 sentence is corrected in place (an unreadable marker still crashed the doctor until RL-2); DEC-32 (30)'s console-kernel `bootstrap()` by CD-8. (32) The deviations from the plan that the task reports and the review fix rounds recorded, and the controller's rulings during the run: (filled in after execution). (33) The documentation (Task 12): the README describes the wizard's loopback and header rule, the pinned host on every request, the IP host and port rules, the token-less redirect and the 409 host-problem page with the folder-name and `herd tld` messages, the default demo choice, the Herd stage's second-factor login, `Referrer-Policy` and manual command, the quick login's direct-request rule and the account that stays listed (g3-18), the setup files' `<step>.started` and modes (g3-19), `skv:install`'s allowlist and inline-password refusal, the production bootstrap from the process environment, the `--fix` list with the short health key, the `marker` and outage rows, the health key's 32 characters, the split throttle with `Cache-Control: no-store` on 429, `DB_CONNECT_TIMEOUT`, the runtime settings, a `curl` example that reads the key from standard input (F17), `pg_dump`'s choice and `DB_SSLMODE`, the one-line refusal, the private temporary dump and its clean-up, the 12-hour lock, the schedule in `OpsSchedule`, the System page's *System* group (F3 (3)), `apex`, limits and unavailable states, the answers file outside the project (F16), the Flux Pro mark (CD-13), `AGENTS.md` only with Claude (CD-11), `ext-zip` (F21) and the dependency updates that need `npm run build:setup` (g4-07). `docs/handleiding.html` got the same in Dutch and lost its stale lines (F3 (1), (2), (5)); the CHANGELOG lists every change and corrects its `boost:update` line (g1-26); the guideline got the process-fake rule, `ProjectFile`, `ShellArgument`, `DirectRequest`, the qualified doctor-check rule (F22), the probe seam, `OpsCache`, `OpsSchedule`, `HealthCheckKey` and the exec and `Number` bans; `AGENTS.md` (git-ignored) was regenerated with `php artisan boost:update --no-discover --ignore-skills --no-interaction`. (34) The controller's real wizard run on a throwaway Herd site (Task 13): (filled in after execution).
 **Evidence:** `tests/Feature/Setup/**` (among them `ToolchainTest`, `DetectorTest`, `BootstrapTest`, `SetupHostTest`, `AnswersTest`, `SetupRunnerTest`, `InstallPreflightTest`, `StrayProcessGuardTest`, `Support/StateFileTest`, `Steps/*`, `Doctor/{Checks,Doctor}Test`, `Wizard/{DetachedStepLauncher,HerdStage,SetupAccess,SetupLayout,WizardPage,WizardRunner,WizardState}Test`), `tests/Feature/Console/{Bootstrap,Install,RunStep,Doctor,CreateSuperAdmin,FluxPro,ProductionGuards}*Test.php`, `tests/Feature/Auth/QuickLoginTest.php`, `tests/Feature/Health/{HealthChecks,HealthReport,HealthCheckEndpoint}Test.php`, `tests/Feature/Backups/*Test.php`, `tests/Feature/Scheduler/ScheduleTest.php`, `tests/Feature/System/SystemPageTest.php`, `tests/Feature/Seeders/DemoSeederTest.php`, `tests/Feature/Authorization/SetSuperAdminTest.php`, `tests/Feature/Tooling/{CiWorkflow,ComposerScripts}Test.php`, `tests/Feature/LangFilesTest.php`, `tests/Arch/{KitRules,NameLeak}Test.php`, `tests/Browser/{SetupWizard,SystemPage}Test.php`, the whole suite on SQLite, on PostgreSQL and with `MODULE_IMPERSONATION=false MODULE_PASSKEYS=false`, the browser suite, and `npm run build:setup && git diff --exit-code resources/setup/setup.css`; vendor reads of Laravel 13.35 (`Process\Factory::fake()`, `PendingProcess::run()` and `start()`, the scheduler's event mutex), Pest 5.3 (`Configuration::__call()`, `UsesCall::beforeEach()`, `TestRepository::use()`, `toThrow()`), pest-plugin-browser 5.1.2 (`AwaitableWebpage::__call()`, `Execution::waitForExpectation()`, `Playwright::usingTimeout()` and `setTimeout()`) and Composer 2.10.2 (`config extra.*` and `--unset` on a scratch copy of `composer.json`); the six verification reports of the triage, the task reports and the progress ledger of the M7b run.
 **Consequence:** Deferred to M7c: the §6.6 extras and the security-hardening follow-ups that DEC-32's Consequence lists; L-46 (a `$member->exists` assertion that cannot fail), L-48 (a queue worker keeping the console tag, untested), L-49 (an untyped closure) and L-50 (jobs dispatched during a web request's `Artisan::call()` tagged as console); and `LastBackupCheck`'s message, which still names only a blank password or a zip without AES-256 when the encryption is `none` (carried by DEC-32's Consequence, no triage id). Deferred to M8: g1-24 (the e2e `tests/` diff for the `--phpunit` row), g1-30 (the Herd deep link in the README), g2-01 (CI's global Flux credentials), g3-05 and L-59 (the browser suite's Trace warning), g3-39 (the PostgreSQL browser wizard in CI) and L-06 (a PostgreSQL 18 client in CI), with the CI runs of the e2e and `phase1` jobs, the release check and publication. Won't fix: CD-2. The deferred minors of the M7b reviews: (filled in after execution).
 ```
@@ -11435,11 +11725,12 @@ php -r 'json_decode(file_get_contents("lang/nl.json"), flags: JSON_THROW_ON_ERRO
 grep -n "setup-token\|>Controle\.<\|op branch.*M7a\|m7a-ops" docs/handleiding.html
 grep -n "drops out\|\*Systeem\* group\|X-Health-Check-Key: \$HEALTH_CHECK_KEY\" https" README.md
 grep -n "composer setup\` runs \`boost:update\`" CHANGELOG.md
+grep -n "01:15\|<step>\.pid\|<stap>\.pid" README.md CHANGELOG.md docs/handleiding.html docs/decisions.md
 ```
 
 Expected:
 - The tests PASS and `nl.json ok` prints.
-- The three greps print nothing; the handleiding grep may still list `skv-setup-token`, a file path that stays.
+- The four greps print nothing; the handleiding grep may still list `skv-setup-token`, a file path that stays. The last one guards CD-10's hourly clean-up and RL-8's pid file (`<step>.started`).
 
 - [ ] **Step 10: The per-task gate, then commit**
 
@@ -11481,7 +11772,7 @@ npm run build && composer test:browser
 npm run build:setup && git diff --exit-code resources/setup/setup.css
 git status --short
 git show HEAD:composer.json | grep -c flux-pro; git show HEAD:composer.lock | grep -c flux-pro
-grep -rn "Process::fake(\['\*'" tests/ | wc -l
+grep -rnE "'\*' *=>|\"\*\" *=>|Process::fake\(\)" tests/ | grep -v KitRulesTest
 grep -L "covers §" $(git diff --name-only --diff-filter=A main -- 'tests/**/*.php' | grep -v -e Fixtures -e Support)
 ```
 
@@ -11490,49 +11781,66 @@ Expected:
 - the stylesheet as committed
 - a clean tree
 - `0` and `0` for flux-pro
-- `0` catch-all fakes
+- no output from the catch-all grep (a `'*'` key in either quote style, or a bare fake; named keys such as `"*herd' 'tld'*"` mix the quotes and never match)
 - an empty `grep -L`
 
 - [ ] **Step 2: The real wizard run (PostgreSQL + Herd Pro + HTTPS)**
 
-1. **Install.** Run phase 1 only: `scripts/e2e-local.sh "$HOME/Herd/m7b-e2e" --entry=herd --phase1-only`. Every phase-1 check must pass.
+Every command of this step names the throwaway site by its absolute path, never a relative one: the controller's shell sits in `/Users/frankcornet/Herd/skv3`, and shell variables do not survive between Bash calls. Run artisan as `php "$HOME/Herd/m7b-e2e/artisan" …` (artisan takes its base path from its own location, so this targets the site from any directory), and give every file path in full. Never run `artisan`, `awk`, `stat`, `test` or `ls` on a relative path here: in the repository they would run a real `backup:run` on the development database and read the repository's `.env`, which the Global Constraints forbid.
+
+1. **Install.** Run phase 1 only: `scripts/e2e-local.sh "$HOME/Herd/m7b-e2e" --entry=herd --phase1-only`. Every phase-1 check must pass. Then check that the site is not the repository, and stop if it is:
+
+   ```bash
+   [ "$(cd "$HOME/Herd/m7b-e2e" && pwd -P)" != "$(git -C /Users/frankcornet/Herd/skv3 rev-parse --show-toplevel)" ] || exit 1
+   ```
 2. **The gate (RL-4, RL-5, g3-26, g3-27).** Open the URL the script prints with Playwright, as in M6b's Task 16, and complete the wizard with:
    - PostgreSQL
    - an own super admin `owner@m7b-e2e.test`
    - the passkeys, backups and impersonation modules
    - HTTPS
+   - Claude Code: off (switch it off; the Claude step would record this throwaway folder in the global `~/.claude/plugins/installed_plugins.json`, g3-04)
 
    Before you start it, check:
    - `curl -s -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Port: 443' http://m7b-e2e.test/welcome-setup` answers `404`
-   - the same request on `http://evil.m7b-e2e.test/…` does not hand out a token
+   - the same request on `http://evil.m7b-e2e.test/…` does not hand out a token, and `curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://evil.m7b-e2e.test/` redirects to `http://m7b-e2e.test/` with no `token=` in the address (RL-5)
    - after the token is accepted, the session cookie differs from the one sent before
 3. **The Herd stage (g3-13, g3-24, CD-14).**
    - The finish page sends `Referrer-Policy: no-referrer`.
    - The site ends secured, and the login hands off to `https://admin.m7b-e2e.test`.
-   - `storage/app/private/skv-setup.lock` is gone afterwards.
+   - `test ! -e "$HOME/Herd/m7b-e2e/storage/app/private/skv-setup.lock"` succeeds: the setup lock is gone.
 4. **The doctor and the health key (CD-4, CD-5, F12).**
-   - `php artisan skv:doctor --json` reports `"green": true`.
-   - `HEALTH_CHECK_KEY` in the site's `.env` has at least 32 characters. Measure it with `awk -F= '/^HEALTH_CHECK_KEY=/{print length($2)}' .env`, never print it.
-   - `/health-check` answers `403` without the key and `200` with it. Send the key on standard input: `printf 'X-Health-Check-Key: %s\n' "$KEY" | curl -s -H @- …`.
+   - `php "$HOME/Herd/m7b-e2e/artisan" skv:doctor --json` reports `"green": true`.
+   - `HEALTH_CHECK_KEY` in the site's `.env` has at least 32 characters. Measure it, never print it: `awk -F= '/^HEALTH_CHECK_KEY=/{print length($2)}' "$HOME/Herd/m7b-e2e/.env"`.
+   - `curl -s -o /dev/null -w '%{http_code}' https://m7b-e2e.test/health-check` answers `403` without the key.
+   - With the key, read and sent in one shell call, so it never reaches argv or the transcript:
+
+     ```bash
+     KEY="$(awk '/^HEALTH_CHECK_KEY=/{sub(/^HEALTH_CHECK_KEY=/, ""); print}' "$HOME/Herd/m7b-e2e/.env")"; printf 'X-Health-Check-Key: %s\n' "$KEY" | curl -s -o /dev/null -w '%{http_code}\n' -H @- https://m7b-e2e.test/health-check
+     ```
+
+     It answers `503` here, with only `last-backup` failing: the backups module is on and no backup exists yet. Item 5 repeats it after the first backup.
 5. **Backups (CD-7, CD-10, L-05).**
-   - `BACKUP_ARCHIVE_PASSWORD= php artisan backup:run --only-db` exits 1 with one error line and no stack trace.
-   - `php artisan backup:run --only-db` succeeds, `storage/app/backup-temp` has mode `0700`, and the zip entry is AES-encrypted (method 99).
-   - `php artisan schedule:list` lists nine events, including `backup-temp-cleanup` at 01:15.
+   - `BACKUP_ARCHIVE_PASSWORD= php "$HOME/Herd/m7b-e2e/artisan" backup:run --only-db` exits 1 with one error line and no stack trace.
+   - `php "$HOME/Herd/m7b-e2e/artisan" backup:run --only-db` succeeds, `stat -f '%Lp' "$HOME/Herd/m7b-e2e/storage/app/backup-temp"` prints `700`, and the zip entry of the newest archive under `"$HOME/Herd/m7b-e2e/storage/app/backups/"` is AES-encrypted (method 99).
+   - After 30 seconds (the report's cache), item 4's keyed `curl` call answers `200`.
+   - `php "$HOME/Herd/m7b-e2e/artisan" schedule:list` lists nine events, including `backup-temp-cleanup` every hour at :15 (`15 * * * *`).
 6. **The System page (CD-8, CD-12, CD-16).**
    - Sign in on `https://admin.m7b-e2e.test` as `owner@m7b-e2e.test`.
    - *Systeemstatus* renders the health, the backup (size formatted without intl), the schedule and the heartbeat.
    - The section heading reads *Diagnose*.
    - *Controles draaien* includes the `apex` row.
    - No JavaScript errors.
-7. **Quick login (g3-15).** Install the demo data in a second throwaway run only if Step 2.2 used an own super admin and the quick login was not exercised. Otherwise check on the first site, with `X-Forwarded-For: 1.2.3.4`, that the login page shows no quick-login accounts.
-8. **Record** every output in the ledger.
+7. **Quick login (g3-15).** Install the demo data in a second throwaway run only if Step 2.2 used an own super admin and the quick login was not exercised: `scripts/e2e-local.sh "$HOME/Herd/m7b-e2e-demo" --entry=herd --phase1-only`, then the wizard with the demo start, PostgreSQL and Claude Code off. Check there that the login page lists the demo accounts, and that the same request with `X-Forwarded-For: 1.2.3.4` shows none. Otherwise check on the first site, with `X-Forwarded-For: 1.2.3.4`, that the login page shows no quick-login accounts.
+8. **Record** every output in the ledger, never a key, token or password.
 
 Clean up:
+0. Only if the Claude step ran anyway: `(cd "$HOME/Herd/m7b-e2e" && claude plugin uninstall superpowers@superpowers-marketplace --scope project)`, before the folder is removed.
 1. `herd unsecure m7b-e2e`
 2. `herd unisolate --site=m7b-e2e`, only if `herd isolated` lists it
 3. `rm -rf "$HOME/Herd/m7b-e2e"` and the script's temp directory
-4. Drop `m7b_e2e` and `m7b_e2e_test` with a one-off PHP PDO script on Herd's PostgreSQL (`root`, empty password), after checking that `pg_database` lists exactly those two names.
+4. Drop the databases with a PHP PDO script on Herd's PostgreSQL (`root`, empty password), written to the session scratchpad, never in the repository. It first runs `SELECT datname FROM pg_database WHERE datname IN ('m7b_e2e', 'm7b_e2e_test') ORDER BY datname` and stops unless both rows come back. It then runs `DROP DATABASE "m7b_e2e_test"` and `DROP DATABASE "m7b_e2e"` as literal statements: never a `LIKE` pattern, never a name read from a query result.
 5. Delete the answers file.
+6. If Step 2.7 created `m7b-e2e-demo`, repeat steps 0–5 for it: `herd unsecure m7b-e2e-demo`, `herd unisolate --site=m7b-e2e-demo` only if `herd isolated` lists it, `rm -rf "$HOME/Herd/m7b-e2e-demo"`, and drop `m7b_e2e_demo_test` and `m7b_e2e_demo` with the same literal-name script.
 
 - [ ] **Step 3: Final review and hand-off**
 
