@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.12 */
 
 use App\Authorization\Role;
+use App\Console\Support\Terminal;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
@@ -20,6 +21,7 @@ use Illuminate\Support\Str;
 use Symfony\Component\Console\Exception\InvalidOptionException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Tests\Fixtures\AlwaysTerminal;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -91,12 +93,14 @@ it('applies a given name and password to an existing user it promotes (RL-9)', f
         ->and(recordedActivity(ActivityEvent::UserUpdated))->toHaveCount(1);
 });
 
-it('keeps an existing user\'s password when the new one is too weak (RL-9)', function () use ($withStdin): void {
+it('keeps an existing user\'s password when the new one is too weak (RL-9, L-51)', function () use ($withStdin): void {
     $member = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->create(['email' => 'member@example.com', 'password' => 'old-password-123']);
 
-    [$exit] = $withStdin('skv:create-super-admin', ['email' => 'member@example.com', '--password-stdin' => true, '--no-interaction' => true], "short\n");
+    [$exit, $output] = $withStdin('skv:create-super-admin', ['email' => 'member@example.com', '--password-stdin' => true, '--no-interaction' => true], "short\n");
 
-    expect($exit)->toBe(1);
+    // Password::default() is min(8) outside production (AppServiceProvider).
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('validation.min.string', ['attribute' => 'password', 'min' => 8]));
 
     expect($member->fresh()?->isSuperAdmin())->toBeFalse()
         ->and(Hash::check('old-password-123', (string) $member->fresh()?->password))->toBeTrue();
@@ -143,11 +147,24 @@ it('reads only the first line, without its line ending (RL-10)', function () use
         ->and(Hash::check('correct-horse-battery', (string) $user?->password))->toBeTrue();
 });
 
-it('reads standard input afresh on every run in the same process (RL-10)', function () use ($withStdin): void {
+it('reads standard input afresh on every run in the same process (RL-10, F24)', function () use ($withStdin): void {
     [$firstExit] = $withStdin('skv:create-super-admin', ['email' => 'owner@example.com', '--password-stdin' => true, '--no-interaction' => true], "correct-horse-battery\n");
-    [$secondExit, $output] = $withStdin('skv:create-super-admin', ['email' => 'second@example.com', '--password-stdin' => true, '--no-interaction' => true], "\n");
+    [$secondExit] = $withStdin('skv:create-super-admin', ['email' => 'second@example.com', '--password-stdin' => true, '--no-interaction' => true], "battery-staple-horse\n");
 
-    expect([$firstExit, $secondExit])->toBe([0, 1])
-        ->and($output)->toContain(__('No password on standard input.'))
-        ->and(Tenant::bypass(fn (): bool => User::query()->where('email', 'second@example.com')->exists()))->toBeFalse();
+    $second = Tenant::bypass(fn (): ?User => User::query()->where('email', 'second@example.com')->first());
+
+    expect([$firstExit, $secondExit])->toBe([0, 0])
+        ->and(Hash::check('battery-staple-horse', (string) $second?->password))->toBeTrue()
+        ->and(Hash::check('correct-horse-battery', (string) $second?->password))->toBeFalse();
+});
+
+it('refuses --password-stdin on a terminal, where the password would show, before reading it (CD-8, L-54)', function () use ($withStdin): void {
+    app()->instance(Terminal::class, new AlwaysTerminal);
+
+    [$exit, $output] = $withStdin('skv:create-super-admin', ['email' => 'owner@example.com', '--password-stdin' => true, '--no-interaction' => true], "correct-horse-battery\n");
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('Standard input is a terminal, where the password would show. Pipe it in: printf \'%s\n\' "$PASSWORD" | php artisan skv:create-super-admin you@example.com --password-stdin'))
+        ->not->toContain('correct-horse-battery')
+        ->and(Tenant::bypass(fn (): bool => User::query()->where('email', 'owner@example.com')->exists()))->toBeFalse();
 });

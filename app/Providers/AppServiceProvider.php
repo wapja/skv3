@@ -6,6 +6,8 @@ namespace App\Providers;
 
 use App\Actions\Audit\ConsoleOrigin;
 use App\Authorization\SuperAdminGate;
+use App\Console\Support\StreamTerminal;
+use App\Console\Support\Terminal;
 use App\Policies\RolePolicy;
 use App\Setup\Answers;
 use App\Setup\Detection;
@@ -70,6 +72,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SetupToken::class, fn (): SetupToken => new SetupToken(base_path()));
         // The wizard's long steps and the Herd step run detached (RL-4); tests bind an inline launcher.
         $this->app->bind(StepLauncher::class, DetachedStepLauncher::class);
+        // --password-stdin refuses a terminal (L-54); tests bind one that always is.
+        $this->app->bind(Terminal::class, StreamTerminal::class);
 
         $this->configureModules();
     }

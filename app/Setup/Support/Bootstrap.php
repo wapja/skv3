@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Process;
 
 /**
  * The non-interactive first run (§5.2, RL-1): .env, APP_KEY, the Herd APP_URL, the SQLite file plus migrate and the
- * one-time setup token (RL-10). In production it only creates `.env`, `APP_KEY` and the blank
- * `EnvironmentStep::GENERATED` secrets (CD-9, CD-10).
+ * one-time setup token (RL-10). In production (its `.env` or the process environment says so) it only creates
+ * `.env`, `APP_KEY` and the blank `EnvironmentStep::GENERATED` secrets (CD-3, CD-9, CD-10).
  * Never chooses a database, never prompts, never caches config or routes. skv:install runs it as its step 0.
  */
 final readonly class Bootstrap implements BootstrapRunner
@@ -84,10 +84,16 @@ final readonly class Bootstrap implements BootstrapRunner
         return $actions;
     }
 
-    /** Whether the project this Bootstrap prepares is a production install (its .env says APP_ENV=production). */
+    /**
+     * Whether the project this Bootstrap prepares is a production install (CD-3). Its .env says APP_ENV=production, or
+     * the process environment does: a server's own APP_ENV overrides the file, and the running app's loaded .env
+     * shows there too.
+     */
     public function isProduction(): bool
     {
-        return new EnvFile($this->basePath.'/.env')->get('APP_ENV') === 'production';
+        return new EnvFile($this->basePath.'/.env')->get('APP_ENV') === 'production'
+            || getenv('APP_ENV') === 'production'
+            || ($_SERVER['APP_ENV'] ?? null) === 'production';
     }
 
     /** The `APP_URL` of the project this Bootstrap prepares (RL-10), never the running app's own `.env`. */

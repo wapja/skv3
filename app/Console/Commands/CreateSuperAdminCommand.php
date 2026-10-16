@@ -55,6 +55,13 @@ final class CreateSuperAdminCommand extends Command
             return self::FAILURE;
         }
 
+        // Reading a terminal would block, and what the owner types would show (L-54).
+        if ($this->option('password-stdin') && $this->standardInputIsTerminal()) {
+            $this->components->error(__('Standard input is a terminal, where the password would show. Pipe it in: printf \'%s\n\' "$PASSWORD" | php artisan skv:create-super-admin you@example.com --password-stdin'));
+
+            return self::FAILURE;
+        }
+
         if ($this->option('password-stdin') && $this->givenPassword() === null) {
             $this->components->error(__('No password on standard input.'));
 

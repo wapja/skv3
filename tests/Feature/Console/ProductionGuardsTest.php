@@ -16,6 +16,7 @@ use Database\Seeders\DatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
+use Tests\Fixtures\FailingBootstrap;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -39,20 +40,20 @@ afterEach(function (): void {
     config(['database.default' => $this->previousConnection]);
 });
 
-it('refuses skv:install in production before anything is written (CD-9, A57)', function (): void {
-    app()['env'] = 'production';
+it('refuses skv:install outside local, testing and staging before anything is written (CD-3, L-61)', function (string $environment): void {
+    app()['env'] = $environment;
     $before = (string) file_get_contents($this->sandbox->path('.env'));
 
     $exit = Artisan::call('skv:install', ['--no-interaction' => true]);
 
     expect($exit)->toBe(1)
-        ->and(Artisan::output())->toContain(__('skv:install sets up a development install and does not run in production. Follow the production checklist in the README.'))
+        ->and(Artisan::output())->toContain(__('skv:install runs only in the local, testing and staging environments (APP_ENV=:env).', ['env' => $environment]))
         ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
-});
+})->with(['production', 'prod', 'live']);
 
 it('refuses the demo data outside local development before anything is written (CD-9)', function (): void {
-    // The detector probes Herd and PostgreSQL; the answers default to start_with=demo.
-    Process::fake(['*' => Process::result('')]);
+    // The beforeEach fakes no command and the detector starts none: a regressed guard trips the stray-process
+    // check in the bootstrap's migrate, after it has written APP_KEY (L-57).
     app()['env'] = 'staging';
     $before = (string) file_get_contents($this->sandbox->path('.env'));
 
@@ -61,6 +62,25 @@ it('refuses the demo data outside local development before anything is written (
     expect($exit)->toBe(1)
         ->and(Artisan::output())->toContain(__('Demo data runs only in local development. Pass "start_with": "super_admin" with your own login.'))
         ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+});
+
+it('lets a staging install with its own super admin past the guards (CD-3, CD-9, L-58)', function (): void {
+    app()->instance(BootstrapRunner::class, new FailingBootstrap);
+    app()['env'] = 'staging';
+    $answers = $this->sandbox->path('answers.json');
+    file_put_contents($answers, json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR));
+
+    $exit = Artisan::call('skv:install', ['--answers' => '@'.$answers, '--no-interaction' => true]);
+    $output = Artisan::output();
+
+    // Past both refusals, the run reaches the bootstrap, which the fixture fails before anything is written.
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('Setup stopped at :step: :message', ['step' => __('Bootstrap'), 'message' => 'The command "php artisan migrate" failed.']))
+        ->not->toContain(__('Demo data runs only in local development. Pass "start_with": "super_admin" with your own login.'))
+        ->not->toContain(__('skv:install runs only in the local, testing and staging environments (APP_ENV=:env).', ['env' => 'staging']));
 });
 
 it('only prepares .env, the key and the generated secrets when the target is a production install (CD-9, CD-10, A58)', function (): void {
@@ -87,6 +107,40 @@ it('only prepares .env, the key and the generated secrets when the target is a p
         ->and(is_file($this->sandbox->path('database/database.sqlite')))->toBeFalse();
     Process::assertNothingRan();
 });
+
+it('takes the production half when the process environment says production, whatever .env says (CD-3, L-60)', function (string $source): void {
+    $previousEnv = getenv('APP_ENV');
+    $previousServer = $_SERVER['APP_ENV'] ?? null;
+    $this->beforeApplicationDestroyed(function () use ($previousEnv, $previousServer): void {
+        putenv($previousEnv === false ? 'APP_ENV' : 'APP_ENV='.$previousEnv);
+
+        if ($previousServer === null) {
+            unset($_SERVER['APP_ENV']);
+        } else {
+            $_SERVER['APP_ENV'] = $previousServer;
+        }
+    });
+    new EnvFile($this->sandbox->path('.env'))->set(['APP_ENV' => 'local', 'APP_KEY' => '', 'HEALTH_CHECK_KEY' => '', 'BACKUP_ARCHIVE_PASSWORD' => '']);
+
+    if ($source === 'getenv') {
+        putenv('APP_ENV=production');
+    } else {
+        $_SERVER['APP_ENV'] = 'production';
+    }
+
+    $bootstrap = new Bootstrap($this->sandbox->basePath, new Toolchain($this->sandbox->path('home')));
+    $actions = $bootstrap->run();
+
+    expect($bootstrap->isProduction())->toBeTrue()
+        ->and($actions)->toBe([
+            __('Generated an application key'),
+            __('Generated :key', ['key' => 'HEALTH_CHECK_KEY']),
+            __('Generated :key', ['key' => 'BACKUP_ARCHIVE_PASSWORD']),
+        ])
+        ->and(is_file($this->sandbox->path(SetupToken::PATH)))->toBeFalse()
+        ->and(is_file($this->sandbox->path('database/database.sqlite')))->toBeFalse();
+    Process::assertNothingRan();
+})->with(['the process environment' => 'getenv', 'the server variables' => 'server']);
 
 it('tells a production bootstrap to follow the checklist instead of the wizard, and never prints a secret (CD-9, CD-10)', function (): void {
     new EnvFile($this->sandbox->path('.env'))->set(['APP_ENV' => 'production']);

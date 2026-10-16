@@ -527,6 +527,7 @@
     "Skipped: the installer was asked not to use Node.": "Skipped: the installer was asked not to use Node.",
     "Someone asked to change the email address of your account to :email.": "Someone asked to change the email address of your account to :email.",
     "Something went wrong": "Something went wrong",
+    "Standard input is a terminal, where the password would show. Pipe it in: printf '%s\\n' \"$PASSWORD\" | php artisan skv:create-super-admin you@example.com --password-stdin": "Standard input is a terminal, where the password would show. Pipe it in: printf '%s\\n' \"$PASSWORD\" | php artisan skv:create-super-admin you@example.com --password-stdin",
     "Start Herd's mail service": "Start Herd's mail service",
     "Start setup": "Start setup",
     "Start with": "Start with",
@@ -757,7 +758,7 @@
     "public/storage is missing": "public/storage is missing",
     "results": "results",
     "skipped": "skipped",
-    "skv:install sets up a development install and does not run in production. Follow the production checklist in the README.": "skv:install sets up a development install and does not run in production. Follow the production checklist in the README.",
+    "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).": "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).",
     "to": "to",
     "waiting": "waiting",
     "warning": "warning"

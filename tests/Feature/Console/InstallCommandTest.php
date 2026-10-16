@@ -289,13 +289,64 @@ it('reads the answers from a file with --answers=@path (RL-11)', function () use
     [$exit, $output] = $install(['--answers' => '@'.$file, '--no-interaction' => true]);
 
     // The file was read: its value reaches validation.
-    expect($exit)->toBe(1)->and($output)->toContain('database');
+    expect($exit)->toBe(1)->and($output)->toContain(__('validation.in', ['attribute' => 'database']));
 });
 
 it('reads the answers from standard input with --answers=- (RL-11)', function () use ($withStdin): void {
     [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], (string) json_encode(['database' => 'oracle']));
 
-    expect($exit)->toBe(1)->and($output)->toContain('database');
+    expect($exit)->toBe(1)->and($output)->toContain(__('validation.in', ['attribute' => 'database']));
+});
+
+it('rejects an empty standard input for --answers=- as no JSON (RL-11, L-52)', function () use ($withStdin): void {
+    $before = (string) file_get_contents($this->sandbox->path('.env'));
+
+    [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], '');
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('The --answers value is not valid JSON.'))
+        ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+});
+
+it('refuses a password of any type inside an inline --answers (CD-8, L-55)', function (mixed $password) use ($install): void {
+    $before = (string) file_get_contents($this->sandbox->path('.env'));
+
+    [$exit, $output] = $install(['--answers' => json_encode(['start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com', 'super_admin_password' => $password], JSON_THROW_ON_ERROR), '--no-interaction' => true]);
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'))
+        ->and(file_get_contents($this->sandbox->path('.env')))->toBe($before);
+})->with([
+    'a number' => [12345678],
+    'a list' => [['correct-horse-battery']],
+    'true' => [true],
+]);
+
+it('takes the super admin password from standard input with --answers=- (CD-8, RL-11, F25)', function () use ($withStdin): void {
+    [$exit, $output] = $withStdin('skv:install', ['--answers' => '-', '--no-interaction' => true], json_encode([
+        'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
+        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+    ], JSON_THROW_ON_ERROR));
+
+    $owner = DB::connection(DatabaseStep::CONNECTION)->table('users')->where('email', 'owner@example.com')->sole();
+
+    expect($exit)->toBe(0)
+        ->and($output)->not->toContain(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'))
+        ->not->toContain('correct-horse-battery')
+        ->and(Hash::check('correct-horse-battery', (string) $owner->password))->toBeTrue();
+});
+
+it('re-runs a complete step only with --force (RL-6, g2-21)', function () use ($install): void {
+    $answers = (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json'));
+    // The herd.yml step's line in the non-interactive output: "herd.yml ....... <status>".
+    $status = fn (string $output): ?string => preg_match('/^\s*'.preg_quote(__('herd.yml'), '/').'\s+\.+\s+(\S+)\s*$/m', $output, $match) === 1 ? $match[1] : null;
+
+    [$firstExit, $first] = $install(['--answers' => $answers, '--no-interaction' => true]);
+    [$plainExit, $plain] = $install(['--no-interaction' => true]);
+    [$forcedExit, $forced] = $install(['--no-interaction' => true, '--force' => true]);
+
+    expect([$firstExit, $plainExit, $forcedExit])->toBe([0, 0, 0])
+        ->and([$status($first), $status($plain), $status($forced)])->toBe([__('done'), __('skipped'), __('done')]);
 });
 
 it('names an unreadable answers file (RL-11)', function () use ($install): void {

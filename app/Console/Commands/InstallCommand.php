@@ -49,10 +49,13 @@ final class InstallCommand extends Command
 
     public function handle(Detector $detector, SetupRunner $runner): int
     {
-        // CD-9: setup writes .env, the database and the marker of a development install; production follows the
-        // README's checklist. A fresh server still runs it, because .env.example ships APP_ENV=local.
-        if (app()->isProduction()) {
-            $this->components->error(__('skv:install sets up a development install and does not run in production. Follow the production checklist in the README.'));
+        // CD-3: setup writes .env, the database and the marker of a local or staging install; any other environment
+        // follows the README's production checklist. A fresh server still runs it, because .env.example ships
+        // APP_ENV=local. An allowlist, so a production install named `prod` or `live` is refused too.
+        if (! app()->environment(['local', 'testing', 'staging'])) {
+            $this->components->error(__('skv:install runs only in the local, testing and staging environments (APP_ENV=:env).', [
+                'env' => OutputFormatter::escape((string) app()->environment()),
+            ]));
 
             return self::FAILURE;
         }
@@ -168,8 +171,9 @@ final class InstallCommand extends Command
                 throw new JsonException('The answers are not a JSON object.');
             }
 
-            // CD-8, RL-11: a password on the command line ends up in the process list and the shell history.
-            if ($inline && is_string($input['super_admin_password'] ?? null) && $input['super_admin_password'] !== '') {
+            // CD-8, RL-11: a password on the command line ends up in the process list and the shell history, whatever
+            // its JSON type (L-55).
+            if ($inline && array_key_exists('super_admin_password', $input) && ! in_array($input['super_admin_password'], [null, ''], true)) {
                 throw new InvalidArgumentException(__('Pass super_admin_password in a file (--answers=@answers.json) or on standard input (--answers=-), never on the command line.'));
             }
 
