@@ -141,6 +141,45 @@ it('clears an address\'s failures once it signs in with a second factor (G1-03)'
     $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('two-factor.login'));
 });
 
+it('keeps the IP-wide failures when an account signs in (G1-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 19) as $attempt) {
+        $this->post(route('login.store'), ['email' => "nobody{$attempt}@example.com", 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => 'nobody20@example.com', 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+    expect(session('errors')?->first('email'))->toStartWith('Too many login attempts');
+});
+
+it('keeps another address\'s failures when an account signs in from the same IP (G1-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $victim = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 4) as $attempt) {
+        $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'password'])->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+    expect(session('errors')?->first('email'))->toStartWith('Too many login attempts');
+});
+
 it('answers array input to the throttled auth routes with a validation error, not a server error (G1-02)', function (string $route, array $input): void {
     $organisation = Organisation::factory()->create();
     onTenant($organisation);
