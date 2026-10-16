@@ -113,6 +113,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function loadPasskeys(): void
     {
+        $this->ensurePasskeysEnabled();
+
         $this->passkeys = $this->currentUser()->passkeys()
             ->select(['id', 'name', 'credential', 'created_at', 'last_used_at'])
             ->latest()
@@ -133,6 +135,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function confirmDelete(int $passkeyId): void
     {
+        $this->ensurePasskeysEnabled();
+
         $passkey = $this->currentUser()->passkeys()->findOrFail($passkeyId);
 
         $this->deletingPasskeyId = $passkey->id;
@@ -145,6 +149,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function deletePasskey(DeletePasskey $deletePasskey): void
     {
+        $this->ensurePasskeysEnabled();
+
         if ($this->passwordConfirmationRequired()) {
             return;
         }
@@ -192,5 +198,14 @@ new #[Title('Security settings')] class extends Component
         $disableTwoFactorAuthentication($this->currentUser());
 
         $this->twoFactorEnabled = false;
+    }
+
+    /**
+     * §6.8 / G2-01: with the passkeys module off, no passkey action runs, whatever a Livewire update calls. Read
+     * on every request, not from the snapshot: the module may have been turned off since the page loaded.
+     */
+    private function ensurePasskeysEnabled(): void
+    {
+        abort_unless(Features::canManagePasskeys(), 404);
     }
 };

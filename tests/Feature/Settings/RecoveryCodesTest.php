@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.2 */
 
 use App\Models\User;
+use Illuminate\Encryption\Encrypter;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Livewire\Livewire;
 
@@ -82,4 +83,38 @@ it('waits for the clipboard before saying the codes were copied (FU3-5)', functi
         ->assertOk()
         ->assertSee('navigator.clipboard.writeText', false)
         ->assertSee('.then(', false);
+});
+
+it('refuses to download stored codes it cannot read instead of failing with a server error (G2-07)', function (Closure $stored): void {
+    $user = memberWithRecoveryCodes();
+    $component = Livewire::withoutLazyLoading()->test('pages::settings.two-factor.recovery-codes');
+
+    // The column changed after this page loaded: APP_KEY rotated without APP_PREVIOUS_KEYS, or a damaged value.
+    $user->forceFill(['two_factor_recovery_codes' => $stored()])->save();
+
+    $component->call('downloadRecoveryCodes')
+        ->assertHasErrors(['recoveryCodes' => __('Failed to load recovery codes')])
+        ->assertNoFileDownloaded();
+})->with([
+    'encrypted with another key' => [fn (): string => new Encrypter(random_bytes(32), (string) config('app.cipher'))->encrypt(json_encode(['recovery-code-1']))],
+    'not a list of codes' => [fn (): string => encrypt('not json')],
+]);
+
+it('renders the security page with an error when the stored codes are not a list (G2-07)', function (): void {
+    $user = memberWithRecoveryCodes();
+    $user->forceFill(['two_factor_recovery_codes' => encrypt('not json')])->save();
+
+    $this->get(route('security.edit'))->assertOk()->assertSee(__('Failed to load recovery codes'));
+});
+
+it('offers to regenerate codes it cannot read (G2-07)', function (): void {
+    $user = memberWithRecoveryCodes();
+    $user->forceFill(['two_factor_recovery_codes' => encrypt('not json')])->save();
+
+    $html = Livewire::withoutLazyLoading()->test('pages::settings.two-factor.recovery-codes')
+        ->assertHasErrors('recoveryCodes')
+        ->html();
+
+    // The trigger and the confirmation modal's button; the modal alone always renders one.
+    expect(substr_count($html, __('Regenerate codes')))->toBe(2);
 });

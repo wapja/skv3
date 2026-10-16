@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 /** covers §4.2 */
 
+use App\Authorization\SetSuperAdmin;
+use App\Enums\ActivityEvent;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Auth\PasskeyRelyingParty;
@@ -11,13 +13,16 @@ use App\Tenancy\Hosts;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Support\SoftwareAuthenticator;
 use Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Webauthn\Exception\CounterException;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\getJson;
+use function Pest\Laravel\post;
 use function Pest\Laravel\postJson;
 use function Pest\Laravel\withSession;
 
@@ -214,4 +219,103 @@ it('answers a passkey from a foreign origin with 422 instead of a server error',
         ->assertUnprocessable()
         ->assertJsonValidationErrors('credential');
     $this->assertGuest();
+});
+
+it('reports a signature counter that did not increase, and no other failed WebAuthn ceremony (CD-6)', function (): void {
+    $handler = app(ExceptionHandler::class);
+
+    expect($handler->shouldReport(CounterException::create(1, 1, 'Invalid counter.')))->toBeTrue()
+        ->and($handler->shouldReport(AuthenticatorResponseVerificationException::create('Invalid signature.')))->toBeFalse();
+});
+
+it('refuses a cloned authenticator and logs it once as a warning, without a stack trace (CD-6)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    onTenant($organisation);
+    registerPasskeyFor($member, $authenticator, 'http://acme.localhost');
+    // The same key, credential and signature counter: what a copied authenticator presents.
+    $clone = clone $authenticator;
+    signInWithPasskey($authenticator, 'http://acme.localhost')->assertOk();
+    Auth::guard('web')->logout();
+    expect(recordedActivity(ActivityEvent::LoginFailed))->toBeEmpty();
+    $log = Log::spy();
+
+    signInWithPasskey($clone, 'http://acme.localhost')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('credential');
+
+    $this->assertGuest();
+    $log->shouldHaveReceived('warning')->once()->withArgs(fn (string $message, array $context): bool => str_contains($message, 'signature counter')
+        && $context === [
+            'credential_id' => $member->passkeys()->sole()->credential_id,
+            'received_counter' => 1,
+            'stored_counter' => 1,
+            'host' => 'acme.localhost',
+            'ip' => '127.0.0.1',
+        ]);
+    $log->shouldNotHaveReceived('error');
+    expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->subject_id)->toBe($member->id);
+});
+
+it('records a failed passkey sign-in like a failed password sign-in, naming the member whose passkey it was (CD-6)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    onTenant($organisation);
+    registerPasskeyFor($member, $authenticator, 'http://acme.localhost');
+
+    signInWithPasskey($authenticator, 'http://evil.localhost')->assertUnprocessable();
+
+    $entry = recordedActivity(ActivityEvent::LoginFailed)->sole();
+    expect([$entry->subject_id, $entry->causer_id, $entry->organisation_id])->toBe([$member->id, null, $organisation->id])
+        ->and($entry->properties?->all())->toBe(['method' => 'passkey']);
+});
+
+it('records a failed passkey sign-in without a user when the passkey names nobody this host may show (CD-6, R1)', function (string $owner): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $beta = Organisation::factory()->create(['slug' => 'beta']);
+    $authenticator = new SoftwareAuthenticator;
+
+    match ($owner) {
+        'another organisation\'s member' => registerPasskeyFor(User::factory()->for($beta)->create(), $authenticator, passkeyHost('tenant', $beta)),
+        'a super admin' => registerPasskeyFor(User::factory()->superAdmin()->create(), $authenticator, passkeyHost('admin', $acme)),
+        // SetSuperAdmin, the flag's only writer, keeps the organisation_id of a promoted member (G4-01's premise).
+        'a super admin promoted from this organisation' => registerPasskeyFor(
+            tap(User::factory()->for($acme)->create(), fn (User $promoted) => app(SetSuperAdmin::class)->handle($promoted, true)),
+            $authenticator,
+            passkeyHost('admin', $acme),
+        ),
+        default => null, // 'an unknown passkey': nothing is registered
+    };
+    onTenant($acme);
+
+    signInWithPasskey($authenticator, 'http://evil.localhost')->assertUnprocessable();
+
+    $entry = recordedActivity(ActivityEvent::LoginFailed)->sole();
+    expect([$entry->subject_id, $entry->organisation_id])->toBe([null, $acme->id])
+        ->and($entry->getProperty('method'))->toBe('passkey');
+})->with(['an unknown passkey', 'another organisation\'s member', 'a super admin', 'a super admin promoted from this organisation']);
+
+it('records a failed passkey sign-in sent as a form post (CD-6)', function (): void {
+    onTenant(Organisation::factory()->create(['slug' => 'acme']));
+    /** @var array<string, mixed> $options */
+    $options = getJson(route('passkey.login-options'))->assertOk()->json('options');
+
+    post(route('passkey.login'), ['credential' => new SoftwareAuthenticator()->assert($options, 'http://acme.localhost')])
+        ->assertRedirect()
+        ->assertSessionHasErrors('credential');
+
+    expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->getProperty('method'))->toBe('passkey');
+});
+
+it('records a form post whose credential id is not valid UTF-8 without a user instead of failing (CD-6)', function (): void {
+    onTenant(Organisation::factory()->create(['slug' => 'acme']));
+
+    // PostgreSQL refuses these bytes in a bound parameter (SQLSTATE 22021); SQLite accepts them.
+    post(route('passkey.login'), ['credential' => ['id' => 'x', 'rawId' => "\xC3\x28", 'type' => 'public-key', 'response' => ['clientDataJSON' => 'x']]])
+        ->assertRedirect()
+        ->assertSessionHasErrors('credential');
+
+    expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->subject_id)->toBeNull();
 });

@@ -87,6 +87,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
 - The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.
 - Links the kit builds for another request (password reset, email change, invitation and handoff links) and the passkey origin take their scheme and port from APP_URL, never from the request's port or forwarded headers.
+- A failed passkey sign-in is recorded in the audit log like a failed password sign-in (*Sign-in failed*, with `method: passkey`); it names the account only when the passkey belongs to a member of the host's organisation, or on the central hosts.
+- A passkey whose signature counter did not increase (a sign of a cloned authenticator) is refused as before and now also writes one warning to the log.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -138,6 +140,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - An array sent as the address to the sign-in, reset-link and reset routes, or as the credential id to the passkey sign-in, answers with a validation error instead of a server error.
 - Failed passkey sign-ins are limited per IP address and failed passkey confirmations per user, whatever credential id the client sends.
 - A throttled sign-in returns to the login page, never to the page the Referer names.
+- With the passkeys module off, the security page refuses its passkey actions (404) even when a Livewire request calls them directly.
+- Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download, and "Regenerate codes" stays available to replace them.
+- A failed passkey sign-in never names a super admin in an organisation's audit log, also not one promoted from that organisation, and a form post with a malformed credential id no longer answers with a server error.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

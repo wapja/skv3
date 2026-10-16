@@ -98,3 +98,29 @@ it('gates the passkeys module at boot from MODULE_PASSKEYS', function (bool $ena
         $this->postJson('/passkeys/login')->assertNotFound();
     }
 })->with(['on' => true, 'off' => false]);
+
+it('refuses the security page\'s passkey actions while the module is off, whatever an update calls (G2-01)', function (string $method): void {
+    usePasskeysModule(false);
+    $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $passkey = $member->passkeys()->create(['name' => 'Laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+
+    callPageAction($snapshot, $method, $method === 'confirmDelete' ? [$passkey->id] : [])->assertNotFound();
+
+    expect($passkey->fresh())->not->toBeNull();
+})->with(['loadPasskeys', 'confirmDelete', 'deletePasskey']);
+
+it('keeps the security page\'s passkey actions while the module is on (G2-01)', function (): void {
+    usePasskeysModule(true);
+    $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $passkey = $member->passkeys()->create(['name' => 'Laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+
+    $response = callPageAction($snapshot, 'confirmDelete', [$passkey->id])->assertOk();
+
+    /** @var array{data: array<string, mixed>} $updated */
+    $updated = json_decode((string) $response->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+    expect($updated['data']['deletingPasskeyName'])->toBe('Laptop');
+});
