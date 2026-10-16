@@ -82,6 +82,7 @@ final class UpdateUser
 
         // A self-service link requested before this change must not move the address again (FU3-7).
         Cache::forget(RequestEmailChange::cacheKey($target));
-        Notification::route('mail', $previousEmail)->notify(new EmailChangedByAdministrator($email));
+        // In the target's language, not the administrator's (G3-03).
+        Notification::route('mail', $previousEmail)->notify(new EmailChangedByAdministrator($email)->locale($target->locale->value));
     }
 }

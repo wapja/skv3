@@ -8,6 +8,7 @@ use App\Actions\Users\StopImpersonation;
 use App\Authorization\Permission;
 use App\Authorization\UserAbilities;
 use App\Models\User;
+use App\Support\Locales;
 use App\Tenancy\Auth\HostLoginRule;
 use App\Tenancy\Auth\Impersonation;
 use Closure;
@@ -53,12 +54,15 @@ final readonly class EnforceImpersonation
             return $next($request);
         }
 
+        // SetLocale has not run yet: word the status in the language of the page it lands on (G3-01).
+        $locale = Locales::forNextPage($request, $impersonator)->value;
+
         if (! $impersonator instanceof User) {
-            return to_route('login')->with('status', __('The impersonation has ended. Sign in again.'));
+            return to_route('login')->with('status', __('The impersonation has ended. Sign in again.', [], $locale));
         }
 
         return to_route($impersonator->can(Permission::UsersView) ? 'users.index' : 'dashboard')
-            ->with('status', __('The impersonation has ended. You are back in your own account.'));
+            ->with('status', __('The impersonation has ended. You are back in your own account.', [], $locale));
     }
 
     private function endReason(): ?string

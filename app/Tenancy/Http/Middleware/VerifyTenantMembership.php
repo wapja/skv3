@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tenancy\Http\Middleware;
 
 use App\Models\User;
+use App\Support\Locales;
 use App\Tenancy\Auth\HostLoginRule;
 use Closure;
 use Illuminate\Http\Request;
@@ -29,13 +30,17 @@ final readonly class VerifyTenantMembership
             return $next($request);
         }
 
-        $reason = $user->isActive() && ! $user->trashed()
-            ? __('Your account does not have access to this address. Sign in at your own organisation.')
-            : __('Your account is not active. Contact your administrator.');
+        $active = $user->isActive() && ! $user->trashed();
 
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        // SetLocale has not run yet, and the login page answers a guest: word the reason in that guest's language (G3-01).
+        $locale = Locales::forNextPage($request, null)->value;
+        $reason = $active
+            ? __('Your account does not have access to this address. Sign in at your own organisation.', [], $locale)
+            : __('Your account is not active. Contact your administrator.', [], $locale);
 
         return redirect()->route('login')->with('status', $reason);
     }

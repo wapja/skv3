@@ -53,8 +53,9 @@ final class RequestEmailChange
             absolute: false,
         ));
 
-        Notification::route('mail', $email)->notify(new ConfirmEmailChange($url));
+        // On-demand notifications have no locale preference: both mails carry the account's language (G3-03).
+        Notification::route('mail', $email)->notify(new ConfirmEmailChange($url)->locale($user->locale->value));
         // The notice goes to the address as it is now, even if the worker runs after the change was confirmed.
-        Notification::route('mail', $user->email)->notify(new EmailChangeRequested($email));
+        Notification::route('mail', $user->email)->notify(new EmailChangeRequested($email)->locale($user->locale->value));
     }
 }

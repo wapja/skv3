@@ -33,6 +33,16 @@ final class Locales
         return self::resolve($request, self::resolvedUser());
     }
 
+    /**
+     * The language the next page for $user is answered in, or a guest's when nobody will be signed in (G3-01, G3-02):
+     * for a status flashed on a redirect after a sign-out or an impersonation swap, when the request's own language
+     * (applied by SetLocale, or not yet at all) belongs to someone else. Never asks the guard (RL-20, RK-I1).
+     */
+    public static function forNextPage(Request $request, ?User $user): Locale
+    {
+        return self::resolve($request, $user);
+    }
+
     /** The web guard's user when something already resolved it, without resolving it here. */
     public static function resolvedUser(): ?User
     {

@@ -8,6 +8,7 @@ use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\Locale;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use Flux\Flux;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -34,14 +35,15 @@ new #[Title('Profile settings')] class extends Component
 
         $this->name = $user->name;
         $this->email = $user->email;
-        $this->locale = $user->locale->value;
+        $this->locale = Impersonation::localeFor($user)->value;
     }
 
     /**
      * Save the name and the language; a new email address only applies after it is confirmed through the
-     * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10). Sending the
-     * confirmation link is limited per user (CD-3): the slot is reserved before anything is saved, so a refusal
-     * saves nothing, and given back when the request throws.
+     * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10); the result
+     * is then flashed in that language for the reloaded page instead of a toast the reload would drop (G3-06).
+     * Sending the confirmation link is limited per user (CD-3): the slot is reserved before anything is saved,
+     * so a refusal saves nothing, and given back when the request throws.
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
@@ -64,7 +66,7 @@ new #[Title('Profile settings')] class extends Component
         $user->fill(['name' => $validated['name']])->save();
 
         $locale = Locale::from((string) $validated['locale']);
-        $localeChanged = $locale !== $user->locale;
+        $localeChanged = $locale !== Impersonation::localeFor($user);
 
         if ($localeChanged) {
             $updateLocale->handle($user, $locale);
@@ -81,13 +83,20 @@ new #[Title('Profile settings')] class extends Component
 
             $this->email = $user->email;
 
-            Flux::toast(variant: 'success', text: __('We sent a confirmation link to :email.', ['email' => $email]));
+            $status = __('We sent a confirmation link to :email.', ['email' => $email], $locale->value);
         } else {
-            Flux::toast(variant: 'success', text: __('Profile updated.'));
+            $status = __('Profile updated.', [], $locale->value);
         }
 
-        if ($localeChanged) {
-            $this->redirect(route('profile.edit'), navigate: false);
+        if (! $localeChanged) {
+            Flux::toast(variant: 'success', text: $status);
+
+            return;
         }
+
+        // A toast dispatched now is lost on the full reload (G3-06): the status is flashed instead, in the new
+        // language, and the base layout's flash→toast bridge shows it on the reloaded page.
+        session()->flash('status', $status);
+        $this->redirect(route('profile.edit'), navigate: false);
     }
 };

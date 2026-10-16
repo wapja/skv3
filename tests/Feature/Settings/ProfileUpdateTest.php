@@ -132,3 +132,38 @@ it('changes the language from the profile page (§4.10)', function (): void {
 
     expect($user->fresh()?->locale)->toBe(Locale::Dutch);
 });
+
+it('flashes the result in the new language when a language change reloads the page (G3-06)', function (string $email, string $status): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $this->actingAs(User::factory()->for($organisation)->create(['email' => 'member@example.com', 'locale' => Locale::English]));
+    onTenant($organisation);
+
+    Livewire::test('pages::settings.profile')
+        ->set('locale', 'nl')
+        ->set('email', $email)
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors()
+        ->assertNotDispatched('toast-show')
+        ->assertRedirect(route('profile.edit'));
+
+    expect(session('status'))->toBe($status);
+})->with([
+    'with an address change' => ['new@example.com', 'We hebben een bevestigingslink gestuurd naar new@example.com.'],
+    'the language alone' => ['member@example.com', 'Profiel bijgewerkt.'],
+]);
+
+it('keeps the toast and flashes nothing when the language stays (G3-06)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $this->actingAs(User::factory()->for($organisation)->create(['locale' => Locale::English]));
+    onTenant($organisation);
+
+    Livewire::test('pages::settings.profile')
+        ->set('name', 'New Name')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors()
+        ->assertDispatched('toast-show')
+        ->assertNoRedirect();
+
+    expect(session('status'))->toBeNull();
+});

@@ -11,6 +11,7 @@ use App\Authorization\Permission;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Auth\Impersonation;
@@ -144,6 +145,24 @@ it('swaps to the target and back while the session stays valid across requests',
     $this->get(route('users.index'))->assertOk();
     $this->assertAuthenticatedAs($admin);
     expect(Impersonation::isActive())->toBeFalse();
+});
+
+it('says "back in your own account" in the impersonator\'s language, not the target\'s (G3-02)', function () use ($organisationAdmin): void {
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $admin->forceFill(['locale' => Locale::English])->save();
+    $member = User::factory()->for($organisation)->create(['locale' => Locale::Dutch]);
+    onTenant($organisation);
+    startImpersonatingOverHttp($admin, $member);
+
+    // A Dutch browser too: the account's language decides.
+    Auth::guard('web')->forgetUser();
+    $this->delete(route('impersonation.stop'), [], ['Accept-Language' => 'nl'])
+        ->assertRedirect(route('users.index'))
+        ->assertSessionHas('status', 'You are back in your own account.');
+
+    Auth::guard('web')->forgetUser();
+    $this->get(route('users.index'))->assertOk()->assertSee('<html lang="en"', false)->assertSee('You are back in your own account.');
 });
 
 it('records impersonation.start with the reason and impersonation.stop, caused by the real user with impersonated_as (IMP-6)', function () use ($organisationAdmin): void {

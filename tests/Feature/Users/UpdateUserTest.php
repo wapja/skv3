@@ -10,17 +10,22 @@ use App\Actions\Users\UpdateUser;
 use App\Authorization\Permission;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\EmailChangedByAdministrator;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mime\Email;
 
 /**
  * The validation errors an action throws, or [] when it succeeds.
@@ -186,6 +191,24 @@ it('notifies the old address after an administrator changed it (D-14)', function
     );
     expect(new EmailChangedByAdministrator('new@example.com')->toMail(new AnonymousNotifiable)->introLines)
         ->toContain(__('An administrator changed the email address of your account to :email.', ['email' => 'new@example.com']));
+});
+
+it('writes the notice in the target\'s language, not the administrator\'s (G3-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com', 'locale' => Locale::English]);
+    $admin = asOrgAdmin($organisation);
+    $admin->forceFill(['locale' => Locale::Dutch])->save();
+    // The Dutch administrator's request answers in Dutch.
+    app()->setLocale('nl');
+
+    app(UpdateUser::class)->handle($admin, $member, $member->name, 'new@example.com');
+
+    $transport = Mail::driver()->getSymfonyTransport();
+    $sent = $transport instanceof ArrayTransport ? $transport->messages()->first() : null;
+    $mail = $sent instanceof SentMessage ? $sent->getOriginalMessage() : null;
+
+    expect($mail)->toBeInstanceOf(Email::class)
+        ->and($mail instanceof Email ? $mail->getSubject() : null)->toBe('An administrator changed your email address');
 });
 
 it('invalidates a pending self-service email change and the old address\'s reset tokens (FU3-7)', function (): void {

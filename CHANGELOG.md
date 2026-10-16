@@ -91,6 +91,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A passkey whose signature counter did not increase (a sign of a cloned authenticator) is refused as before and now also writes one warning to the log.
 - While you impersonate someone, a language or appearance you pick lasts until the impersonation ends and never changes their account.
 - The language switch in the user menu reloads the page you are on, query string and filters included.
+- `config/app.php` defaults `APP_LOCALE` to `nl`, the same default as the kit's own language setting.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -146,6 +147,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download, and "Regenerate codes" stays available to replace them.
 - A failed passkey sign-in never names a super admin in an organisation's audit log, also not one promoted from that organisation, and a form post with a malformed credential id no longer answers with a server error.
 - The language toggle goes back only to a page on the same host; a `Referer` from another site or another organisation's address leads to the home page instead.
+- The message after you are signed out on an address you may not use, after an impersonation ends by itself and after *Stop impersonating* is worded in the language of the page that shows it, no longer in the server's default or the impersonated user's language.
+- The email-change mails (the confirmation link and the notice to the old address) and the notice after an administrator changed your address are written in the account's language, also when a queue worker sends them; the email-change mails are queued only once the surrounding transaction commits.
+- Changing the language on the profile page shows its confirmation after the reload, in the new language.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

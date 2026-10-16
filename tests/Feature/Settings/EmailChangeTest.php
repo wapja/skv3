@@ -5,12 +5,18 @@ declare(strict_types=1);
 /** covers §4.2 */
 
 use App\Actions\Settings\RequestEmailChange;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\EmailChangeRequested;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mime\Email;
 
 /** @return array{0: Organisation, 1: User} */
 function memberChangingEmail(): array
@@ -22,6 +28,28 @@ function memberChangingEmail(): array
 
     return [$organisation, $member];
 }
+
+/**
+ * Recipient => subject of every mail the array mailer delivered.
+ *
+ * @return array<string, string>
+ */
+$deliveredSubjects = function (): array {
+    $transport = Mail::driver()->getSymfonyTransport();
+    $subjects = [];
+
+    if ($transport instanceof ArrayTransport) {
+        foreach ($transport->messages() as $sent) {
+            $message = $sent instanceof SentMessage ? $sent->getOriginalMessage() : null;
+
+            if ($message instanceof Email) {
+                $subjects[$message->getTo()[0]->getAddress()] = (string) $message->getSubject();
+            }
+        }
+    }
+
+    return $subjects;
+};
 
 it('mails a confirmation link to the new address and a notice to the old one without changing anything yet (E1)', function (): void {
     [, $member] = memberChangingEmail();
@@ -144,4 +172,36 @@ it('changes the address once the password is confirmed and the link is followed 
         ->assertSessionHas('status', __('Your email address has been changed.'));
 
     expect($member->fresh()?->email)->toBe('new@example.com');
+});
+
+it('writes both email-change mails in the account\'s language when the worker sends them (G3-03)', function () use ($deliveredSubjects): void {
+    config(['queue.default' => 'database']);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com', 'locale' => Locale::English]);
+    onTenant($organisation);
+
+    app(RequestEmailChange::class)->handle($member, 'new@example.com');
+    // The worker answers in its own language (here Dutch), not in the account's.
+    app()->setLocale('nl');
+    // Two jobs in one daemon run: --sleep=0 skips the 3-second sleep once the queue is empty, and --memory=0 keeps
+    // the loop from stopping after the first job once a long test process passes 128 MB (Worker::memoryExceeded).
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+
+    expect($deliveredSubjects())->toBe([
+        'new@example.com' => 'Confirm your new email address',
+        'old@example.com' => 'Your email address is about to change',
+    ]);
+});
+
+it('sends no email-change mail when the surrounding transaction rolls back (G3-03)', function () use ($deliveredSubjects): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com']);
+    onTenant($organisation);
+
+    expect(fn () => DB::transaction(function () use ($member): void {
+        app(RequestEmailChange::class)->handle($member, 'new@example.com');
+
+        throw new RuntimeException('Rolled back.');
+    }))->toThrow(RuntimeException::class, 'Rolled back.')
+        ->and($deliveredSubjects())->toBe([]);
 });

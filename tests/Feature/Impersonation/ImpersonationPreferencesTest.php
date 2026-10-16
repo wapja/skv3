@@ -78,3 +78,16 @@ it('forgets the language and appearance chosen during an impersonation when it s
     expect($html)->not->toMatch('/<html[^>]*class="dark"/');
     $this->assertAuthenticatedAs($admin);
 });
+
+it('starts the profile form from the language chosen during an impersonation and switches back from there (G2-05)', function () use ($impersonating): void {
+    [, $member] = $impersonating();
+    $this->post(route('locale.update'), ['locale' => 'en'])->assertRedirect();
+
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+    expect($snapshot['data']['locale'])->toBe('en');
+
+    callPageAction($snapshot, 'updateProfileInformation', [], ['locale' => 'nl'])->assertOk();
+
+    expect($member->fresh()?->locale)->toBe(Locale::Dutch)
+        ->and(session(Impersonation::LOCALE_KEY))->toBe('nl');
+});

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.1 */
 
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 
@@ -24,6 +25,21 @@ it('logs a member out on another organisation host', function (): void {
         ->assertRedirect(route('login'))
         ->assertSessionHas('status', 'Your account does not have access to this address. Sign in at your own organisation.');
     $this->assertGuest();
+});
+
+it('words the sign-out reason in the language of the login page that shows it (G3-01)', function (): void {
+    actingAs(User::factory()->for(Organisation::factory()->create())->create(['locale' => Locale::English]));
+    onTenant(Organisation::factory()->create());
+    $reason = 'Je account heeft geen toegang tot dit adres. Log in bij je eigen organisatie.';
+
+    $this->get(route('dashboard'), ['Accept-Language' => 'nl'])
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status', $reason);
+
+    $this->get(route('login'), ['Accept-Language' => 'nl'])
+        ->assertOk()
+        ->assertSee('<html lang="nl"', false)
+        ->assertSee($reason);
 });
 
 it('logs a member out on the central hosts', function (string $host): void {
