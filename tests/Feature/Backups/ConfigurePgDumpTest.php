@@ -23,6 +23,27 @@ beforeEach(function (): void {
     File::put($this->bin.'/pg_dump', "#!/bin/sh\nexit 0\n");
     chmod($this->bin.'/pg_dump', 0755);
     config(['database.connections.pgsql.dump.dump_binary_path' => '']);
+    // Every backup:run listener may run (the last test fires the event): never the repository's storage/app/backup-temp.
+    config(['backup.backup.temporary_directory' => $this->sandbox->path('backup-temp')]);
+    // L-05: ConfigurePgDump exports PGSSLMODE; start without one and put the original back afterwards.
+    $this->pgSslMode = ['getenv' => getenv('PGSSLMODE'), 'server' => $_SERVER['PGSSLMODE'] ?? null, 'env' => $_ENV['PGSSLMODE'] ?? null];
+    putenv('PGSSLMODE');
+    unset($_SERVER['PGSSLMODE'], $_ENV['PGSSLMODE']);
+});
+
+afterEach(function (): void {
+    /** @var array{getenv: string|false, server: mixed, env: mixed} $original */
+    $original = $this->pgSslMode;
+    putenv($original['getenv'] === false ? 'PGSSLMODE' : 'PGSSLMODE='.$original['getenv']);
+    unset($_SERVER['PGSSLMODE'], $_ENV['PGSSLMODE']);
+
+    if ($original['server'] !== null) {
+        $_SERVER['PGSSLMODE'] = $original['server'];
+    }
+
+    if ($original['env'] !== null) {
+        $_ENV['PGSSLMODE'] = $original['env'];
+    }
 });
 
 $starting = fn (string $command): CommandStarting => new CommandStarting($command, new ArrayInput([]), new NullOutput);
@@ -73,3 +94,34 @@ it('runs as a CommandStarting listener (RL-4)', function () use ($starting): voi
 
     expect(config('database.connections.pgsql.dump.dump_binary_path'))->toBe($this->bin);
 });
+
+it('hands the backup source\'s sslmode to pg_dump as PGSSLMODE (L-05)', function () use ($starting): void {
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
+        'database.connections.pgsql.sslmode' => 'verify-full',
+        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+
+    // Symfony's Process passes on the getenv() keys that $_SERVER also holds, plus every $_ENV key.
+    expect(getenv('PGSSLMODE'))->toBe('verify-full')
+        ->and($_SERVER['PGSSLMODE'] ?? null)->toBe('verify-full')
+        ->and($_ENV['PGSSLMODE'] ?? null)->toBe('verify-full');
+});
+
+it('leaves PGSSLMODE alone for other commands and other databases (L-05)', function (string $command, string $source) use ($starting): void {
+    config([
+        'backup.backup.source.databases' => [$source],
+        'database.connections.pgsql.sslmode' => 'verify-full',
+        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting($command));
+
+    expect(getenv('PGSSLMODE'))->toBeFalse()
+        ->and($_ENV)->not->toHaveKey('PGSSLMODE');
+})->with([
+    'another command' => ['migrate', 'pgsql'],
+    'a SQLite source' => ['backup:run', 'sqlite'],
+]);

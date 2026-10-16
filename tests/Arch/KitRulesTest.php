@@ -24,3 +24,39 @@ it('has no debugging leftovers in tests and migrations', function (): void {
 it('formats sizes without ext-intl: no Illuminate\Support\Number in app code or views (CD-9, F20)', function (): void {
     expect(filesMatching(kitSourceFiles('app', 'resources/views'), '/Illuminate\\\\Support\\\\Number\b|(?<![\w\\\\$>:])Number::/'))->toBe([]);
 });
+
+it('starts external commands only through Process: no exec() and friends, no backticks (F19)', function (): void {
+    $banned = ['exec', 'shell_exec', 'system', 'passthru', 'proc_open', 'popen', 'pcntl_exec'];
+    $offenders = [];
+
+    foreach (kitSourceFiles('app', 'tests', 'routes', 'database', 'config') as $path) {
+        // Tokens, not text: comments, strings and docblocks may name these functions and use backticks.
+        $tokens = array_values(array_filter(
+            PhpToken::tokenize((string) file_get_contents(base_path($path))),
+            fn (PhpToken $token): bool => ! $token->isIgnorable(),
+        ));
+
+        foreach ($tokens as $index => $token) {
+            if ($token->text === '`') {
+                $offenders[] = $path.': backticks';
+
+                continue;
+            }
+
+            $previous = $tokens[$index - 1] ?? null;
+            $next = $tokens[$index + 1] ?? null;
+            // A method or static call, a declaration or a constant of the same name is not a call of the function.
+            $declaredOrMember = $previous instanceof PhpToken
+                && $previous->is([T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW, T_CONST]);
+
+            if ($token->is([T_STRING, T_NAME_FULLY_QUALIFIED])
+                && in_array(strtolower(ltrim($token->text, '\\')), $banned, true)
+                && $next?->text === '('
+                && ! $declaredOrMember) {
+                $offenders[] = $path.': '.$token->text.'()';
+            }
+        }
+    }
+
+    expect(array_values(array_unique($offenders)))->toBe([]);
+});

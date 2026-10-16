@@ -23,6 +23,7 @@ use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
 use App\Setup\Wizard\StepLauncher;
 use App\Support\Backups\ConfigurePgDump;
+use App\Support\Backups\PrivateBackupTemp;
 use App\Support\Backups\RefuseUnencryptedBackups;
 use App\Support\FluxProBranches;
 use App\Support\Locales;
@@ -206,6 +207,8 @@ class AppServiceProvider extends ServiceProvider
         // CD-10: backup:run never writes an unencrypted archive, also when it is started by hand.
         Event::listen(CommandStarting::class, RefuseUnencryptedBackups::class);
         Event::listen(CommandStarting::class, ConfigurePgDump::class);
+        // CD-10, L-07: the plaintext dump's working directory is private to this account.
+        Event::listen(CommandStarting::class, PrivateBackupTemp::class);
         // CD-7, RL-9: audit entries written during a command are tagged with it.
         Event::listen(CommandStarting::class, fn (CommandStarting $event) => ConsoleOrigin::enter($event->command));
         Event::listen(CommandFinished::class, fn (CommandFinished $event) => ConsoleOrigin::leave($event->command));

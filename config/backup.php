@@ -39,7 +39,8 @@ return [
                 'ignore_unreadable_directories' => false,
                 'relative_path' => null,
             ],
-            'databases' => [env('DB_CONNECTION', 'pgsql')],
+            // L-01: the app's default connection, with config/database.php's own default.
+            'databases' => [env('DB_CONNECTION', 'sqlite')],
         ],
         'database_dump_compressor' => null,
         'database_dump_file_timestamp_format' => null,

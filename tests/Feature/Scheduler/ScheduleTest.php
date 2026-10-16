@@ -10,6 +10,7 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 beforeEach(function (): void {
@@ -30,9 +31,9 @@ $identifiers = fn (): array => array_values(array_map(
     app(Schedule::class)->events(),
 ));
 
-it('schedules exactly the ops jobs of §4.9, each once (DEC-28, L-31)', function () use ($identifiers): void {
-    expect($identifiers())->toHaveCount(8)->toEqualCanonicalizing([
-        'activitylog:clean --force', 'backup:clean', 'backup:run --only-db', 'backup:monitor',
+it('schedules exactly the ops jobs of §4.9, each once (DEC-28, L-31, CD-10)', function () use ($identifiers): void {
+    expect($identifiers())->toHaveCount(9)->toEqualCanonicalizing([
+        'activitylog:clean --force', 'backup-temp-cleanup', 'backup:clean', 'backup:run --only-db', 'backup:monitor',
         'queue:prune-failed', 'model:prune', 'auth:clear-resets', 'scheduler-heartbeat',
     ]);
 });
@@ -41,21 +42,25 @@ it('lists on the System page exactly what the scheduler runs, in its order (CD-8
     expect(array_column(ScheduledTasks::all(), 'task'))->toBe($identifiers());
 });
 
-it('runs each job at its time, on one server, never twice at once (§4.9)', function (string $job, string $expression, bool $overlapGuard) use ($events): void {
+it('runs each job at its time, on the right servers, never twice at once (§4.9, CD-10)', function (string $job, string $expression, bool $oneServer, bool $overlapGuard, int $lockMinutes) use ($events): void {
     $event = $events()[$job];
 
     expect($event->expression)->toBe($expression)
-        ->and($event->onOneServer)->toBeTrue()
-        ->and($event->withoutOverlapping)->toBe($overlapGuard);
+        ->and($event->onOneServer)->toBe($oneServer)
+        ->and($event->withoutOverlapping)->toBe($overlapGuard)
+        ->and($event->expiresAt)->toBe($lockMinutes);
 })->with([
-    ['activitylog:clean --force', '0 1 * * *', true],
-    ['backup:clean', '30 1 * * *', true],
-    ['backup:run --only-db', '0 2 * * *', true],
-    ['backup:monitor', '0 3 * * *', true],
-    ['queue:prune-failed', '30 3 * * *', true],
-    ['model:prune', '0 4 * * *', true],
-    ['auth:clear-resets', '*/15 * * * *', true],
-    ['scheduler-heartbeat', '* * * * *', false],
+    ['activitylog:clean --force', '0 1 * * *', true, true, 1440],
+    // Each server empties its own temporary directory, every hour.
+    ['backup-temp-cleanup', '15 * * * *', false, false, 1440],
+    // A killed backup's lock expires before the next night (F6).
+    ['backup:clean', '30 1 * * *', true, true, 720],
+    ['backup:run --only-db', '0 2 * * *', true, true, 720],
+    ['backup:monitor', '0 3 * * *', true, true, 720],
+    ['queue:prune-failed', '30 3 * * *', true, true, 1440],
+    ['model:prune', '0 4 * * *', true, true, 1440],
+    ['auth:clear-resets', '*/15 * * * *', true, true, 1440],
+    ['scheduler-heartbeat', '* * * * *', true, false, 1440],
 ]);
 
 it('runs the backup jobs only while the backups module is on (§6.8)', function (bool $enabled) use ($events): void {
@@ -67,6 +72,9 @@ it('runs the backup jobs only while the backups module is on (§6.8)', function 
     }
 
     expect($all['activitylog:clean --force']->filtersPass(app()))->toBeTrue();
+
+    // F18: a dump left from before the module was switched off must still go.
+    expect($all['backup-temp-cleanup']->filtersPass(app()))->toBeTrue();
 })->with(['module on' => true, 'module off' => false]);
 
 it('never runs an unencrypted backup, but keeps cleaning and monitoring (CD-10)', function (array $config) use ($events): void {
@@ -97,4 +105,16 @@ it('records a heartbeat every minute and keeps it until the next one (RL-8, L-32
     $this->travel(10)->years();
 
     expect(app(Heartbeat::class)->last()?->toIso8601String())->toBe(Carbon::parse('2026-10-15 12:34:00')->toIso8601String());
+});
+
+it('empties the stale files of the backup temp directory (CD-10, F18)', function () use ($events): void {
+    $temp = setupSandbox()->path('backup-temp');
+    config(['backup.backup.temporary_directory' => $temp]);
+    File::ensureDirectoryExists($temp.'/temp/db-dumps');
+    File::put($temp.'/temp/db-dumps/database.sql', 'plaintext');
+    touch($temp.'/temp/db-dumps/database.sql', now()->subHours(7)->getTimestamp());
+
+    $events()['backup-temp-cleanup']->run(app());
+
+    expect(is_file($temp.'/temp/db-dumps/database.sql'))->toBeFalse();
 });

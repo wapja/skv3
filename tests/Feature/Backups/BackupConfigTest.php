@@ -14,12 +14,66 @@ use Spatie\Backup\Notifications\Notifications\HealthyBackupWasFoundNotification;
 use Spatie\Backup\Notifications\Notifications\UnhealthyBackupWasFoundNotification;
 use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumAgeInDays;
 
+/**
+ * Runs $callback with each variable set (a string) or removed (null) in getenv(), $_SERVER and $_ENV, the three places
+ * env() reads ($_SERVER and $_ENV first), and restores all three afterwards (F28, L-03).
+ *
+ * @param  array<string, string|null>  $variables
+ */
+$withEnvironment = function (array $variables, Closure $callback): mixed {
+    $saved = [];
+
+    foreach ($variables as $key => $value) {
+        $saved[$key] = [
+            'getenv' => getenv($key),
+            'server' => array_key_exists($key, $_SERVER) ? [$_SERVER[$key]] : [],
+            'env' => array_key_exists($key, $_ENV) ? [$_ENV[$key]] : [],
+        ];
+
+        if ($value === null) {
+            putenv($key);
+            unset($_SERVER[$key], $_ENV[$key]);
+        } else {
+            putenv($key.'='.$value);
+            $_SERVER[$key] = $_ENV[$key] = $value;
+        }
+    }
+
+    try {
+        return $callback();
+    } finally {
+        foreach ($saved as $key => $original) {
+            putenv($original['getenv'] === false ? $key : $key.'='.$original['getenv']);
+            unset($_SERVER[$key], $_ENV[$key]);
+
+            if ($original['server'] !== []) {
+                $_SERVER[$key] = $original['server'][0];
+            }
+
+            if ($original['env'] !== []) {
+                $_ENV[$key] = $original['env'][0];
+            }
+        }
+    }
+};
+
 it('backs up the database only, to the dedicated backups disk (§4.9, CD-6)', function (): void {
     expect(config('backup.backup.source.files.include'))->toBe([])
         ->and(config('backup.backup.source.databases'))->toBe([config('database.default')])
         ->and(config('backup.backup.destination.disks'))->toBe(['backups'])
         ->and(config('filesystems.disks.backups.driver'))->toBe('local')
         ->and(config('filesystems.disks.backups.root'))->toBe(storage_path('app/backups'));
+});
+
+it('backs up the app\'s default connection, also while DB_CONNECTION is unset (L-01)', function () use ($withEnvironment): void {
+    /** @var array{0: array<string, mixed>, 1: array<string, mixed>} $configs */
+    $configs = $withEnvironment(
+        ['DB_CONNECTION' => null],
+        fn (): array => [require config_path('backup.php'), require config_path('database.php')],
+    );
+
+    expect(data_get($configs[1], 'default'))->toBe('sqlite')
+        ->and(data_get($configs[0], 'backup.source.databases'))->toBe([data_get($configs[1], 'default')]);
 });
 
 it('names the backup after the app, never after the kit (CD-6)', function (): void {
@@ -31,10 +85,11 @@ it('names the backup after the app, never after the kit (CD-6)', function (): vo
         ->and(config('backup.monitor_backups.0.health_checks.'.MaximumAgeInDays::class))->toBe(1);
 });
 
-it('encrypts the archive with BACKUP_ARCHIVE_PASSWORD (§4.9)', function (): void {
-    $config = (string) file_get_contents(config_path('backup.php'));
+it('encrypts the archive with BACKUP_ARCHIVE_PASSWORD (§4.9, L-03)', function () use ($withEnvironment): void {
+    $backup = $withEnvironment(['BACKUP_ARCHIVE_PASSWORD' => 'from-the-environment'], fn (): mixed => require config_path('backup.php'));
 
-    expect($config)->toContain("'password' => env('BACKUP_ARCHIVE_PASSWORD')")
+    expect(data_get($backup, 'backup.password'))->toBe('from-the-environment')
+        ->and(data_get($backup, 'backup.encryption'))->toBe('default')
         ->and(config('backup.backup.encryption'))->toBe('default');
 });
 
@@ -60,38 +115,18 @@ it('builds the package configuration, so a blank BACKUP_NOTIFY_EMAIL falls back 
         ->and(filter_var(config('backup.notifications.mail.to'), FILTER_VALIDATE_EMAIL))->not->toBeFalse();
 });
 
-it('lets only a valid notify and sender address through, so a typo never breaks every artisan command (§4.9)', function (): void {
-    // The package's commands are built whenever Artisan boots, and their Config throws on an invalid address.
-    $original = [
-        'getenv' => getenv('MAIL_FROM_ADDRESS'),
-        'server' => $_SERVER['MAIL_FROM_ADDRESS'] ?? null,
-        'env' => $_ENV['MAIL_FROM_ADDRESS'] ?? null,
-    ];
-    putenv('BACKUP_NOTIFY_EMAIL=not-an-address');
-    putenv('MAIL_FROM_ADDRESS=not-an-address');
-    $_SERVER['MAIL_FROM_ADDRESS'] = $_ENV['MAIL_FROM_ADDRESS'] = 'not-an-address';
+it('lets only a valid notify and sender address through, so a typo never breaks every artisan command (§4.9, F28)', function () use ($withEnvironment): void {
+    // The package's commands are built whenever Artisan boots, and their Config throws on an invalid address. Both
+    // variables are set in $_SERVER and $_ENV too, which env() reads before putenv(), so no original value shadows them.
+    /** @var array<string, mixed> $array */
+    $array = $withEnvironment(
+        ['BACKUP_NOTIFY_EMAIL' => 'not-an-address', 'MAIL_FROM_ADDRESS' => 'not-an-address'],
+        fn (): mixed => require config_path('backup.php'),
+    );
 
-    try {
-        /** @var array<string, mixed> $array */
-        $array = require config_path('backup.php');
-
-        expect(fn (): Config => Config::fromArray($array))->not->toThrow(InvalidConfig::class)
-            ->and(filter_var(data_get($array, 'notifications.mail.to'), FILTER_VALIDATE_EMAIL))->not->toBeFalse()
-            ->and(filter_var(data_get($array, 'notifications.mail.from.address'), FILTER_VALIDATE_EMAIL))->not->toBeFalse();
-    } finally {
-        putenv('BACKUP_NOTIFY_EMAIL');
-        putenv($original['getenv'] === false ? 'MAIL_FROM_ADDRESS' : 'MAIL_FROM_ADDRESS='.$original['getenv']);
-
-        unset($_SERVER['MAIL_FROM_ADDRESS'], $_ENV['MAIL_FROM_ADDRESS']);
-
-        if ($original['server'] !== null) {
-            $_SERVER['MAIL_FROM_ADDRESS'] = $original['server'];
-        }
-
-        if ($original['env'] !== null) {
-            $_ENV['MAIL_FROM_ADDRESS'] = $original['env'];
-        }
-    }
+    expect(fn (): Config => Config::fromArray($array))->not->toThrow(InvalidConfig::class)
+        ->and(data_get($array, 'notifications.mail.to'))->toBe('hello@example.com')
+        ->and(data_get($array, 'notifications.mail.from.address'))->toBe('hello@example.com');
 });
 
 it('lists the backup keys in .env.example (§4.9, A6)', function (): void {
@@ -102,7 +137,12 @@ it('lists the backup keys in .env.example (§4.9, A6)', function (): void {
         ->toMatch('/^PG_DUMP_BINARY_PATH=$/m');
 });
 
-it('passes PG_DUMP_BINARY_PATH to the dumper as its binary directory (RL-4)', function (): void {
-    expect(config('database.connections.pgsql.dump'))->toHaveKey('dump_binary_path')
-        ->and((string) file_get_contents(config_path('database.php')))->toContain("'dump_binary_path' => env('PG_DUMP_BINARY_PATH', '')");
-});
+it('passes PG_DUMP_BINARY_PATH to the dumper as its binary directory, blank when unset (RL-4, L-03)', function (?string $value, string $expected) use ($withEnvironment): void {
+    $database = $withEnvironment(['PG_DUMP_BINARY_PATH' => $value], fn (): mixed => require config_path('database.php'));
+
+    expect(data_get($database, 'connections.pgsql.dump.dump_binary_path'))->toBe($expected)
+        ->and(config('database.connections.pgsql.dump'))->toHaveKey('dump_binary_path');
+})->with([
+    'set' => ['/opt/postgresql/18/bin', '/opt/postgresql/18/bin'],
+    'unset' => [null, ''],
+]);

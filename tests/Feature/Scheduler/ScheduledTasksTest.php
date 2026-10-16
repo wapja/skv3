@@ -15,9 +15,10 @@ it('lists the ops schedule from its own copy, not from the scheduler\'s instance
 
     $tasks = ScheduledTasks::all();
 
-    expect($tasks)->toHaveCount(8)
+    expect($tasks)->toHaveCount(9)
         ->and(array_column($tasks, 'expression', 'task'))->toBe([
             'activitylog:clean --force' => '0 1 * * *',
+            'backup-temp-cleanup' => '15 * * * *',
             'backup:clean' => '30 1 * * *',
             'backup:run --only-db' => '0 2 * * *',
             'backup:monitor' => '0 3 * * *',
