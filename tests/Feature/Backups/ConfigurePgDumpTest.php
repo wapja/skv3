@@ -110,6 +110,22 @@ it('hands the backup source\'s sslmode to pg_dump as PGSSLMODE (L-05)', function
         ->and($_ENV['PGSSLMODE'] ?? null)->toBe('verify-full');
 });
 
+it('reads the sslmode from the connection\'s url as the app and the dumper do (L-05)', function () use ($starting): void {
+    // ConfigurationUrlParser lets the url's query override the sslmode key (DATABASE_URL on managed PostgreSQL).
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
+        'database.connections.pgsql.url' => 'pgsql://backup:secret@db.example.com:5432/app?sslmode=verify-full',
+        'database.connections.pgsql.sslmode' => 'prefer',
+        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+
+    expect(getenv('PGSSLMODE'))->toBe('verify-full')
+        ->and($_SERVER['PGSSLMODE'] ?? null)->toBe('verify-full')
+        ->and($_ENV['PGSSLMODE'] ?? null)->toBe('verify-full');
+});
+
 it('leaves PGSSLMODE alone for other commands and other databases (L-05)', function (string $command, string $source) use ($starting): void {
     config([
         'backup.backup.source.databases' => [$source],

@@ -18,7 +18,8 @@ use Symfony\Component\Finder\Finder;
  * module is off (F18).
  *
  * A shared directory is never changed or emptied: the system temp directory, a sticky directory, or a directory
- * another account owns.
+ * another account owns. Nothing here follows a symbolic link: a temporary directory or a temp/ that is one is left
+ * alone, because whoever could once write the directory may have planted it to point at the application (lstat()).
  */
 final readonly class PrivateBackupTemp
 {
@@ -37,30 +38,32 @@ final readonly class PrivateBackupTemp
     {
         $directory = $this->directory();
 
-        if (! is_dir($directory)) {
+        if (! is_link($directory) && ! is_dir($directory)) {
             File::ensureDirectoryExists($directory, 0700);
         }
 
-        if ($this->isOurs($directory)) {
-            chmod($directory, 0700);
-        }
+        $this->narrow($directory);
     }
 
     /**
      * Removes the files under the package's working directory (<temporary_directory>/temp) older than
      * STALE_AFTER_HOURS; returns how many. The package writes nowhere else, so the rest of the directory is left alone.
+     *
+     * The temporary directory is narrowed to 0700 first and must then be private, so no other account can swap temp/
+     * while it is walked; temp/ must be a real directory of this account. Finder lists a symlinked file, which
+     * File::delete() unlinks without touching its target, and never descends into a symlinked directory.
      */
     public function removeStale(): int
     {
         $directory = $this->directory();
 
-        if (! is_dir($directory) || ! $this->isOurs($directory)) {
+        if (! $this->narrow($directory) || ! $this->isPrivate($directory)) {
             return 0;
         }
 
         $working = $directory.'/temp';
 
-        if (! is_dir($working)) {
+        if (! $this->isOwnDirectory($working)) {
             return 0;
         }
 
@@ -76,6 +79,18 @@ final readonly class PrivateBackupTemp
         return $removed;
     }
 
+    /** Narrows the directory to 0700 when it is this account's own; returns whether it is. */
+    private function narrow(string $directory): bool
+    {
+        if (! $this->isOurs($directory)) {
+            return false;
+        }
+
+        chmod($directory, 0700);
+
+        return true;
+    }
+
     /** The directory the package's TemporaryDirectory uses (BackupServiceProvider binds the same fallback). */
     private function directory(): string
     {
@@ -84,18 +99,52 @@ final readonly class PrivateBackupTemp
         return is_string($configured) && $configured !== '' ? $configured : storage_path('app/backup-temp');
     }
 
-    /** Whether the directory is this account's own and not a shared one (system temp, sticky, another owner). */
+    /**
+     * Whether the directory is this account's own and not a shared one (system temp, sticky, another owner, a link).
+     */
     private function isOurs(string $directory): bool
     {
-        clearstatcache(true, $directory);
+        $mode = $this->ownDirectoryMode($directory);
         $real = realpath($directory);
-        $mode = fileperms($directory);
+
+        return $mode !== null
+            && ($mode & 01000) === 0
+            && $real !== false
+            && $real !== realpath(sys_get_temp_dir());
+    }
+
+    /** Whether neither the group nor others may write the directory, read past PHP's stat cache. */
+    private function isPrivate(string $directory): bool
+    {
+        $mode = $this->ownDirectoryMode($directory);
+
+        return $mode !== null && ($mode & 0022) === 0;
+    }
+
+    private function isOwnDirectory(string $directory): bool
+    {
+        return $this->ownDirectoryMode($directory) !== null;
+    }
+
+    /**
+     * The permission bits of a real directory (not a symbolic link) this account owns, read with lstat(); null
+     * otherwise.
+     */
+    private function ownDirectoryMode(string $directory): ?int
+    {
+        clearstatcache(true, $directory);
+
+        if (! file_exists($directory) && ! is_link($directory)) {
+            return null;
+        }
+
+        $stat = lstat($directory);
         $user = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
 
-        return $real !== false
-            && $real !== realpath(sys_get_temp_dir())
-            && $mode !== false
-            && ($mode & 01000) === 0
-            && fileowner($directory) === $user;
+        if ($stat === false || ($stat['mode'] & 0170000) !== 0040000 || $stat['uid'] !== $user) {
+            return null;
+        }
+
+        return $stat['mode'] & 07777;
     }
 }

@@ -92,3 +92,72 @@ it('never changes or empties a shared sticky directory (CD-10)', function () use
         ->and(new PrivateBackupTemp()->removeStale())->toBe(0)
         ->and(is_file($this->temp.'/temp/someone-else.sql'))->toBeTrue();
 });
+
+it('never follows a temp/ that is a symbolic link (CD-10)', function () use ($mode): void {
+    // Someone who could write the temporary directory once planted temp/ -> a directory of the application.
+    $victim = $this->sandbox->path('victim');
+    File::ensureDirectoryExists($victim.'/nested');
+    File::put($victim.'/.env', 'APP_KEY=secret');
+    File::put($victim.'/nested/code.php', '<?php');
+    touch($victim.'/.env', now()->subDay()->getTimestamp());
+    touch($victim.'/nested/code.php', now()->subDay()->getTimestamp());
+    File::ensureDirectoryExists($this->temp);
+    chmod($this->temp, 0700);
+    symlink($victim, $this->temp.'/temp');
+
+    expect(new PrivateBackupTemp()->removeStale())->toBe(0)
+        ->and(is_file($victim.'/.env'))->toBeTrue()
+        ->and(is_file($victim.'/nested/code.php'))->toBeTrue()
+        ->and($mode($this->temp))->toBe(0700);
+});
+
+it('never changes or empties a temporary directory that is a symbolic link (CD-10)', function () use ($starting, $mode): void {
+    $victim = $this->sandbox->path('victim');
+    File::ensureDirectoryExists($victim.'/temp');
+    chmod($victim, 0755);
+    File::put($victim.'/temp/database.sql', 'theirs');
+    touch($victim.'/temp/database.sql', now()->subDay()->getTimestamp());
+    symlink($victim, $this->temp);
+
+    $listener = new PrivateBackupTemp;
+    $listener($starting('backup:run'));
+
+    expect($mode($victim))->toBe(0755)
+        ->and(new PrivateBackupTemp()->removeStale())->toBe(0)
+        ->and(is_file($victim.'/temp/database.sql'))->toBeTrue();
+});
+
+it('narrows a group-writable temporary directory before it cleans temp/ (CD-10)', function () use ($mode): void {
+    File::ensureDirectoryExists($this->temp.'/temp');
+    chmod($this->temp, 0775);
+    File::put($this->temp.'/temp/database.sql', 'plaintext');
+    touch($this->temp.'/temp/database.sql', now()->subHours(7)->getTimestamp());
+
+    expect(new PrivateBackupTemp()->removeStale())->toBe(1)
+        ->and($mode($this->temp))->toBe(0700)
+        ->and(is_file($this->temp.'/temp/database.sql'))->toBeFalse();
+});
+
+it('never follows a temp/ planted while the temporary directory was group-writable (CD-10)', function () use ($mode): void {
+    $victim = $this->sandbox->path('victim');
+    File::ensureDirectoryExists($victim);
+    File::put($victim.'/.env', 'APP_KEY=secret');
+    touch($victim.'/.env', now()->subDay()->getTimestamp());
+    File::ensureDirectoryExists($this->temp);
+    chmod($this->temp, 0775);
+    symlink($victim, $this->temp.'/temp');
+
+    expect(new PrivateBackupTemp()->removeStale())->toBe(0)
+        ->and(is_file($victim.'/.env'))->toBeTrue()
+        ->and($mode($this->temp))->toBe(0700);
+});
+
+it('never creates the target of a dangling temporary directory link (CD-10)', function (): void {
+    $target = $this->sandbox->path('elsewhere');
+    symlink($target, $this->temp);
+
+    new PrivateBackupTemp()->secure();
+
+    expect(file_exists($target))->toBeFalse()
+        ->and(is_link($this->temp))->toBeTrue();
+});

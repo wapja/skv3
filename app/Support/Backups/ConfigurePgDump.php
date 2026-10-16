@@ -7,6 +7,7 @@ namespace App\Support\Backups;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Doctor\PostgresBinaries;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\ConfigurationUrlParser;
 
 /**
  * Before backup:run, prepares pg_dump.
@@ -47,19 +48,29 @@ final readonly class ConfigurePgDump
     }
 
     /**
-     * L-05: the first PostgreSQL backup source's sslmode, as the app's own connection uses it. The package's Symfony
-     * Process inherits the getenv() keys that $_SERVER also holds, plus every $_ENV key, so all three are set.
+     * L-05: the first PostgreSQL backup source's sslmode, as the app's own connection uses it: a url's query overrides
+     * the sslmode key, so the connection is read through ConfigurationUrlParser, as DatabaseManager and the package's
+     * DbDumperFactory read it. The package's Symfony Process inherits the getenv() keys that $_SERVER also holds, plus
+     * every $_ENV key, so all three are set.
      */
     private function passSslMode(): void
     {
         $sources = config('backup.backup.source.databases', []);
 
         foreach (is_array($sources) ? $sources : [] as $connection) {
-            if (! is_string($connection) || config('database.connections.'.$connection.'.driver') !== 'pgsql') {
+            $settings = is_string($connection) ? config('database.connections.'.$connection) : null;
+
+            if (! is_array($settings)) {
                 continue;
             }
 
-            $mode = config('database.connections.'.$connection.'.sslmode');
+            $settings = new ConfigurationUrlParser()->parseConfiguration($settings);
+
+            if (($settings['driver'] ?? null) !== 'pgsql') {
+                continue;
+            }
+
+            $mode = $settings['sslmode'] ?? null;
 
             if (is_string($mode) && $mode !== '') {
                 putenv('PGSSLMODE='.$mode);
