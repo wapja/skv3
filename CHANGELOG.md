@@ -121,6 +121,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A re-check of a long step whose process still runs is refused instead of starting it twice, and so is finishing the setup, which would remove the step's files under it (for at most four hours after the step started, so a reused process id cannot block the step for good), and a step that finished between two polls keeps its result.
 - The setup errors that still answered 500 (a start that cannot write its state, a long step whose completion check throws, a failure after the marker) show a message the page can act on. An unexpected error behind such a message (a type error, a PHP warning) is also logged with its trace.
 - The wizard detects Herd and PostgreSQL once per setup instead of on every poll, and its page title no longer repeats *Installatie*.
+- The Herd stage's secret no longer lands in the session as the previous URL, where a reader of the session store could sign in with it.
 - `POST /quick-login` with a malformed email answers 404 instead of 500.
 - A Herd step that ends after the login no longer leaves the setup lock behind, and an old Herd exit file no longer times out a new Herd stage at once.
 - A re-run with an unchanged super-admin password no longer rotates the remember token or logs a password change, and a secured site with an `http://` `APP_URL` is finished on `https://`.

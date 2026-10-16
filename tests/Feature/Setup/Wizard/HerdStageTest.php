@@ -371,6 +371,22 @@ it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URL
     $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
 });
 
+it('never stores the secret in the session, not even as the previous URL (g3-27, M21)', function (string $endpoint) use ($afterStepNine): void {
+    // Arrange: a finished Herd step, so every endpoint answers; get(), not getJson(): the page's fetch polls send no
+    // X-Requested-With, so StartSession stores their URL as the previous one.
+    $context = useSetupWizard();
+    $secret = $afterStepNine($context);
+    $state = HerdState::load($context->basePath) ?? throw new LogicException('No Herd state.');
+    $state->result = StepResult::skipped('Herd is not installed');
+    $state->save($context->basePath);
+
+    $response = $this->get('/welcome-setup/'.$endpoint.'?secret='.$secret);
+
+    expect($response->status())->toBeLessThan(400)
+        ->and((string) session()->previousUrl())->not->toContain($secret)
+        ->and(json_encode(session()->all(), JSON_THROW_ON_ERROR))->not->toContain($secret);
+})->with(['herd-status', 'finish', 'login']);
+
 it('sends a super admin with a confirmed second factor to the login page, not through a handoff (CD-14, g4-03)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
     $secret = $afterStepNine($context, 'super_admin');

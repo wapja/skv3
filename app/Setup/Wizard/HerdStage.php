@@ -15,6 +15,7 @@ use App\Setup\Steps\HerdSiteStep;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\Hosts;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Date;
 use InvalidArgumentException;
 use JsonException;
@@ -29,7 +30,9 @@ final readonly class HerdStage
 
     /**
      * The Herd state for this request's secret. Anything else is a 404 (RL-4, RL-5, RL-6): not local, not direct, a
-     * host other than the pinned one or its admin host, or a wrong or stale secret.
+     * host other than the pinned one or its admin host, or a wrong or stale secret. A caller that needs the secret
+     * reads it first: this removes it from the request, because StartSession stores fullUrl() as the previous URL,
+     * and fullUrl() reads QUERY_STRING (g3-27, as EnsureSetupAccess does for the token).
      */
     public function state(Request $request): HerdState
     {
@@ -44,6 +47,9 @@ final readonly class HerdStage
         $secret = $request->query('secret');
         abort_unless($state instanceof HerdState && SetupHostGuard::allows($request, $state->host) && is_string($secret)
             && $state->isFresh() && $state->matches($secret), 404);
+
+        $request->query->remove('secret');
+        $request->server->set('QUERY_STRING', Arr::query($request->query->all()));
 
         return $state;
     }

@@ -21,8 +21,8 @@ final class SetupFinishController extends Controller
 {
     public function __invoke(Request $request, HerdStage $stage): Response|View
     {
-        $state = $stage->state($request);
         $secret = (string) $request->query('secret');
+        $state = $stage->state($request);
 
         if (! $state->result instanceof StepResult && $request->boolean('without_https')) {
             $stage->continueWithoutHttps($state);
