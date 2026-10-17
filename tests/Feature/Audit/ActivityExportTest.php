@@ -60,6 +60,27 @@ $csv = function (TestResponse $response): array {
     return $rows;
 };
 
+/**
+ * The body as Excel in a semicolon locale (nl-NL) reads a double-clicked CSV: it splits on ';', and a field that is
+ * quoted from mid-line is not quoted for it, so an embedded line break starts a new record. Returns every piece that
+ * would become a cell starting like a formula (after spaces and quotes).
+ *
+ * @return list<string>
+ */
+$formulasForSemicolonLocales = function (TestResponse $response): array {
+    $pieces = [];
+
+    foreach (preg_split('/\r\n|\r|\n/', substr($response->streamedContent(), 3)) ?: [] as $line) {
+        foreach (explode(';', $line) as $piece) {
+            if (preg_match('/^[ "]*(?:[=+\-@\t]|\x{FF1D}|\x{FF0B}|\x{FF0D}|\x{FF20})/u', $piece) === 1) {
+                $pieces[] = $piece;
+            }
+        }
+    }
+
+    return $pieces;
+};
+
 /** The data rows (header dropped) whose properties column holds one of the markers, as marker => row. */
 $byMarker = function (array $rows): array {
     $found = [];
@@ -319,24 +340,52 @@ it('leaves platform staff\'s IP address and user agent empty for tenant viewers,
     expect($centralIps)->toContain('198.51.100.11', '198.51.100.22', '198.51.100.33', '203.0.113.44');
 });
 
-it('prefixes a cell that starts like a formula with an apostrophe (CSV injection)', function (string $name) use ($record, $csv, $byMarker): void {
+it('neutralises a formula at the start of a cell and after a separator inside it (CSV injection)', function (string $name, string $neutralised, string $subjectName) use ($record, $csv, $byMarker, $formulasForSemicolonLocales): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create(['name' => $name]);
     $record(ActivityEvent::UserUpdated, $organisation, 'formula-entry', $member, $member);
     asOrgAdmin($organisation);
 
-    $row = $byMarker($csv($this->get(route('activity.export'))->assertOk()))['formula-entry'];
+    $response = $this->get(route('activity.export'))->assertOk();
+    $row = $byMarker($csv($response))['formula-entry'];
 
-    expect($row[3])->toBe("'".$name)
-        ->and($row[4])->toBe('User #'.$member->id.' · '.$name);
+    expect($row[3])->toBe($neutralised)
+        ->and($row[4])->toBe('User #'.$member->id.' · '.$subjectName)
+        ->and($formulasForSemicolonLocales($response))->toBe([]);
 })->with([
-    'equals' => ['=HYPERLINK("https://evil.example","Click")'],
-    'plus' => ['+1+1'],
-    'minus' => ['-2+3'],
-    'at' => ['@SUM(A1:A2)'],
-    'tab' => ["\t=1+1"],
-    'carriage return' => ["\r=1+1"],
+    'equals' => ['=HYPERLINK("https://evil.example","Click")', '\'=HYPERLINK("https://evil.example","Click")', '=HYPERLINK("https://evil.example","Click")'],
+    'plus' => ['+1+1', "'+1+1", '+1+1'],
+    'minus' => ['-2+3', "'-2+3", '-2+3'],
+    'at' => ['@SUM(A1:A2)', "'@SUM(A1:A2)", '@SUM(A1:A2)'],
+    'full-width equals' => ["\u{FF1D}1+1", "'\u{FF1D}1+1", "\u{FF1D}1+1"],
+    // A tab or carriage return is a trigger itself and a separator before the formula that follows it.
+    'tab' => ["\t=1+1", "'\t'=1+1", "\t'=1+1"],
+    'carriage return' => ["\r=1+1", "'\r'=1+1", "\r'=1+1"],
+    // Excel in a semicolon locale splits ';=1+1;' into a bare '=1+1' cell.
+    'after a semicolon' => [';=1+1;', ";'=1+1;", ";'=1+1;"],
+    'after a semicolon and spaces' => ['a; =1+1', "a;' =1+1", "a;' =1+1"],
+    'after a semicolon and a quote' => ['a;"=1+1"', 'a;\'"=1+1"', 'a;\'"=1+1"'],
+    // A field quoted from mid-line is not quoted for that reading: the line feed starts a record with '=1+1'.
+    'after a line feed' => ["a\n=1+1;", "a\n'=1+1;", "a\n'=1+1;"],
 ]);
+
+it('neutralises a formula a guest smuggles into a failed sign-in\'s address (CSV injection)', function () use ($csv, $formulasForSemicolonLocales): void {
+    $organisation = Organisation::factory()->create();
+    onTenant($organisation);
+
+    // FILTER_VALIDATE_EMAIL accepts a quoted local part, so the address is recorded as typed.
+    $this->post(route('login.store'), ['email' => '";=1+1;"@x.nl', 'password' => 'anything'])
+        ->assertSessionHasErrors('email');
+    expect(recordedActivity(ActivityEvent::LoginFailed)->sole()->getProperty('email'))->toBe('";=1+1;"@x.nl');
+
+    asOrgAdmin($organisation);
+    $response = $this->get(route('activity.export'))->assertOk();
+    $failed = array_values(array_filter($csv($response), fn (array $row): bool => $row[1] === 'auth.login_failed'));
+
+    expect($failed)->toHaveCount(1)
+        ->and(end($failed[0]))->toBe('{"email":"\\";\'=1+1;\\"@x.nl"}')
+        ->and($formulasForSemicolonLocales($response))->toBe([]);
+});
 
 it('records the export with the filters it applied, before the first byte', function () use ($record): void {
     $organisation = Organisation::factory()->create();

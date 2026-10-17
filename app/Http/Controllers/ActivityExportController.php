@@ -24,8 +24,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class ActivityExportController extends Controller
 {
-    /** Cells that start like a formula are prefixed with an apostrophe, so a spreadsheet shows them as text. */
-    private const array FORMULA_PREFIXES = ['=', '+', '-', '@', "\t", "\r"];
+    /**
+     * Where a spreadsheet may start a cell that runs as a formula: at the start of the cell, and after a ';', tab, CR
+     * or LF inside it, because Excel in a semicolon locale (nl-NL) splits a double-clicked CSV on ';' and ends a
+     * record at a line break in a field quoted from mid-line. A formula starts with '=', '+', '-', '@', a tab, a CR
+     * or a full-width ＝＋－＠ (U+FF1D, U+FF0B, U+FF0D, U+FF20, as UTF-8 bytes), after optional spaces and quotes.
+     * Byte-wise, without the u flag, so a cell with invalid UTF-8 is still matched.
+     */
+    private const string FORMULA_START = '/(?:^|(?<=[;\t\r\n]))(?=[ "]*(?:[=+\-@\t\r]|\xEF\xBC[\x9D\x8B\x8D\xA0]))/';
 
     public function __invoke(Request $request, RecordActivity $recordActivity): StreamedResponse
     {
@@ -105,9 +111,9 @@ final class ActivityExportController extends Controller
         fputcsv($output, array_map($this->neutralise(...), $cells), ',', '"', '');
     }
 
-    /** CSV formula injection: a cell a spreadsheet would run as a formula starts with an apostrophe instead. */
+    /** CSV formula injection: every place a spreadsheet would start a formula gets an apostrophe, so it reads as text. */
     private function neutralise(string $cell): string
     {
-        return $cell !== '' && in_array($cell[0], self::FORMULA_PREFIXES, true) ? "'".$cell : $cell;
+        return preg_replace(self::FORMULA_START, "'", $cell) ?? throw new RuntimeException('The export cannot neutralise a cell.');
     }
 }
