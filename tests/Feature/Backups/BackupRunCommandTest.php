@@ -74,8 +74,10 @@ it('judges the configuration that --config names, not the default one (CD-7)', f
     expect(Storage::disk('backups')->allFiles())->toBe([]);
 });
 
-it('hands pg_dump the sslmode of the sources --config and --db-name choose, not the default ones (L7b-68)', function (array $options, string $expected): void {
-    // The default configuration dumps pgsql (prefer); backup_reports dumps pgsql_reports (require), then pgsql_audit (verify-full).
+it('hands pg_dump the strictest sslmode of the sources --config and --db-name choose, not the default ones (L7b-68)', function (array $options, string $expected): void {
+    // The default configuration dumps pgsql (prefer); backup_reports dumps pgsql_reports (require), then pgsql_audit
+    // (verify-full); backup_audit dumps them the other way round. One pg_dump environment serves every source, so the
+    // strictest mode wins: a weaker source listed first must not leave pgsql_audit's certificate unchecked.
     config([
         'backup.backup.source.databases' => ['pgsql'],
         'database.connections.pgsql.sslmode' => 'prefer',
@@ -84,7 +86,10 @@ it('hands pg_dump the sslmode of the sources --config and --db-name choose, not 
     ]);
     /** @var array<string, mixed> $backup */
     $backup = config('backup');
-    config(['backup_reports' => array_replace_recursive($backup, ['backup' => ['source' => ['databases' => ['pgsql_reports', 'pgsql_audit']]]])]);
+    config([
+        'backup_reports' => array_replace_recursive($backup, ['backup' => ['source' => ['databases' => ['pgsql_reports', 'pgsql_audit']]]]),
+        'backup_audit' => array_replace_recursive($backup, ['backup' => ['source' => ['databases' => ['pgsql_audit', 'pgsql_reports']]]]),
+    ]);
     // A shared sticky temporary directory stops the run after the export, before pg_dump starts (M22).
     File::ensureDirectoryExists($this->sandbox->path('backup-temp'));
     chmod($this->sandbox->path('backup-temp'), 01777);
@@ -97,8 +102,9 @@ it('hands pg_dump the sslmode of the sources --config and --db-name choose, not 
         ->and($_ENV['PGSSLMODE'] ?? null)->toBe($expected);
 })->with([
     'the default configuration' => [[], 'prefer'],
-    '--config' => [['--config' => 'backup_reports'], 'require'],
-    '--config and --db-name' => [['--config' => 'backup_reports', '--db-name' => ['pgsql_audit']], 'verify-full'],
+    '--config' => [['--config' => 'backup_reports'], 'verify-full'],
+    '--config, the stricter source first' => [['--config' => 'backup_audit'], 'verify-full'],
+    '--config and --db-name' => [['--config' => 'backup_reports', '--db-name' => ['pgsql_reports']], 'require'],
 ]);
 
 it('hands an encrypted backup to the package (CD-7)', function (): void {

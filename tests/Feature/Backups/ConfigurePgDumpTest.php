@@ -129,10 +129,11 @@ it('leaves PGSSLMODE alone for a SQLite source and a connection --db-name leaves
     'a PostgreSQL source --db-name leaves out' => [['pgsql', 'sqlite'], 'sqlite'],
 ]);
 
-it('takes the sslmode of the connection --db-name names, not the first source\'s (L7b-68)', function (): void {
+it('takes the sslmode of the connection --db-name names, not the other sources\' (L7b-68)', function (): void {
+    // pgsql's stricter mode would win were the sources not narrowed to the one --db-name names.
     config([
         'backup.backup.source.databases' => ['pgsql', 'pgsql_reports'],
-        'database.connections.pgsql.sslmode' => 'prefer',
+        'database.connections.pgsql.sslmode' => 'verify-full',
         'database.connections.pgsql_reports' => [...config('database.connections.pgsql'), 'sslmode' => 'require'],
     ]);
 
@@ -140,6 +141,30 @@ it('takes the sslmode of the connection --db-name names, not the first source\'s
 
     expect(getenv('PGSSLMODE'))->toBe('require');
 });
+
+it('exports the strictest sslmode of the PostgreSQL sources it dumps, in whatever order they are listed (L7b-68)', function (string $first, string $second, string $expected): void {
+    // spatie's BackupJob runs every source's pg_dump in this one process, so they all inherit one PGSSLMODE.
+    config([
+        'backup.backup.source.databases' => ['pgsql', 'sqlite', 'pgsql_reports'],
+        'database.connections.pgsql.sslmode' => $first,
+        'database.connections.pgsql_reports' => [...config('database.connections.pgsql'), 'sslmode' => $second],
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode();
+
+    expect(getenv('PGSSLMODE'))->toBe($expected)
+        ->and($_SERVER['PGSSLMODE'] ?? null)->toBe($expected)
+        ->and($_ENV['PGSSLMODE'] ?? null)->toBe($expected);
+})->with([
+    'require, then verify-full' => ['require', 'verify-full', 'verify-full'],
+    'verify-full, then require' => ['verify-full', 'require', 'verify-full'],
+    'disable, then verify-ca' => ['disable', 'verify-ca', 'verify-ca'],
+    'verify-ca, then verify-full' => ['verify-ca', 'verify-full', 'verify-full'],
+    'allow, then prefer' => ['allow', 'prefer', 'prefer'],
+    'prefer, then disable' => ['prefer', 'disable', 'prefer'],
+    // An unknown mode wins, so pg_dump refuses it instead of the run falling back to the weaker source's mode.
+    'a misspelt mode, then require' => ['require', 'verify_full', 'verify_full'],
+]);
 
 it('leaves PGSSLMODE to backup:run, which knows its --config, for every command it listens to (L-05, L7b-68)', function (string $command) use ($starting): void {
     // Before handle() the default configuration's sources are all the listener could read.

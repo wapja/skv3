@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Artisan;
  * before the toolchain PATH, else the PATH first (PostgresBinaries). A cron job has no Herd PATH, so without this the
  * nightly backup would not find Herd's pg_dump.
  *
- * passSslMode() passes the source connection's sslmode as PGSSLMODE (L-05), because pg_dump reads its TLS mode from
+ * passSslMode() passes the sources' strictest sslmode as PGSSLMODE (L-05), because pg_dump reads its TLS mode from
  * the environment, not from the Laravel connection. BackupRunCommand calls it once --config and --db-name are known
  * (L7b-68): this listener runs before handle() and would read the default configuration's sources. Should the
  * package's command hold the name again (as RefuseUnencryptedBackups and PrivateBackupTemp guard against), this
@@ -27,6 +27,9 @@ use Illuminate\Support\Facades\Artisan;
  */
 final readonly class ConfigurePgDump
 {
+    /** libpq's sslmode values, weakest first. */
+    private const array SSL_MODES = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'];
+
     /** @param  string|null  $basePath  the project whose .env is read; tests pass a sandbox */
     public function __construct(
         private string $herdServices = PostgresBinaries::HERD_SERVICES,
@@ -57,9 +60,13 @@ final readonly class ConfigurePgDump
     }
 
     /**
-     * L-05: the first PostgreSQL backup source's sslmode, as the app's own connection uses it: a url's query overrides
-     * the sslmode key, so the connection is read through ConfigurationUrlParser, as DatabaseManager and the package's
-     * DbDumperFactory read it. The package's Symfony Process inherits the getenv() keys that $_SERVER also holds, plus
+     * L-05: the strictest sslmode of the PostgreSQL backup sources, each read as the app's own connection uses it: a
+     * url's query overrides the sslmode key, so the connection is read through ConfigurationUrlParser, as
+     * DatabaseManager and the package's DbDumperFactory read it. spatie's BackupJob runs every source's pg_dump in
+     * this one process, so they all inherit one PGSSLMODE: the strictest mode (SSL_MODES) is exported, so a weaker
+     * source listed first never leaves a verify-full source's certificate unchecked. A mode libpq does not know ranks
+     * above them all, so pg_dump refuses it instead of the run quietly using a weaker one. A source without an
+     * sslmode adds none. The package's Symfony Process inherits the getenv() keys that $_SERVER also holds, plus
      * every $_ENV key, so all three are set. The sources are the running configuration's (`--config` has swapped
      * config('backup') by then), narrowed to $only as `--db-name` narrows the dump (L7b-68).
      *
@@ -68,6 +75,7 @@ final readonly class ConfigurePgDump
     public function passSslMode(array $only = []): void
     {
         $sources = config('backup.backup.source.databases', []);
+        $strictest = null;
 
         foreach (is_array($sources) ? $sources : [] as $connection) {
             if ($only !== [] && ! in_array($connection, $only, true)) {
@@ -88,12 +96,22 @@ final readonly class ConfigurePgDump
 
             $mode = $settings['sslmode'] ?? null;
 
-            if (is_string($mode) && $mode !== '') {
-                putenv('PGSSLMODE='.$mode);
-                $_SERVER['PGSSLMODE'] = $_ENV['PGSSLMODE'] = $mode;
+            if (is_string($mode) && $mode !== '' && ($strictest === null || $this->strength($mode) > $this->strength($strictest))) {
+                $strictest = $mode;
             }
-
-            return;
         }
+
+        if ($strictest !== null) {
+            putenv('PGSSLMODE='.$strictest);
+            $_SERVER['PGSSLMODE'] = $_ENV['PGSSLMODE'] = $strictest;
+        }
+    }
+
+    /** The mode's place in SSL_MODES; a mode libpq does not know ranks above every known one. */
+    private function strength(string $mode): int
+    {
+        $position = array_search($mode, self::SSL_MODES, true);
+
+        return $position === false ? count(self::SSL_MODES) : $position;
     }
 }

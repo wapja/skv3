@@ -170,7 +170,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The setup's background steps (frontend build, Claude) no longer create `public/build`, `node_modules`, `vendor` or `.claude` readable by their owner only; only the steps' own log, exit and pid files stay private.
 - Setup creates the `public/storage` link, so the doctor's `storage-link` row no longer warns after a fresh install.
 - Backup archives on the local `backups` disk are readable by this account only (0600, folders 0700).
-- `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's.
+- `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's. All of a run's dumps share one `PGSSLMODE`, so when the sources' modes differ the strictest one applies to every source (`verify-full` before `verify-ca`, `require`, `prefer`, `allow`, `disable`), and a mode PostgreSQL does not know makes `pg_dump` refuse.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
