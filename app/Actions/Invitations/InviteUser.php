@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\HostScope;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
+use Stringable;
 
 /**
  * Invites an address into an organisation (§4.5). In one transaction: the organisation is locked
@@ -33,7 +35,7 @@ use Spatie\Permission\Models\Role as RoleModel;
  * are attached through UpdateUserRoles so the escalation guard applies (X5) and at least one role
  * is required (W14), and the invitation keeps only a hash and an encrypted copy of the token (W13).
  * The mail is queued after commit and builds its link in the worker (W10, FU3-14). Team and tenant
- * are restored on failure (W11). Bulk invitations (M7) reuse this action.
+ * are restored on failure (W11). Bulk invitations reuse this action and its address rules (CD-6).
  */
 final readonly class InviteUser
 {
@@ -70,6 +72,17 @@ final readonly class InviteUser
     }
 
     /**
+     * The rules an address must pass to be invited into $organisation (W9). The bulk invitation page checks its rows
+     * with them before it sends, and shows every failure as one generic message (§4.5, CD-6).
+     *
+     * @return array<int, ValidationRule|Stringable|array<mixed>|string>
+     */
+    public function addressRules(Organisation $organisation): array
+    {
+        return $this->emailRules(organisationId: $organisation->id);
+    }
+
+    /**
      * @param  list<int>  $roleIds
      *
      * @throws AuthorizationException
@@ -80,7 +93,7 @@ final readonly class InviteUser
         Validator::make(
             ['email' => $email, 'roles' => $roleIds],
             [
-                'email' => $this->emailRules(organisationId: $organisation->id),
+                'email' => $this->addressRules($organisation),
                 'roles' => ['required', 'array', 'min:1'],
             ],
             [

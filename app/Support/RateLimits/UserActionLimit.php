@@ -31,6 +31,15 @@ final readonly class UserActionLimit
         }
     }
 
+    /**
+     * Send a checked list on the bulk invitation page (CD-6): 100 invitations per hour, reserved for every ready row
+     * before the first send; the rows InviteUser refuses are given back. The invite() limit is not consumed.
+     */
+    public static function bulkInvite(): self
+    {
+        return new self('bulk-invite', 100, 3600);
+    }
+
     /** Log out other devices on the security page: 5 attempts per minute, counted before the password is checked. */
     public static function logoutOtherDevices(): self
     {

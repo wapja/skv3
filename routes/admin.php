@@ -30,6 +30,11 @@ Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void 
         ->can(Permission::UsersCreate)
         ->name('users.invite');
 
+    // §6.6, §6.2: any host, authorised as users.invite; on a central host a super admin picks the organisation.
+    Route::livewire('invitations/bulk', 'pages::invitations.bulk')
+        ->can(Permission::UsersCreate)
+        ->name('invitations.bulk');
+
     Route::livewire('invitations/pending', 'pages::invitations.pending')
         ->can(Permission::UsersView)
         ->name('invitations.pending');
