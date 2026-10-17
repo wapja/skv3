@@ -105,6 +105,44 @@ it('accepts branches that bind the same properties in any order and with any mod
     expect(FluxProLint::violations($blade))->toBe([]);
 });
 
+it('reads a Pro select variant over several lines and in either attribute form (G5-10)', function (string $tag, string $violation): void {
+    expect(FluxProLint::violations($tag))->toBe([$violation]);
+})->with([
+    'over several lines' => ["<flux:select\n    variant=\"listbox\"\n    wire:model=\"roles\">", 'line 1: <flux:select variant="listbox" wire:model="roles">'],
+    'bound' => ["<flux:select :variant=\"'listbox'\" wire:model=\"roles\">", "line 1: <flux:select :variant=\"'listbox'\" wire:model=\"roles\">"],
+    'single quotes' => ["<p>Roles</p>\n<flux:select variant='combobox' wire:model=\"roles\">", "line 2: <flux:select variant='combobox' wire:model=\"roles\">"],
+]);
+
+it('ignores directives and tags inside Blade comments (G5-10)', function (): void {
+    $blade = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            {{-- @if ($legacy) --}}
+            <flux:date-picker wire:model="from" />
+        @else
+            <flux:input type="date" wire:model="until" />
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($blade))->toBe(['line 1: @if (Skv::hasFluxPro()) binds wire:model [from] in the Pro branch but [until] in the free @else'])
+        ->and(FluxProLint::violations('{{-- <flux:command /> was the old palette --}}'))->toBe([]);
+});
+
+it('accepts a pro-only marker only right before its @if (G5-10)', function (): void {
+    $distant = <<<'BLADE'
+        {{-- pro-only (§6.7): free Flux has no sign-in trend --}}
+        <div>
+            <p>Stats</p>
+        </div>
+        @if (Skv::hasFluxPro())
+            <flux:chart />
+        @endif
+        BLADE;
+
+    expect(FluxProLint::violations($distant))->toBe(['line 5: @if (Skv::hasFluxPro()) has no free @else; mark a feature without a free variant (§6.7) with {{-- pro-only --}}'])
+        ->and(FluxProLint::violations("{{-- pro-only (§6.7) --}}\n\n@if (Skv::hasFluxPro())\n<flux:chart />\n@endif"))->toBe(['line 3: @if (Skv::hasFluxPro()) has no free @else; mark a feature without a free variant (§6.7) with {{-- pro-only --}}'])
+        ->and(FluxProLint::violations("{{-- pro-only (§6.7) --}} @if (Skv::hasFluxPro())\n<flux:chart />\n@endif"))->toBe([]);
+});
+
 it('keeps every view of the kit inside the free Flux surface or a Pro branch (§6.7)', function (): void {
     $violations = [];
 

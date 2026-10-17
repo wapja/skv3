@@ -97,7 +97,8 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * The last ten entries of this host's activity, without IP addresses, user agents or field changes (RL-11).
+     * The last ten entries of this host's activity, without IP addresses, user agents or field changes (RL-11); on a
+     * central host archived organisations' entries included, as in the viewer (RL-7).
      *
      * @return list<array{event: string, causer: string|null, when: string}>|null
      */
@@ -109,12 +110,16 @@ new #[Title('Dashboard')] class extends Component
         }
 
         /** @var list<Activity> $entries */
-        $entries = HostScope::read(fn (): array => Activity::query()
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit(10)
-            ->get()
-            ->all());
+        $entries = HostScope::read(function (): array {
+            $query = Activity::query();
+
+            // Central hosts also list archived organisations' rows, soft-deleted by the cascade, as the viewer does (RL-7).
+            if (HostScope::organisationId() === null) {
+                $query->withTrashed();
+            }
+
+            return $query->orderByDesc('created_at')->orderByDesc('id')->limit(10)->get()->all();
+        });
 
         $userType = new User()->getMorphClass();
         $causerIds = array_values(array_unique(array_filter(array_map(

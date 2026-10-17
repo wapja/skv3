@@ -8,12 +8,14 @@ namespace App\Support;
  * §6.7: Blade resolves every `<flux:…>` tag while it compiles a view, not when it renders it, so a Pro-only tag
  * inside `@if (Skv::hasFluxPro())` still fails to compile when Flux Pro is absent. Without Pro, this removes the
  * true branch of each such `@if` before Blade compiles the view (also for `view:cache`). The free `@else` branch
- * stays, and the line count is kept so compiled line numbers still match the source.
+ * stays, and the line count is kept so compiled line numbers still match the source. The block structure comes from
+ * BladeDirectives, so an `@else` of a nested `@auth`, `@can`, `@isset`, `@error` … never ends the Pro branch (G5-09);
+ * the Pro lint reads the same branches().
+ *
+ * @phpstan-type ProBranch array{if: int, start: int, end: int, free: int|null, close: int, hasElse: bool}
  */
 final class FluxProBranches
 {
-    private const string DIRECTIVES = '/@(?:if|elseif|else|endif|unless|endunless)\b(?:\s*\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))?/';
-
     private const string PRO_IF = '/^@if\s*\(\s*\\\\?(App\\\\Support\\\\)?Skv::hasFluxPro\(\)\s*\)$/';
 
     /** Rendered only when Flux Pro was installed after the view was compiled without it. */
@@ -25,38 +27,67 @@ final class FluxProBranches
             return $blade;
         }
 
-        // Directives inside Blade comments are not directives: blank the comments (same length) before scanning.
-        $scanned = (string) preg_replace_callback('/\{\{--.*?--\}\}/s', fn (array $comment): string => str_repeat(' ', strlen($comment[0])), $blade);
+        return self::cut($blade, array_map(fn (array $branch): array => [$branch['start'], $branch['end']], self::branches($blade)));
+    }
 
-        preg_match_all(self::DIRECTIVES, $scanned, $matches, PREG_OFFSET_CAPTURE);
+    /**
+     * Every `@if (Skv::hasFluxPro())` that Blade would close, in source order, as byte offsets: `if` where the
+     * directive starts, [`start`, `end`) the Pro branch, `free` where the content after the first branch directive
+     * (`@else`, `@elseif` …) starts or null without one, `close` where its closing directive starts, and whether a
+     * plain `@else` belongs to it.
+     *
+     * @return list<ProBranch>
+     */
+    public static function branches(string $blade): array
+    {
+        $branches = [];
+        $stack = []; // per open block: its Pro branch while it is collected, or null
 
-        $cuts = [];
-        $stack = []; // per open @if / @unless: where its Pro branch content starts, or null
+        foreach (BladeDirectives::tokens($blade) as $directive) {
+            if ($directive['kind'] === 'open') {
+                $stack[] = $directive['name'] === 'if' && preg_match(self::PRO_IF, $directive['token']) === 1
+                    ? ['if' => $directive['offset'], 'start' => $directive['offset'] + strlen($directive['token']), 'end' => null, 'free' => null, 'hasElse' => false]
+                    : null;
 
-        foreach ($matches[0] as [$token, $offset]) {
-            if (preg_match('/^@(if|unless)\b/', $token) === 1) {
-                $stack[] = preg_match(self::PRO_IF, $token) === 1 ? $offset + strlen($token) : null;
-
-                continue;
-            }
-
-            if ($stack === []) {
                 continue;
             }
 
             $last = array_key_last($stack);
 
-            if ($stack[$last] !== null) {
-                $cuts[] = [$stack[$last], $offset];
-                $stack[$last] = null;
+            if ($last === null) {
+                continue;
             }
 
-            if (preg_match('/^@(endif|endunless)\b/', $token) === 1) {
-                array_pop($stack);
+            if ($stack[$last] !== null) {
+                $stack[$last]['end'] ??= $directive['offset'];
+            }
+
+            if ($directive['kind'] === 'branch') {
+                if ($stack[$last] !== null) {
+                    $stack[$last]['free'] ??= $directive['offset'] + strlen($directive['token']);
+                    $stack[$last]['hasElse'] = $stack[$last]['hasElse'] || $directive['name'] === 'else';
+                }
+
+                continue;
+            }
+
+            $frame = array_pop($stack);
+
+            if ($frame !== null) {
+                $branches[] = [
+                    'if' => $frame['if'],
+                    'start' => $frame['start'],
+                    'end' => $frame['end'] ?? $directive['offset'],
+                    'free' => $frame['free'],
+                    'close' => $directive['offset'],
+                    'hasElse' => $frame['hasElse'],
+                ];
             }
         }
 
-        return self::cut($blade, $cuts);
+        usort($branches, fn (array $a, array $b): int => $a['if'] <=> $b['if']);
+
+        return $branches;
     }
 
     /** @param  list<array{int, int}>  $cuts  [start, end) byte ranges; a range inside another one is skipped. */

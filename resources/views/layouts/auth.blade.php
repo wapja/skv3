@@ -7,7 +7,8 @@
                 <span class="mb-1 flex h-9 w-9 items-center justify-center rounded-md">
                     <x-app-logo-icon class="size-9 fill-current text-black dark:text-white" />
                 </span>
-                <span class="sr-only">{{ \App\Support\Branding::name() }}</span>
+                {{-- §4.1: the organisation's name on its host, the platform's centrally; the mark stays the default icon (DEC-29 (5)). --}}
+                <span class="text-sm text-zinc-800 dark:text-white" data-test="auth-brand">{{ \App\Support\Branding::name() }}</span>
             </a>
             <div class="flex flex-col gap-6">
                 {{ $slot }}
