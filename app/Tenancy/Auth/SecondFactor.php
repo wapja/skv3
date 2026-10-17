@@ -13,7 +13,9 @@ use App\Support\Skv;
  * is on, at least one passkey (with the module off a passkey signs nobody in, so it no longer counts either). Who
  * must have one: a super admin when config('skv.second_factor.super_admins') says so, whatever their
  * organisation_id; anyone else when their own organisation's require_second_factor is on. Both hold on every host.
- * EnsureSecondFactor enforces it; the security page and UpdateOrganisation read it.
+ * EnsureSecondFactor enforces it; the security page and UpdateOrganisation read it. Fortify challenges only a TOTP
+ * secret after the password, so a user the rule applies to whose only factor is a passkey signs in with the passkey:
+ * AuthenticateOnThisHost refuses their password sign-in (needsPasskeySignIn(), DEC-35).
  */
 final class SecondFactor
 {
@@ -45,6 +47,16 @@ final class SecondFactor
     public static function missingFor(User $user): bool
     {
         return self::requiredFor($user) && ! self::satisfiedBy($user);
+    }
+
+    /**
+     * The rule applies to $user and only a passkey meets it: the password alone would sign them in without any second
+     * factor, so they sign in with the passkey. A user without any factor yet still signs in with the password and is
+     * then sent to set one up; with a confirmed TOTP secret Fortify asks for the code.
+     */
+    public static function needsPasskeySignIn(User $user): bool
+    {
+        return ! $user->hasEnabledTwoFactorAuthentication() && self::requiredFor($user) && self::satisfiedBy($user);
     }
 
     /**

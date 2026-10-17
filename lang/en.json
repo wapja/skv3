@@ -571,6 +571,7 @@
     "Sign in as :email on the admin host and create your first organisation under Organisations.": "Sign in as :email on the admin host and create your first organisation under Organisations.",
     "Sign in with a passkey": "Sign in with a passkey",
     "Sign in with one of the demo accounts above; the login page also lists them under Quick login.": "Sign in with one of the demo accounts above; the login page also lists them under Quick login.",
+    "Sign in with your passkey: a password alone is not enough for this account.": "Sign in with your passkey: a password alone is not enough for this account.",
     "Sign-in failed": "Sign-in failed",
     "Sign-ins": "Sign-ins",
     "Sign-ins over the last 14 days": "Sign-ins over the last 14 days",

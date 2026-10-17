@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
 use PragmaRX\Google2FA\Google2FA;
@@ -74,6 +75,81 @@ it('is satisfied by a registered passkey, after which the dashboard opens (§6.6
     $this->postJson(route('passkey.store'), ['name' => 'Laptop', 'credential' => new SoftwareAuthenticator()->attest($options, 'http://acme.localhost')])
         ->assertSuccessful();
 
+    $this->get(route('dashboard'))->assertOk();
+});
+
+it('refuses the password alone to a user whose only second factor under the rule is a passkey, once the password is right (§6.6, DEC-35)', function (string $who): void {
+    usePasskeysModule(true);
+    config(['skv.second_factor.super_admins' => true]);
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => true]);
+    $user = $who === 'a super admin' ? User::factory()->superAdmin()->create() : User::factory()->for($acme)->create();
+    $user->passkeys()->create(['name' => 'Laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    onTenant($acme);
+
+    // A wrong password gets the usual answer, so the refusal never tells what the password alone cannot.
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'not-the-password'])
+        ->assertSessionHasErrors(['email' => __('auth.failed')]);
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
+        ->assertSessionHasErrors(['email' => __('Sign in with your passkey: a password alone is not enough for this account.')]);
+
+    $this->assertGuest();
+})->with(['a member', 'a super admin']);
+
+it('still signs in with the password whoever the passkey rule does not cover (§6.6, §6.8)', function (string $case): void {
+    usePasskeysModule($case !== 'passkeys off');
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $case !== 'no rule']);
+    $member = User::factory()->for($acme)->create();
+    onTenant($acme);
+
+    if ($case !== 'no factor yet') {
+        $member->passkeys()->create(['name' => 'Laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    }
+
+    if ($case === 'TOTP too') {
+        $member->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    }
+
+    $response = $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertSessionHasNoErrors();
+
+    if ($case === 'TOTP too') {
+        // Fortify asks for the code: the TOTP secret is the factor of this sign-in.
+        $response->assertRedirect(route('two-factor.login'));
+        $this->assertGuest();
+
+        return;
+    }
+
+    $response->assertRedirect(route('dashboard'));
+    $this->assertAuthenticatedAs($member);
+})->with([
+    'no rule' => 'no rule',
+    // The middleware then sends them to set one up.
+    'no factor yet' => 'no factor yet',
+    'TOTP too' => 'TOTP too',
+    // A passkey signs nobody in with the module off, so it is no factor, and the middleware asks for TOTP.
+    'passkeys off' => 'passkeys off',
+]);
+
+it('lets a passkey-only member under the rule in with the passkey itself (§6.6)', function () use ($memberUnderTheRule): void {
+    usePasskeysModule(true);
+    $member = $memberUnderTheRule();
+    $authenticator = new SoftwareAuthenticator;
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+
+    /** @var array<string, mixed> $registration */
+    $registration = $this->getJson(route('passkey.registration-options'))->assertOk()->json('options');
+    $this->postJson(route('passkey.store'), ['name' => 'Laptop', 'credential' => $authenticator->attest($registration, 'http://acme.localhost')])
+        ->assertSuccessful();
+    Auth::guard('web')->logout();
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertSessionHasErrors('email');
+    $this->assertGuest();
+
+    /** @var array<string, mixed> $options */
+    $options = $this->getJson(route('passkey.login-options'))->assertOk()->json('options');
+    $this->postJson(route('passkey.login'), ['credential' => $authenticator->assert($options, 'http://acme.localhost')])->assertOk();
+
+    $this->assertAuthenticatedAs($member);
     $this->get(route('dashboard'))->assertOk();
 });
 

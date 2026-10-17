@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Timebox;
+use Illuminate\Validation\ValidationException;
+use Laravel\Fortify\Fortify;
 use LogicException;
 
 /**
@@ -17,7 +19,9 @@ use LogicException;
  * on a host they do not belong to all fail the same way and take the same time, so the response never
  * reveals which one it was: an unknown address still costs one password hash, and every failure is
  * padded to `auth.timebox_duration`. Fortify calls the callback twice for users without 2FA, so the
- * outcome is kept on the request.
+ * outcome is kept on the request. A user the second-factor rule applies to whose only factor is a passkey
+ * is refused once the password is right, as a TOTP user is challenged only then (§6.6, DEC-35): they sign
+ * in with the passkey.
  */
 final readonly class AuthenticateOnThisHost
 {
@@ -69,6 +73,12 @@ final readonly class AuthenticateOnThisHost
         }
 
         $timebox->returnEarly();
+
+        if (SecondFactor::needsPasskeySignIn($user)) {
+            throw ValidationException::withMessages([
+                Fortify::username() => __('Sign in with your passkey: a password alone is not enough for this account.'),
+            ]);
+        }
 
         return $user;
     }
