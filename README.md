@@ -91,7 +91,8 @@ Audit entries written while an Artisan command runs are tagged with it (`via: co
 
 ## Configuration
 
-- **`APP_URL`** must be the public origin, scheme and port included: every link the kit builds (mails, handoffs, passkey origins) takes its scheme and port from it, never from the request. Behind a TLS-terminating proxy it is `https://…`, because `X-Forwarded-Proto` no longer makes links https, and a passkey on another port than `APP_URL`'s fails. Behind a proxy, `TRUSTED_PROXIES` now only affects the client IP that the limits and the logs see.
+- **`APP_URL`** must be the public origin, scheme and port included. The links the kit builds with `Hosts::url()` and `tenant_url()` take their scheme and port from it, never from the request: the reset, email-change, invitation and handoff links, the links and redirects to another host, and the passkey origin. Behind a TLS-terminating proxy it is `https://…`, because `X-Forwarded-Proto` does not make those links https, and a passkey on another port than `APP_URL`'s fails.
+- **`TRUSTED_PROXIES`** is still needed behind a load balancer, CDN or TLS-terminating proxy: its addresses (comma-separated) or `*`. A page's own links, form actions and redirects on its host come from the request (Laravel's `route()` and `url()`), and the app reads the client IP, the host, the scheme and the port from the `X-Forwarded-*` headers of a trusted proxy only. Without it the limits and the logs see the proxy's address, and behind a TLS proxy an https page posts its forms to `http://…`. Behind a TLS proxy, set both `APP_URL=https://…` and `TRUSTED_PROXIES`.
 - **`APP_LOCALE`** is the default language and defaults to `nl`.
 
 ## Accounts and security
@@ -218,6 +219,7 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 
 - Never run `php artisan skv:install` there (it runs only in `local`, `testing` and `staging`); `php artisan skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets, also when only the server's environment sets `APP_ENV` (any name but `local`, `testing` and `staging`). Demo data never runs outside local and testing.
 - Set `APP_URL` to the public origin, `https://` behind a TLS-terminating proxy (see [Configuration](#configuration)).
+- Behind a load balancer, CDN or TLS-terminating proxy, set `TRUSTED_PROXIES` to its addresses (or `*`), so the limits and the logs see each visitor's IP and the pages' own links, forms and redirects keep the public scheme, host and port (see [Configuration](#configuration)).
 - Keep `.env` at mode 0600. If php-fpm runs as another account than the one that ran `skv:bootstrap`, `chown` the file to that account, or use 0640 with a shared group.
 - Run `php artisan permissions:sync` on every deploy.
 - Set a random `HEALTH_CHECK_KEY` of at least 32 characters (setup and the production `skv:bootstrap` generate a 40-character one; a shorter key counts as none), and point an uptime monitor at `/health-check` with the `X-Health-Check-Key` header; expect 200 (see [Health check](#health-check)). With backups on, run `php artisan backup:run --only-db` once after the first deploy: until the first backup exists, `last-backup` fails and the endpoint answers 503.
