@@ -11,9 +11,45 @@ use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passkeys\Passkeys;
 
-it('is on by default', function (): void {
-    expect(config('tenancy.strict'))->toBeTrue();
-});
+it('is on by default, and TENANCY_STRICT=false turns it off (A5, FU2-12)', function (?string $value, bool $strict): void {
+    // phpunit.xml forces TENANCY_STRICT=true, so config('tenancy.strict') says nothing about the shipped default: the
+    // variable is cleared in every place env() reads (and set for the off row), the config file is read again, and the
+    // variable is put back afterwards.
+    $saved = [$_ENV['TENANCY_STRICT'] ?? null, $_SERVER['TENANCY_STRICT'] ?? null, getenv('TENANCY_STRICT')];
+    unset($_ENV['TENANCY_STRICT'], $_SERVER['TENANCY_STRICT']);
+    putenv('TENANCY_STRICT');
+
+    if ($value !== null) {
+        $_ENV['TENANCY_STRICT'] = $_SERVER['TENANCY_STRICT'] = $value;
+        putenv('TENANCY_STRICT='.$value);
+    }
+
+    try {
+        /** @var array{strict: mixed} $config */
+        $config = require config_path('tenancy.php');
+    } finally {
+        unset($_ENV['TENANCY_STRICT'], $_SERVER['TENANCY_STRICT']);
+        putenv('TENANCY_STRICT');
+
+        if ($saved[0] !== null) {
+            $_ENV['TENANCY_STRICT'] = $saved[0];
+        }
+
+        if ($saved[1] !== null) {
+            $_SERVER['TENANCY_STRICT'] = $saved[1];
+        }
+
+        if ($saved[2] !== false) {
+            putenv('TENANCY_STRICT='.$saved[2]);
+        }
+    }
+
+    expect($config['strict'])->toBe($strict)
+        ->and(config('tenancy.strict'))->toBeTrue();
+})->with([
+    'TENANCY_STRICT unset' => [null, true],
+    'TENANCY_STRICT=false' => ['false', false],
+]);
 
 it('refuses tenant queries on a central host outside a bypass', function (): void {
     Route::middleware('web')->get('/_count', fn (): int => User::query()->count());
