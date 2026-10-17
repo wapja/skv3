@@ -11,6 +11,7 @@ use App\Enums\UserStatus;
 use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Rules\NotAPasswordHash;
 use App\Tenancy\HostScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -38,7 +39,7 @@ final readonly class AcceptInvitation
 
         Validator::make(['name' => $name, 'password' => $password], [
             'name' => $this->nameRules(),
-            'password' => ['required', 'string', Password::default()],
+            'password' => ['required', 'string', Password::default(), new NotAPasswordHash],
         ])->validate();
 
         return DB::transaction(function () use ($invitation, $name, $password): User {

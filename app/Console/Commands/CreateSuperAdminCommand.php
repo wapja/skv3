@@ -11,8 +11,8 @@ use App\Console\Concerns\ReadsStandardInput;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Rules\NotAPasswordHash;
 use App\Tenancy\Facades\Tenant;
-use Closure;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -159,18 +159,14 @@ final class CreateSuperAdminCommand extends Command
     }
 
     /**
-     * The app's password rule, plus no hash (L7b-38): the `hashed` cast stores a value that already is a hash as it is,
-     * so a piped bcrypt hash would become the account's hash and its plaintext the super admin's password.
+     * The app's password rule, plus no hash (L7b-38, NotAPasswordHash): a piped bcrypt hash would otherwise become the
+     * account's hash and its plaintext the super admin's password.
      *
      * @return list<mixed>
      */
     private function passwordRules(): array
     {
-        return ['required', 'string', Password::default(), function (string $attribute, mixed $value, Closure $fail): void {
-            if (is_string($value) && Hash::isHashed($value)) {
-                $fail(__('Pass the password itself, not a hash.'));
-            }
-        }];
+        return ['required', 'string', Password::default(), new NotAPasswordHash];
     }
 
     /** The password given on standard input with --password-stdin (CD-8), read once; null without the flag. */

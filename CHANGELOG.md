@@ -176,6 +176,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Backup archives on the local `backups` disk are readable by this account only (0600, folders 0700).
 - `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's. All of a run's dumps share one `PGSSLMODE`, so when the sources' modes differ the strictest one applies to every source (`verify-full` before `verify-ca`, `require`, `prefer`, `allow`, `disable`), and a mode PostgreSQL does not know makes `pg_dump` refuse.
 - `skv:create-super-admin` refuses a password hash given in place of the password, which the `hashed` cast would have stored as it was.
+- Accepting an invitation, resetting a password and changing it on the security page refuse a password hash as the new password too, instead of storing it as the account's hash or answering a server error.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
