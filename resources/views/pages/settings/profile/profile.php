@@ -127,11 +127,21 @@ new #[Title('Profile settings')] class extends Component
 
     /**
      * Store the chosen photo as the user's own (§6.6): validated here, re-encoded and stored by UpdateAvatar, whose
-     * "could not be processed" error lands on the same field. The user menu re-renders on avatar-updated.
+     * "could not be processed" error lands on the same field. The user menu re-renders on avatar-updated. Each attempt
+     * counts under UserActionLimit::avatarUpdate() before the upload is checked, because a save can decode up to
+     * 4096 × 4096 pixels. Livewire's temporary upload, which still holds the original's metadata, is deleted once
+     * UpdateAvatar has read it, saved or not; a replayed snapshot that names it again is refused as if no photo were chosen.
      */
     public function saveAvatar(UpdateAvatar $updateAvatar): void
     {
         $this->ensureAvatarManageable();
+        $user = $this->currentUser();
+
+        UserActionLimit::avatarUpdate()->attempt($user, 'avatar');
+
+        if ($this->avatar instanceof TemporaryUploadedFile && ! $this->avatar->exists()) {
+            $this->reset('avatar');
+        }
 
         $this->validate([
             'avatar' => ['required', 'image', 'mimes:jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
@@ -139,25 +149,38 @@ new #[Title('Profile settings')] class extends Component
 
         $file = $this->avatar ?? throw new LogicException('The validated photo is missing.');
 
-        $updateAvatar->handle($this->currentUser(), $file);
+        try {
+            $updateAvatar->handle($user, $file);
+        } finally {
+            $file->delete();
+            $this->reset('avatar');
+        }
 
-        $this->reset('avatar');
         unset($this->avatarUrl);
         $this->dispatch('avatar-updated');
         Flux::toast(variant: 'success', text: __('Profile photo saved.'));
     }
 
-    /** Remove the user's own photo; the initials show again (§6.6). */
+    /** Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. */
     public function removeAvatar(RemoveAvatar $removeAvatar): void
     {
         $this->ensureAvatarManageable();
 
         $removeAvatar->handle($this->currentUser());
 
+        $this->avatar?->delete();
         $this->reset('avatar');
         unset($this->avatarUrl);
         $this->dispatch('avatar-updated');
         Flux::toast(variant: 'success', text: __('Profile photo removed.'));
+    }
+
+    /** A photo chosen in place of another one not saved yet: the earlier temporary upload is deleted (§6.6). */
+    public function updatingAvatar(mixed $value): void
+    {
+        if ($this->avatar instanceof TemporaryUploadedFile && (! $value instanceof TemporaryUploadedFile || $value->getFilename() !== $this->avatar->getFilename())) {
+            $this->avatar->delete();
+        }
     }
 
     /** @return array<string, string> */

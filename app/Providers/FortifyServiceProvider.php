@@ -166,6 +166,13 @@ class FortifyServiceProvider extends ServiceProvider
         // §6.6, CD-5: the audit CSV export, every request, per user; each download reads the whole filtered log.
         RateLimiter::for('activity-export', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('activity-export:'.$request->user()?->getAuthIdentifier()));
+
+        // §6.6: Livewire's temporary-upload endpoint (config/livewire.php, behind `auth`), every request, per user. Each
+        // upload may hold up to 2 MB on the disk until it is used or Livewire's cleanup removes it a day later.
+        RateLimiter::for('livewire-upload', fn (Request $request): array => [
+            Limit::perMinute(10)->by('livewire-upload:'.$request->user()?->getAuthIdentifier()),
+            Limit::perHour(60)->by('livewire-upload-hour:'.$request->user()?->getAuthIdentifier()),
+        ]);
     }
 
     /**

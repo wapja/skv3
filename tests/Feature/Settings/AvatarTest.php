@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Livewire;
 
 beforeEach(function (): void {
@@ -132,6 +133,8 @@ it('turns the photo by its EXIF orientation before the square crop and drops the
 
 it('refuses a photo that is too large, of another type or with too many pixels, and stores nothing (§6.6)', function (Closure $file, string $rule): void {
     $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    // The page's own rules: Livewire's upload rules would refuse the first row before the page sees it (next test).
+    config(['livewire.temporary_file_upload.rules' => ['required', 'file']]);
 
     Livewire::test('pages::settings.profile')
         ->set('avatar', $file())
@@ -148,6 +151,82 @@ it('refuses a photo that is too large, of another type or with too many pixels, 
     'wider than 4096 pixels' => [fn (): UploadedFile => UploadedFile::fake()->image('photo.png', 4097, 10), 'dimensions'],
     'nothing chosen' => [fn (): null => null, 'required'],
 ]);
+
+it('refuses a photo over 2 MB when it is uploaded, before the page sees it, and stores nothing (§6.6)', function (): void {
+    $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    Livewire::test('pages::settings.profile')
+        ->set('avatar', UploadedFile::fake()->image('photo.jpg', 100, 100)->size(2049))
+        ->assertHasErrors(['avatar' => __('validation.max.file', ['attribute' => 'avatar', 'max' => 2048])])
+        ->assertSet('avatar', null)
+        ->call('saveAvatar')
+        ->assertHasErrors(['avatar' => 'required']);
+
+    expect($member->fresh()?->avatar_path)->toBeNull()
+        ->and(Storage::disk('public')->allFiles())->toBe([]);
+});
+
+it('saves at most ten photos per ten minutes per user, every attempt counted, refused on the photo field (§6.6)', function (): void {
+    $this->freezeTime();
+    $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $page = Livewire::test('pages::settings.profile');
+
+    // A refused upload counts too: each attempt can make the server decode up to 4096 × 4096 pixels.
+    $page->set('avatar', UploadedFile::fake()->image('photo.gif', 64, 64))->call('saveAvatar')->assertHasErrors(['avatar' => 'mimes']);
+
+    foreach (range(1, 9) as $attempt) {
+        $page->set('avatar', UploadedFile::fake()->image("photo-{$attempt}.png", 64, 64))->call('saveAvatar')->assertHasNoErrors();
+    }
+
+    $page->set('avatar', UploadedFile::fake()->image('photo-10.png', 64, 64))
+        ->call('saveAvatar')
+        ->assertHasErrors(['avatar' => __('Too many attempts. Try again in :seconds seconds.', ['seconds' => 600])]);
+
+    expect(recordedActivity(ActivityEvent::UserUpdated))->toHaveCount(9)
+        ->and(Storage::disk('public')->allFiles())->toBe([(string) $member->fresh()?->avatar_path]);
+
+    // Another user has a limit of their own.
+    asMember(Organisation::factory()->create(['slug' => 'beta']));
+    Livewire::test('pages::settings.profile')
+        ->set('avatar', UploadedFile::fake()->image('photo.png', 64, 64))
+        ->call('saveAvatar')
+        ->assertHasNoErrors();
+});
+
+it('deletes Livewire\'s temporary upload once the photo is saved, refused by the image check or dropped', function (string $outcome) use ($brokenPng, $memberWithPhoto): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $this->actingAs($memberWithPhoto($organisation));
+    onTenant($organisation);
+    $file = $outcome === 'refused' ? UploadedFile::fake()->createWithContent('photo.png', $brokenPng()) : UploadedFile::fake()->image('photo.png', 64, 64);
+    $page = Livewire::test('pages::settings.profile')->set('avatar', $file);
+    $upload = $page->get('avatar');
+    expect($upload->exists())->toBeTrue();
+
+    match ($outcome) {
+        'saved' => $page->call('saveAvatar')->assertHasNoErrors(),
+        'refused' => $page->call('saveAvatar')->assertHasErrors(['avatar' => __('This image could not be processed.')]),
+        'replaced' => $page->set('avatar', UploadedFile::fake()->image('other.png', 64, 64)),
+        default => $page->call('removeAvatar'),
+    };
+
+    expect($upload->exists())->toBeFalse();
+
+    if ($outcome !== 'replaced') {
+        $page->assertSet('avatar', null);
+    }
+})->with(['saved', 'refused', 'replaced', 'dropped by removing the photo']);
+
+it('refuses a replayed save of an upload it already deleted as "required", not a server error', function (): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $page = Livewire::test('pages::settings.profile')->set('avatar', UploadedFile::fake()->image('photo.png', 64, 64));
+    // As after a save, the temporary upload is gone. Under test Livewire touches an upload's file when it hydrates the
+    // property, which would bring back an empty one, so the whole directory goes.
+    FileUploadConfiguration::storage()->deleteDirectory(FileUploadConfiguration::directory());
+
+    $page->call('saveAvatar')->assertHasErrors(['avatar' => 'required']);
+
+    expect(Storage::disk('public')->allFiles())->toBe([]);
+});
 
 it('refuses an image it cannot read with "This image could not be processed." (§6.6)', function () use ($brokenPng): void {
     $member = asMember(Organisation::factory()->create(['slug' => 'acme']));

@@ -41,6 +41,16 @@ final readonly class UserActionLimit
     }
 
     /**
+     * Save a profile photo: 10 attempts per 10 minutes, counted before the upload is checked. Each save can decode up
+     * to 4096 × 4096 pixels with memory_limit raised for it (§6.6), so a member who repeats it is held back like a
+     * secret check.
+     */
+    public static function avatarUpdate(): self
+    {
+        return new self('avatar-update', 10, 600);
+    }
+
+    /**
      * Send a checked list on the bulk invitation page (CD-6): 100 invitations per hour, reserved for every ready row
      * before the first send; the rows InviteUser refuses are given back. The invite() limit is not consumed.
      */

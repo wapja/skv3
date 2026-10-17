@@ -144,6 +144,24 @@ it('drops the preview when the input changes, so only a checked list is sent (CD
         ->assertHasErrors(['addresses' => __('Check the list first.')]);
 })->with(['addresses', 'file', 'language', 'roles']);
 
+it('deletes Livewire\'s temporary upload of the list once it is sent, removed or replaced, and keeps it for another check (CD-6)', function (string $outcome) use ($templateRoleId): void {
+    asOrgAdmin(Organisation::factory()->create(['slug' => 'acme']));
+    $page = Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('csv', UploadedFile::fake()->createWithContent('list.csv', "ada@example.com\n"));
+    $upload = $page->get('csv');
+    expect($upload->exists())->toBeTrue();
+
+    match ($outcome) {
+        'sent' => $page->call('check')->call('send')->assertHasNoErrors()->assertSet('csv', null),
+        'removed' => $page->call('removeCsv')->assertSet('csv', null),
+        'replaced' => $page->set('csv', UploadedFile::fake()->createWithContent('other.csv', "bob@example.com\n")),
+        default => $page->call('check')->set('locale', Locale::Dutch->value)->call('check')->assertCount('rows', 1), // 'checked twice'
+    };
+
+    expect($upload->exists())->toBe($outcome === 'checked twice');
+})->with(['sent', 'removed', 'replaced', 'checked twice']);
+
 it('sends one queued mail per ready row, in the row\'s language, and summarises the skipped rows (CD-6)', function () use ($templateRoleId, $deliveredMails): void {
     $acme = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme']);
     User::factory()->for($acme)->create(['email' => 'member@example.com']);

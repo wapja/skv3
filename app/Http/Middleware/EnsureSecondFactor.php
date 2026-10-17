@@ -27,7 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
 final class EnsureSecondFactor
 {
     /** Livewire's own routes; the update route's name carries a prefix ("default-livewire.update"). */
-    private const array LIVEWIRE_ROUTES = ['*livewire.update', 'livewire.upload-file', 'livewire.preview-file'];
+    public const array LIVEWIRE_ROUTES = ['*livewire.update', 'livewire.upload-file', 'livewire.preview-file'];
 
     /** @param  Closure(Request): Response  $next */
     public function handle(Request $request, Closure $next): Response

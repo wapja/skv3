@@ -250,7 +250,8 @@ it('runs on every authenticated route that is not exempt, and not in the global 
         $authenticated = array_filter($middleware, fn (mixed $name): bool => $name === 'auth' || (is_string($name) && str_starts_with($name, 'auth:')));
         $name = $route->getName();
 
-        if ($authenticated === [] || in_array(EnsureSecondFactor::class, $middleware, true) || ($name !== null && Str::is($exempt, $name))) {
+        // Livewire's own routes pass by name; the upload route is behind `auth` (config/livewire.php).
+        if ($authenticated === [] || in_array(EnsureSecondFactor::class, $middleware, true) || ($name !== null && Str::is([...$exempt, ...EnsureSecondFactor::LIVEWIRE_ROUTES], $name))) {
             continue;
         }
 

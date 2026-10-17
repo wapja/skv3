@@ -72,8 +72,20 @@ new #[Title('Invite several people')] class extends Component
         }
     }
 
+    /**
+     * A file chosen in place of another one: the earlier temporary upload, a list of addresses, is deleted. Livewire
+     * would keep it until its 24-hour cleanup at a later upload.
+     */
+    public function updatingCsv(mixed $value): void
+    {
+        if ($this->csv instanceof TemporaryUploadedFile && (! $value instanceof TemporaryUploadedFile || $value->getFilename() !== $this->csv->getFilename())) {
+            $this->csv->delete();
+        }
+    }
+
     public function removeCsv(): void
     {
+        $this->csv?->delete();
         $this->csv = null;
         $this->rows = [];
     }
@@ -176,6 +188,7 @@ new #[Title('Invite several people')] class extends Component
 
         $this->rows = [];
         $this->addresses = '';
+        $this->csv?->delete();
         $this->csv = null;
         $this->summary = ['sent' => $sent, 'skipped' => $skipped];
     }
