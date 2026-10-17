@@ -103,12 +103,12 @@ it('reserves around an action, returns its result and gives the slot back when i
     $limit = new UserActionLimit('test-send', 2, 60);
 
     expect($limit->around($user, 'email', fn (): string => 'sent'))->toBe('sent')
-        ->and(fn () => $limit->around($user, 'email', fn () => throw new RuntimeException('refused')))->toThrow(RuntimeException::class, 'refused')
+        ->and(fn (): mixed => $limit->around($user, 'email', fn () => throw new RuntimeException('refused')))->toThrow(RuntimeException::class, 'refused')
         ->and(RateLimiter::attempts($limit->key($user)))->toBe(1);
 
     $limit->around($user, 'email', fn (): null => null);
 
-    expect(fn () => $limit->around($user, 'email', fn (): string => 'never'))->toThrow(ValidationException::class)
+    expect(fn (): mixed => $limit->around($user, 'email', fn (): string => 'never'))->toThrow(ValidationException::class)
         ->and(RateLimiter::attempts($limit->key($user)))->toBe(3);
 });
 

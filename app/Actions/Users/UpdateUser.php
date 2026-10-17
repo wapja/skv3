@@ -33,11 +33,11 @@ use Illuminate\Validation\ValidationException;
  * caller may run it after UpdateUserStatus in one transaction (G4-08); that caller already holds the target's row,
  * and locking it again is harmless.
  */
-final class UpdateUser
+final readonly class UpdateUser
 {
     use ProfileValidationRules;
 
-    public function __construct(private readonly LockoutGuard $lockoutGuard) {}
+    public function __construct(private LockoutGuard $lockoutGuard) {}
 
     /**
      * @throws AuthorizationException
