@@ -141,6 +141,27 @@ it('applies REQUIRE_SECOND_FACTOR_SUPER_ADMINS to super admins on every host (§
     $this->get(route('organisations.index'))->assertOk();
 })->with(['tenant', 'apex', 'admin'])->with(['required' => true, 'not required' => false]);
 
+it('tells a super admin about a passkey only while the passkeys module is on, in the flash and the callout (§6.8, CD-4)', function (bool $passkeys): void {
+    usePasskeysModule($passkeys);
+    config(['skv.second_factor.super_admins' => true]);
+    asSuperAdmin();
+    onAdminHost();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $withPasskey = __('Super admins need a second factor. Set up two-factor authentication or a passkey to continue.');
+    $totpOnly = __('Super admins need a second factor. Set up two-factor authentication to continue.');
+
+    $this->get(route('organisations.index'))
+        ->assertRedirect(route('security.edit'))
+        ->assertSessionHas('status', $passkeys ? $withPasskey : $totpOnly);
+    // The first visit shows the flash; the second shows only the page's own callout.
+    $this->get(route('security.edit'))->assertOk();
+    $this->get(route('security.edit'))
+        ->assertOk()
+        ->assertSee('data-test="second-factor-required"', escape: false)
+        ->assertSee($passkeys ? $withPasskey : $totpOnly)
+        ->assertDontSee($passkeys ? $totpOnly : $withPasskey);
+})->with(['passkeys on' => true, 'passkeys off' => false]);
+
 it('lets an impersonation session through: the impersonator acts and cannot set up the target\'s factor (§6.6, CD-4)', function (): void {
     useImpersonationModule(true);
     $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => true]);

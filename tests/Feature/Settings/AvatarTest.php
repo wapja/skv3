@@ -217,6 +217,23 @@ it('deletes the previous photo once a new one is saved (§6.6)', function () use
         ->and(Storage::disk('public')->allFiles())->toBe([$current]);
 });
 
+it('deletes the previous photo only once the save commits (CD-7)', function () use ($memberWithPhoto): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = $memberWithPhoto($organisation);
+    $previous = (string) $member->avatar_path;
+    onTenant($organisation);
+
+    // A caller's transaction rolls back after the save: the row keeps the previous path, so its file must stay.
+    expect(fn () => DB::transaction(function () use ($member): never {
+        app(UpdateAvatar::class)->handle($member, UploadedFile::fake()->image('new.png', 600, 600));
+
+        throw new RuntimeException('The caller failed after the save.');
+    }))->toThrow(RuntimeException::class, 'The caller failed after the save.');
+
+    expect(DB::table('users')->where('id', $member->id)->value('avatar_path'))->toBe($previous)
+        ->and(Storage::disk('public')->exists($previous))->toBeTrue();
+});
+
 it('keeps the previous photo and removes the new file when the save fails', function () use ($memberWithPhoto): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = $memberWithPhoto($organisation);
@@ -253,6 +270,23 @@ it('removes the photo and its file and falls back to the initials (§6.6)', func
         ->assertSee('data-test="profile-photo-preview"', false)
         ->assertSee('<span class="select-none">MM</span>', false)
         ->assertDontSee('data-test="remove-avatar-button"', false);
+});
+
+it('deletes the removed photo only once the removal commits (CD-7)', function () use ($memberWithPhoto): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = $memberWithPhoto($organisation);
+    // Read before the call: the action clears the model's path.
+    $path = (string) $member->avatar_path;
+    onTenant($organisation);
+
+    expect(fn () => DB::transaction(function () use ($member): never {
+        app(RemoveAvatar::class)->handle($member);
+
+        throw new RuntimeException('The caller failed after the removal.');
+    }))->toThrow(RuntimeException::class, 'The caller failed after the removal.');
+
+    expect(DB::table('users')->where('id', $member->id)->value('avatar_path'))->toBe($path)
+        ->and(Storage::disk('public')->exists($path))->toBeTrue();
 });
 
 it('clears the stored path when the user it is given was loaded before a parallel save', function (): void {
@@ -399,6 +433,23 @@ it('deletes the purged users\' photo files after commit and keeps a detached sup
     expect(Storage::disk('public')->exists((string) $member->avatar_path))->toBeFalse()
         ->and(Storage::disk('public')->exists((string) $deleted->avatar_path))->toBeFalse()
         ->and(Storage::disk('public')->allFiles())->toBe([(string) $promoted->avatar_path]);
+});
+
+it('keeps the users\' photo files when the purge does not commit (§4.3)', function () use ($memberWithPhoto): void {
+    $superAdmin = asSuperAdmin();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = $memberWithPhoto($organisation);
+    $path = (string) $member->avatar_path;
+    app(ArchiveOrganisation::class)->handle($superAdmin, $organisation);
+
+    expect(fn () => DB::transaction(function () use ($superAdmin, $organisation): never {
+        app(PurgeOrganisation::class)->handle($superAdmin, Organisation::withTrashed()->findOrFail($organisation->id), 'acme');
+
+        throw new RuntimeException('The caller failed after the purge.');
+    }))->toThrow(RuntimeException::class, 'The caller failed after the purge.');
+
+    expect(DB::table('users')->where('id', $member->id)->value('avatar_path'))->toBe($path)
+        ->and(Storage::disk('public')->exists($path))->toBeTrue();
 });
 
 it('keeps the photo file of a deleted user, who can be restored (§4.4)', function () use ($memberWithPhoto): void {
