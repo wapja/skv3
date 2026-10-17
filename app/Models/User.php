@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
@@ -41,6 +42,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property UserStatus $status
  * @property Locale $locale
  * @property Appearance $appearance
+ * @property string|null $avatar_path
  * @property Carbon|null $deleted_at
  * @property-read Organisation|null $organisation
  */
@@ -53,12 +55,14 @@ class User extends Authenticatable implements PasskeyUser
     use BelongsToOrganisation, HasFactory, HasRoles, Notifiable, PasskeyAuthenticatable, SoftDeletes, TwoFactorAuthenticatable;
 
     /**
-     * Mirrors the column default, so a user created in this request renders layouts/base in strict mode (DEC-12).
+     * Mirror the column defaults, so a user created in this request renders layouts/base and the user menu in strict
+     * mode (DEC-12, §6.6).
      *
      * @var array<string, mixed>
      */
     protected $attributes = [
         'appearance' => Appearance::System->value,
+        'avatar_path' => null,
     ];
 
     /**
@@ -71,6 +75,15 @@ class User extends Authenticatable implements PasskeyUser
         return Str::length($initials) > 1
             ? Str::substr($initials, 0, 1).Str::substr($initials, -1)
             : $initials;
+    }
+
+    /**
+     * The public URL of the profile photo (§6.6), or null for the initials. The public disk's URL comes from
+     * APP_URL, so a photo on a tenant host loads from the apex's /storage.
+     */
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path === null ? null : Storage::disk('public')->url($this->avatar_path);
     }
 
     /** Super admins are central users without an organisation (§6.3). */

@@ -17,7 +17,9 @@ use App\Actions\Roles\CreateRole;
 use App\Actions\Roles\DeleteRole;
 use App\Actions\Roles\UpdateRole;
 use App\Actions\Users\DeleteUser;
+use App\Actions\Users\RemoveAvatar;
 use App\Actions\Users\RestoreUser;
+use App\Actions\Users\UpdateAvatar;
 use App\Actions\Users\UpdateUser;
 use App\Actions\Users\UpdateUserRoles;
 use App\Actions\Users\UpdateUserStatus;
@@ -28,7 +30,9 @@ use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 
@@ -136,6 +140,19 @@ it('takes its row locks in the one order of CD-5', function (Closure $arrange, a
         $admin = asOrgAdmin($organisation);
 
         return fn () => app(UpdateUser::class)->handle($admin, $member, $member->name, 'moved@example.com');
+    }, ['users']],
+    'UpdateAvatar, a member\'s own photo (§6.6)' => [function (): Closure {
+        Storage::fake('public');
+        $member = asMember(Organisation::factory()->create());
+
+        return fn () => app(UpdateAvatar::class)->handle($member, UploadedFile::fake()->image('photo.png', 600, 600));
+    }, ['users']],
+    'RemoveAvatar, a member\'s own photo (§6.6)' => [function (): Closure {
+        Storage::fake('public');
+        $member = asMember(Organisation::factory()->create());
+        $member->forceFill(['avatar_path' => 'avatars/1/1-photo.webp'])->saveQuietly();
+
+        return fn () => app(RemoveAvatar::class)->handle($member);
     }, ['users']],
     'UpdateUserRoles, taking the template from an admin (G4-06, cycle 4)' => [function (): Closure {
         $organisation = Organisation::factory()->create();
