@@ -56,6 +56,14 @@ it('does not count the admin\'s own accepted invitation as inviting a colleague'
     expect(array_column(OnboardingChecklist::for($admin), 'done', 'key')['invite-colleague'])->toBeFalse();
 });
 
+it('gives a super admin no checklist on an organisation\'s host (RL-11)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asSuperAdmin();
+    onTenant($organisation);
+
+    expect(OnboardingChecklist::for($admin))->toBe([]);
+});
+
 it('gives members no checklist', function (): void {
     $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
 

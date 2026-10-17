@@ -8,6 +8,7 @@ use App\Actions\Audit\RecordActivity;
 use App\Actions\Organisations\ArchiveOrganisation;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Facades\Tenant;
@@ -81,12 +82,31 @@ it('shows stat cards only with the matching permission, counted for this host', 
         ->and($html)->not->toContain('data-test="stat-organisations"');
 });
 
-it('counts organisations for super admins on central hosts', function (): void {
-    Organisation::factory()->count(2)->create();
-    asSuperAdmin();
-    onAdminHost();
+it('counts this host\'s pending invitations, without accepted ones or another organisation\'s (RL-11)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $other = Organisation::factory()->create(['slug' => 'other']);
+    Tenant::run($other, fn () => Invitation::factory()->for($other)->count(3)->create());
+    asOrgAdmin($acme);
+    Invitation::factory()->for($acme)->count(2)->create();
+    Invitation::factory()->for($acme)->accepted()->create();
 
-    $this->get(route('dashboard'))->assertOk()->assertSee('data-test="stat-organisations"', false);
+    $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+
+    expect(preg_match('/data-test="stat-pending-invitations".*?>\s*(\d+)\s*</s', $html, $match))->toBe(1)
+        ->and((int) ($match[1] ?? -1))->toBe(2);
+});
+
+it('counts organisations for super admins on central hosts, archived ones left out', function (): void {
+    Organisation::factory()->count(2)->create();
+    $archived = Organisation::factory()->create();
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+    app(ArchiveOrganisation::class)->handle($superAdmin, $archived);
+
+    $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+
+    expect(preg_match('/data-test="stat-organisations".*?>\s*(\d+)\s*</s', $html, $match))->toBe(1)
+        ->and((int) ($match[1] ?? -1))->toBe(2);
 });
 
 it('lists the last ten entries of this host\'s activity for users who may read the log (§4.8)', function (): void {
@@ -97,14 +117,18 @@ it('lists the last ten entries of this host\'s activity for users who may read t
     foreach (range(1, 12) as $i) {
         app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $admin);
     }
-    Tenant::run($other, fn () => app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, User::factory()->for($other)->create()));
+    // The newest entry of all, so it would head the list if the host's scope were lost (A72).
+    $stranger = User::factory()->for($other)->create(['name' => 'Olga Outsider']);
+    Tenant::run($other, fn () => app(RecordActivity::class)->handle(ActivityEvent::RecoveryCodesRegenerated, $stranger));
 
     $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
 
     expect(substr_count($html, 'data-test="recent-activity-row"'))->toBe(10)
         // e(): Blade escapes the name, and nl_NL faker names may hold an apostrophe ("van 't Riet").
         ->and($html)->toContain(e($admin->name))
-        ->and($html)->toContain(e(ActivityEvent::PasswordChanged->label()));
+        ->and($html)->toContain(e(ActivityEvent::PasswordChanged->label()))
+        ->and($html)->not->toContain('Olga Outsider')
+        ->and($html)->not->toContain(e(ActivityEvent::RecoveryCodesRegenerated->label()));
 
     asMember($acme);
     $this->get(route('dashboard'))->assertOk()->assertDontSee('data-test="recent-activity"', false);

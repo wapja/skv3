@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 /** covers §4.3, §6.2, §6.4, §6.6 */
 
+use App\Actions\Organisations\CreateOrganisation;
+use App\Enums\Locale;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
 use Illuminate\Support\Facades\DB;
@@ -278,4 +280,29 @@ it('shows the archived-organisation error on the edit page (FU4-1)', function ()
     $component->call('save')
         ->assertHasErrors('organisation')
         ->assertSee(__('This organisation is archived.'));
+});
+
+it('frees the old slug at once: the old host answers 404 without a redirect and a new organisation may take it (DEC-28 (33))', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+
+    // Resolves acme.localhost once, so the slug cache holds the organisation's id before the rename.
+    $this->get('http://acme.localhost/dashboard')->assertOk();
+
+    Livewire::test('pages::organisations.edit', ['organisation' => $acme->id])
+        ->set('slug', 'acme-new')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $this->get('http://acme.localhost/dashboard')->assertNotFound();
+    $this->get('http://acme-new.localhost/dashboard')->assertOk();
+
+    // The request bound acme-new as the tenant; the next organisation is created on the admin host again.
+    onAdminHost();
+    $again = app(CreateOrganisation::class)->handle($superAdmin, 'Acme Again', 'acme', null, 'second-admin@example.com', Locale::Dutch);
+
+    expect($again->slug)->toBe('acme')
+        ->and($again->id)->not->toBe($acme->id);
+    $this->get('http://acme.localhost/dashboard')->assertOk();
 });

@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Tests\Fixtures\CsrfEnforcingPreventRequestForgery;
+use Tests\Fixtures\ForbiddingPreventRequestForgery;
 
 beforeEach(function (): void {
     useImpersonationModule(true);
@@ -126,6 +127,39 @@ it('renders an error page raised before the re-check without resolving the user,
     );
 
     $this->post('/_csrf-probe')->assertStatus(419);
+
+    expect(Impersonation::isActive())->toBeTrue()
+        ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1) // only the sign-in through the login route
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped))->toBeEmpty();
+
+    Auth::guard('web')->forgetUser();
+    $this->get(route('dashboard'))->assertRedirect(route('users.index'));
+
+    expect(Impersonation::isActive())->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1)
+        ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('target_unavailable');
+});
+
+it('renders a 403 page raised before the re-check without resolving the user, so a gone target never falls back to the remember cookie (RL-20, RK-I1)', function () use ($organisationAdmin): void {
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    startImpersonatingOverHttp($admin, $member);
+
+    // The fixture answers 403 where the CSRF middleware sits, ahead of EnforceImpersonation: errors/403 reads only a
+    // user the guard already resolved for its "Go to your organisation" link, and none is resolved yet (302c7d0).
+    $this->app->bind(PreventRequestForgery::class, ForbiddingPreventRequestForgery::class);
+    Route::middleware('web')->get(ForbiddingPreventRequestForgery::PATH, fn (): string => 'not reached');
+
+    DB::table('users')->where('id', $member->id)->update(['deleted_at' => now()]);
+    $guard = Auth::guard('web');
+    $this->withCookie(
+        $guard->getRecallerName(),
+        $admin->id.'|'.$admin->remember_token.'|'.$guard->hashPasswordForCookie($admin->password),
+    );
+
+    $this->get('/'.ForbiddingPreventRequestForgery::PATH)->assertForbidden();
 
     expect(Impersonation::isActive())->toBeTrue()
         ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1) // only the sign-in through the login route
