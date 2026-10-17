@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.10 */
 
 use App\Actions\Audit\RecordActivity;
+use App\Actions\Organisations\ArchiveOrganisation;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
 use App\Models\Organisation;
@@ -107,4 +108,19 @@ it('lists the last ten entries of this host\'s activity for users who may read t
 
     asMember($acme);
     $this->get(route('dashboard'))->assertOk()->assertDontSee('data-test="recent-activity"', false);
+});
+
+it('lists an archived organisation\'s entries in the recent activity of a central host, as the viewer does (RL-7, G5-03)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($acme)->create();
+    Tenant::run($acme, fn () => app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $member));
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+    app(ArchiveOrganisation::class)->handle($superAdmin, $acme);
+
+    $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+
+    // The archive cascade soft-deleted the entry; a central host still shows it.
+    expect(recordedActivity(ActivityEvent::PasswordChanged)->sole()->trashed())->toBeTrue()
+        ->and($html)->toContain(e(ActivityEvent::PasswordChanged->label()));
 });

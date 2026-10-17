@@ -19,6 +19,7 @@ use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Route;
 use Tests\Fixtures\FixedStatusCheck;
@@ -135,6 +136,16 @@ it('counts requests without the key in one shared bucket, never one per address 
         ->and(array_filter(range(1, 20), fn (int $host): bool => $limiter->attempts('health-check:203.0.113.'.$host) !== 0))->toBe([]);
 });
 
+it('counts the key under an HMAC with APP_KEY, never its plain SHA-256 (L7b-57)', function (): void {
+    $limiter = new RateLimiter(OpsCache::store());
+
+    $this->withHeaders([HealthCheckKey::HEADER => $this->key])->getJson('/health-check')->assertOk();
+
+    expect($limiter->attempts(ThrottleHealthChecks::KEY_BUCKET_PREFIX.hash_hmac('sha256', $this->key, (string) config('app.key'))))->toBe(1)
+        ->and($limiter->attempts(ThrottleHealthChecks::KEY_BUCKET_PREFIX.hash('sha256', $this->key)))->toBe(0)
+        ->and($limiter->attempts(ThrottleHealthChecks::KEY_BUCKET_PREFIX.$this->key))->toBe(0);
+});
+
 it('answers 429 to wrong keys once 300 came in a minute, and still lets the monitor in (CD-4, L-28, L-29)', function (): void {
     $limiter = new RateLimiter(OpsCache::store());
 
@@ -174,13 +185,24 @@ it('still answers 403 to a wrong key while the ops cache store is broken (CD-5)'
         ->assertExactJson(['message' => 'Forbidden.']);
 });
 
+it('logs one line without a trace, and reports nothing, for a key-less request while the ops store is broken (L7b-58)', function (): void {
+    Exceptions::fake();
+    $log = Log::spy();
+    config(['skv.ops_cache_store' => 'no-such-store']);
+
+    $this->getJson('/health-check')->assertForbidden();
+
+    Exceptions::assertNothingReported();
+    $log->shouldHaveReceived('warning')->once()->with('The /health-check throttle is off: the ops cache store failed (InvalidArgumentException).');
+});
+
 it('answers with the fresh report while the ops store reads but cannot be written, and reports the failed write (L-30)', function (): void {
     Exceptions::fake();
     Cache::extend('unwritable', fn (): Repository => Cache::repository(new UnwritableCacheStore));
     config(['skv.ops_cache_store' => 'unwritable']);
     config(['cache.stores.unwritable' => ['driver' => 'unwritable']]);
 
-    // Without the throttle, which reports its own failed write: the report must be HealthReport::refresh()'s (M34).
+    // Without the throttle, which logs its own failed write: the report must be HealthReport::refresh()'s (M34).
     $this->withoutMiddleware(ThrottleHealthChecks::class)
         ->withHeaders([HealthCheckKey::HEADER => $this->key])->getJson('/health-check')
         ->assertOk()

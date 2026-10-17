@@ -6,16 +6,19 @@ namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
+use App\Support\RateLimits\ThrottleKey;
 use App\Support\Skv;
 use App\Tenancy\Auth\AuthenticateOnThisHost;
 use App\Tenancy\Hosts;
 use Closure;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -47,22 +50,24 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+        $this->clearLoginFailuresOnSignIn();
     }
 
     /**
-     * The passkeys limiter (§4.2): failed ceremonies per credential (or session) and IP, plus a backstop that
-     * counts every request. Public so tests that turn the module on after boot can register it (RL-3).
+     * The passkeys limiter (§4.2, G1-05): failed ceremonies per signed-in user (confirm, register) or, for a guest's
+     * sign-in, per IP, plus a backstop that counts every request. No bucket comes from the request body, so a client
+     * cannot pick a fresh one per attempt. Public so tests that turn the module on after boot can register it (RL-3).
      *
      * @return Closure(Request): list<Limit>
      */
     public static function passkeysLimiter(): Closure
     {
         return static function (Request $request): array {
-            $credentialId = $request->input('credential.id');
+            $user = $request->user();
 
             return [
                 Limit::perMinute(10)
-                    ->by('passkeys:'.($credentialId ?: $request->session()->getId()).'|'.$request->ip())
+                    ->by($user === null ? 'passkeys-ip:'.$request->ip() : 'passkeys-user:'.$user->getAuthIdentifier())
                     ->after(self::failedAttempt($request)),
                 Limit::perMinute(30)->by('passkeys-burst:'.$request->ip()),
             ];
@@ -111,16 +116,16 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureRateLimiting(): void
     {
         RateLimiter::for('login', function (Request $request): array {
-            $email = Str::transliterate(Str::lower((string) $request->input(Fortify::username())));
+            $email = $this->inputString($request, Fortify::username());
 
             return [
-                Limit::perMinute(5)->by('login:'.$email.'|'.$request->ip())
+                Limit::perMinute(5)->by($this->loginFailureBucket($email, $request->ip()))
                     ->after(self::failedAttempt($request))
                     ->response($this->loginThrottled(...)),
                 Limit::perMinute(20)->by('login-ip:'.$request->ip())
                     ->after(self::failedAttempt($request))
                     ->response($this->loginThrottled(...)),
-                Limit::perMinute(30)->by('login-burst:'.$email.'|'.$request->ip())
+                Limit::perMinute(30)->by('login-burst:'.Str::transliterate(Str::lower($email)).'|'.$request->ip())
                     ->response($this->loginThrottled(...)),
             ];
         });
@@ -137,22 +142,54 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('password-confirm', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('password-confirm:'.$request->user()?->getAuthIdentifier()));
 
+        // CD-3: Fortify's two-factor management routes and passkey.destroy, every request, per user.
+        RateLimiter::for('account-security', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('account-security:'.$request->user()?->getAuthIdentifier()));
+
         // §6.8 / RL-3: the passkeys limiter exists only while the module is on.
         if (Skv::passkeysEnabled()) {
             RateLimiter::for('passkeys', self::passkeysLimiter());
         }
 
         RateLimiter::for('password-email', fn (Request $request): array => [
-            Limit::perMinute(5)->by('password-email:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(5)->by('password-email:'.Str::lower($this->inputString($request, 'email')).'|'.$request->ip()),
             Limit::perMinute(20)->by('password-email-ip:'.$request->ip()),
         ]);
 
         RateLimiter::for('password-reset', fn (Request $request): array => [
-            Limit::perMinute(5)->by('password-reset:'.Str::lower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(5)->by('password-reset:'.Str::lower($this->inputString($request, 'email')).'|'.$request->ip()),
             Limit::perMinute(20)->by('password-reset-ip:'.$request->ip()),
         ]);
 
         RateLimiter::for('handoff', fn (Request $request): Limit => Limit::perMinute(10)->by('handoff:'.$request->ip()));
+    }
+
+    /**
+     * G1-03: any sign-in (password, two-factor, passkey, handoff, invitation) clears the address+IP failure bucket of
+     * the `login` limiter. Fortify's LoginRateLimiter::clear() clears a key the named limiter does not use. The
+     * IP-wide and burst buckets stay, so a correct password never lifts the limit for other addresses.
+     */
+    private function clearLoginFailuresOnSignIn(): void
+    {
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->user instanceof User) {
+                RateLimiter::clear(ThrottleKey::of('login', $this->loginFailureBucket($event->user->email, request()->ip())));
+            }
+        });
+    }
+
+    /** The address+IP failure bucket of the `login` limiter (G1-03), shared by the limiter and the sign-in listener. */
+    private function loginFailureBucket(string $email, ?string $ip): string
+    {
+        return 'login:'.Str::transliterate(Str::lower($email)).'|'.$ip;
+    }
+
+    /** G1-02: a limiter key part from the request; an array or other non-string input counts as empty, never as a 500. */
+    private function inputString(Request $request, string $key): string
+    {
+        $value = $request->input($key);
+
+        return is_string($value) ? $value : '';
     }
 
     /** @return Closure(Response): bool */
@@ -172,7 +209,8 @@ class FortifyServiceProvider extends ServiceProvider
             return new JsonResponse(['message' => $message, 'errors' => [Fortify::username() => [$message]]], 429, $headers);
         }
 
-        return back()
+        // CD-13: the login form posts from the login page, so the refusal goes back there, never to the Referer.
+        return to_route('login')
             ->withInput($request->only(Fortify::username()))
             ->withErrors([Fortify::username() => $message])
             ->withHeaders($headers);

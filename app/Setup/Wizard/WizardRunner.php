@@ -332,9 +332,9 @@ final readonly class WizardRunner
     }
 
     /**
-     * The Herd step could not start in the background (g3-22). With a Herd command left to run, the exit file makes
-     * the answer overdue at once, so the page offers the manual page with Reload and Continue without HTTPS; without
-     * one (no Herd), the stage ends as the step itself would have ended it.
+     * The Herd step could not start in the background (g3-22). With a Herd command left to run (link, isolate or
+     * secure, L7b-16), the exit file makes the answer overdue at once, so the page offers the manual page with Reload
+     * and Continue without HTTPS; without one (no Herd, or nothing left to do), the stage ends as skipped.
      */
     private function launchFailed(HerdState $herd, SetupContext $context, string $root): void
     {

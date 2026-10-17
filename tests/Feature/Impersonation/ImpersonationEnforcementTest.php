@@ -8,6 +8,7 @@ use App\Actions\Auth\IssueHandoff;
 use App\Actions\Users\UpdateUserStatus;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
@@ -182,6 +183,29 @@ it('keeps the impersonation session when disabling the target cuts their session
         ->and(recordedActivity(ActivityEvent::Login))->toHaveCount(1) // only the sign-in through the login route
         ->and(recordedActivity(ActivityEvent::ImpersonationStopped)->sole()->getProperty('ended_because'))->toBe('target_unavailable');
 });
+
+it('words the end of the impersonation in the language of the page that shows it (G3-01)', function (string $disabled, string $browser, string $route, string $status) use ($organisationAdmin): void {
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $admin->forceFill(['locale' => Locale::English])->save();
+    $member = User::factory()->for($organisation)->create(['locale' => Locale::Dutch]);
+    onTenant($organisation);
+    startImpersonatingOverHttp($admin, $member);
+    // The next request starts in Dutch, as a request starts in APP_LOCALE before SetLocale runs.
+    $this->get(route('dashboard'))->assertOk()->assertSee('<html lang="nl"', false);
+    Auth::guard('web')->forgetUser();
+
+    DB::table('users')->where('id', $disabled === 'target' ? $member->id : $admin->id)->update(['status' => UserStatus::Disabled->value]);
+
+    $this->get(route('dashboard'), ['Accept-Language' => $browser])
+        ->assertRedirect(route($route))
+        ->assertSessionHas('status', $status);
+})->with([
+    // The impersonator's own language wins over a Dutch browser.
+    'back in the English impersonator\'s account' => ['target', 'nl', 'users.index', 'The impersonation has ended. You are back in your own account.'],
+    // Signed out, the login page follows the browser.
+    'signed out to an English login page' => ['impersonator', 'en', 'login', 'The impersonation has ended. Sign in again.'],
+]);
 
 it('signs out when the impersonator is disabled and leaves the target\'s remember token alone (RK-I1)', function () use ($organisationAdmin): void {
     $organisation = Organisation::factory()->create();

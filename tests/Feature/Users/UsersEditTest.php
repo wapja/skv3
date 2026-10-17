@@ -345,6 +345,51 @@ it('keeps an organisation admin\'s roles when a super admin renames them on the 
         ->and($roleIdsOf($orgAdmin))->toBe([$templateId()]);
 });
 
+it('saves name, address and status all or nothing (G4-08)', function (): void {
+    // Fails on main: UpdateUser committed the new name before UpdateUserStatus refused to disable the last admin.
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $elsewhere = Organisation::factory()->create();
+    $onlyAdmin = User::factory()->for($organisation)->create(['name' => 'Olga Admin']);
+    withPermissionsTeam($organisation->id, fn (): User => $onlyAdmin->assignRole(Role::OrganisationAdmin->value));
+    $member = User::factory()->for($organisation)->create(['email' => 'mila@acme.test']);
+    asSuperAdmin();
+    onAdminHost();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+
+    Livewire::test('pages::users.edit', ['user' => $onlyAdmin->id])
+        ->set('name', 'Olga de Admin')
+        ->set('status', UserStatus::Disabled->value)
+        ->call('saveAccount')
+        ->assertHasErrors(['status']);
+
+    expect($onlyAdmin->fresh()?->only(['name', 'status']))->toEqual(['name' => 'Olga Admin', 'status' => UserStatus::Active]);
+
+    // The other way round: an address taken between validation and save (FU3-8) also undoes the status change
+    // that ran before it.
+    User::updating(function (User $user) use ($elsewhere): void {
+        if ($user->isDirty('email')) {
+            DB::table('users')->insert([
+                'organisation_id' => $elsewhere->id,
+                'name' => 'Racer',
+                'email' => $user->email,
+                'password' => 'x',
+                'status' => UserStatus::Active->value,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    });
+
+    Livewire::test('pages::users.edit', ['user' => $member->id])
+        ->set('email', 'raced@acme.test')
+        ->set('status', UserStatus::Disabled->value)
+        ->call('saveAccount')
+        ->assertHasErrors(['email']);
+
+    expect($member->fresh()?->only(['email', 'status']))->toEqual(['email' => 'mila@acme.test', 'status' => UserStatus::Active]);
+});
+
 it('asks for a fresh password confirmation before switching super admin and comes back to this page (RL-18)', function (): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create();

@@ -10,6 +10,7 @@ use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Tenancy\Auth\Sessions;
+use App\Tenancy\HostScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -21,7 +22,9 @@ use Illuminate\Validation\ValidationException;
  * user's status only changes by accepting the invitation (W4, USR-13). Disabling never removes the
  * last active super admin or the last active organisation admin, whoever asks (DEC-26 (10)), and it
  * ends the user's sessions and cycles the remember token, so enabling them again revives neither
- * (RL-28). Every decision is taken on the stored row, never on a possibly stale model (FU2-5).
+ * (RL-28). Every decision is taken on the locked row, never on a possibly stale model (FU2-5), the policy's
+ * 'not a super admin, still in this organisation, not deleted' included, and the locks follow the order of CD-5:
+ * the organisation, the users batch, then the sessions.
  */
 final readonly class UpdateUserStatus
 {
@@ -40,13 +43,20 @@ final readonly class UpdateUserStatus
         }
 
         DB::transaction(function () use ($actor, $target, $status): void {
-            $stored = DB::table('users')->where('id', $target->id)->first(['status', 'is_super_admin']);
+            // CD-5: the target's organisation, then one users batch, before the sessions go (G4-06).
+            HostScope::lockOrganisation($target->organisation_id);
+            $locked = $status === UserStatus::Disabled
+                ? $this->lockoutGuard->lockForRemoval($target)
+                : $this->lockoutGuard->lockUsers([$target->id]);
+            $stored = $locked[$target->id] ?? null;
 
             if ($stored === null) {
                 return;
             }
 
-            $previous = UserStatus::from((string) $stored->status);
+            $this->lockoutGuard->ensureStillManageable($actor, $target, $stored);
+
+            $previous = $stored['status'];
 
             if ($previous === UserStatus::PendingActivation) {
                 throw ValidationException::withMessages(['status' => [__('A pending user becomes active by accepting the invitation.')]]);
@@ -60,7 +70,7 @@ final readonly class UpdateUserStatus
             }
 
             if ($previous === UserStatus::Active) {
-                $this->lockoutGuard->ensureAnotherActiveAdmin($target, (bool) $stored->is_super_admin, 'status');
+                $this->lockoutGuard->ensureAnotherActiveAdmin($target, $locked, 'status');
 
                 Sessions::endFor([$target->id]);
                 $target->forceFill(['remember_token' => null])->syncOriginalAttribute('remember_token');

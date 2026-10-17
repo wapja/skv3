@@ -16,7 +16,10 @@ final class ConfirmEmailChange extends Notification implements ShouldQueue
     use Queueable;
 
     /** The link is built during the request, on the user's own host (§6.2). */
-    public function __construct(public readonly string $url) {}
+    public function __construct(public readonly string $url)
+    {
+        $this->afterCommit();
+    }
 
     /** @return list<string> */
     public function via(object $notifiable): array

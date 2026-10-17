@@ -8,6 +8,7 @@ use App\Authorization\Permission;
 use App\Concerns\ResolvesCurrentUser;
 use App\Models\Invitation;
 use App\Models\Organisation;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Facades\Tenant;
 use App\Tenancy\HostScope;
 use App\Tenancy\UserNames;
@@ -56,7 +57,10 @@ new #[Title('Pending invitations')] class extends Component
      */
     private ?LengthAwarePaginator $invitationsPage = null;
 
-    /** The route's can: middleware does not cover Livewire updates or a page reused elsewhere (FU4-4). */
+    /**
+     * The route's can: middleware also runs on Livewire updates (Authorize is persistent middleware); this check
+     * covers the page wherever it is mounted (FU4-4, G2-08).
+     */
     public function mount(): void
     {
         Gate::authorize(Permission::UsersView);
@@ -67,13 +71,18 @@ new #[Title('Pending invitations')] class extends Component
         $this->resetPage();
     }
 
-    /** Sends the invitation again with a renewed expiry (W5: refused once accepted, by the action). */
+    /**
+     * Sends the invitation again with a renewed expiry (W5: refused once accepted, and within the cooldown, by the
+     * action), under the actor's reminder limit (CD-3): reserved before the send, given back when the action refuses.
+     */
     public function remind(int $invitationId, RemindInvitation $remindInvitation): void
     {
         $invitation = $this->findInvitation($invitationId);
         $this->authorize('remind', $invitation);
 
-        $remindInvitation->handle($this->currentUser(), $invitation);
+        UserActionLimit::remind()->around($this->currentUser(), 'invitation', function () use ($remindInvitation, $invitation): void {
+            $remindInvitation->handle($this->currentUser(), $invitation);
+        });
 
         Flux::toast(variant: 'success', text: __('The invitation was sent again.'));
     }

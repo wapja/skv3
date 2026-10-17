@@ -14,7 +14,10 @@ final class EmailChangeRequested extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public readonly string $newEmail) {}
+    public function __construct(public readonly string $newEmail)
+    {
+        $this->afterCommit();
+    }
 
     /** @return list<string> */
     public function via(object $notifiable): array

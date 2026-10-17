@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 /** covers §4.9, §6.8 */
 
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Spatie\Backup\Config\Config;
 use Spatie\Backup\Exceptions\InvalidConfig;
 use Spatie\Backup\Notifications\Notifications\BackupHasFailedNotification;
@@ -146,3 +149,24 @@ it('passes PG_DUMP_BINARY_PATH to the dumper as its binary directory, blank when
     'set' => ['/opt/postgresql/18/bin', '/opt/postgresql/18/bin'],
     'unset' => [null, ''],
 ]);
+
+it('writes archives on the backups disk readable by this account only (§4.9, G6-10)', function (): void {
+    // As the package writes them: through the Flysystem driver's writeStream(), under a world-readable umask.
+    $root = storage_path('framework/testing/backups-'.Str::uuid());
+    $umask = umask(0022);
+
+    try {
+        $disk = Storage::build([...config('filesystems.disks.backups'), 'root' => $root]);
+        $stream = fopen('php://memory', 'r+') ?: throw new LogicException('Could not open a memory stream.');
+        fwrite($stream, 'archive');
+        rewind($stream);
+        $disk->getDriver()->writeStream('app/2026-10-16-02-00-00.zip', $stream);
+        clearstatcache();
+
+        expect(fileperms($root.'/app/2026-10-16-02-00-00.zip') & 0777)->toBe(0600)
+            ->and(fileperms($root.'/app') & 0777)->toBe(0700);
+    } finally {
+        umask($umask);
+        File::deleteDirectory($root);
+    }
+});

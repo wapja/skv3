@@ -6,7 +6,7 @@ use App\Models\Organisation;
 use App\Tenancy\Hosts;
 
 if (! function_exists('tenant_url')) {
-    /** Absolute URL on an organisation's subdomain, keeping the request's scheme and port (§6.2). */
+    /** Absolute URL on an organisation's subdomain, with APP_URL's scheme and port (§6.2, CD-4). */
     function tenant_url(Organisation|string $organisation, string $path = '/'): string
     {
         $slug = $organisation instanceof Organisation ? $organisation->slug : $organisation;

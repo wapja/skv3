@@ -23,6 +23,19 @@ it('shows the organisation\'s name in the brand on its host and the platform nam
     $this->get(route('dashboard'))->assertOk()->assertSee('Platform Name')->assertDontSee('Acme Corp');
 });
 
+it('names the organisation visibly above the sign-in form on its host and the platform centrally (§4.1, G5-01)', function (): void {
+    config(['branding.name' => 'Platform Name']);
+    onTenant(Organisation::factory()->create(['slug' => 'acme', 'name' => 'Acme Corp']));
+    $tenantPage = (string) $this->get(route('login'))->assertOk()->getContent();
+
+    onAdminHost();
+    $centralPage = (string) $this->get(route('login'))->assertOk()->getContent();
+
+    // DEC-29 (5): the mark stays the default icon; the name next to it is the brand, so it is not screen-reader-only.
+    expect($tenantPage)->toMatch('#<span(?![^>]*sr-only)[^>]*data-test="auth-brand"[^>]*>\s*Acme Corp\s*</span>#')
+        ->and($centralPage)->toMatch('#<span(?![^>]*sr-only)[^>]*data-test="auth-brand"[^>]*>\s*Platform Name\s*</span>#');
+});
+
 it('maps a configured accent to the html element and falls back to neutral (RL-5)', function (string $configured, string $expected): void {
     config(['branding.accent' => $configured]);
     onTenant(Organisation::factory()->create(['slug' => 'acme']));

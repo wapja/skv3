@@ -8,10 +8,13 @@ use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Support\Backups\ConfigurePgDump;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Spatie\Backup\Commands\BackupCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
+use Tests\Fixtures\PgSslModeSnapshot;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -26,24 +29,11 @@ beforeEach(function (): void {
     // Every backup:run listener may run (the last test fires the event): never the repository's storage/app/backup-temp.
     config(['backup.backup.temporary_directory' => $this->sandbox->path('backup-temp')]);
     // L-05: ConfigurePgDump exports PGSSLMODE; start without one and put the original back afterwards.
-    $this->pgSslMode = ['getenv' => getenv('PGSSLMODE'), 'server' => $_SERVER['PGSSLMODE'] ?? null, 'env' => $_ENV['PGSSLMODE'] ?? null];
-    putenv('PGSSLMODE');
-    unset($_SERVER['PGSSLMODE'], $_ENV['PGSSLMODE']);
+    $this->pgSslMode = PgSslModeSnapshot::takeAndClear();
 });
 
 afterEach(function (): void {
-    /** @var array{getenv: string|false, server: mixed, env: mixed} $original */
-    $original = $this->pgSslMode;
-    putenv($original['getenv'] === false ? 'PGSSLMODE' : 'PGSSLMODE='.$original['getenv']);
-    unset($_SERVER['PGSSLMODE'], $_ENV['PGSSLMODE']);
-
-    if ($original['server'] !== null) {
-        $_SERVER['PGSSLMODE'] = $original['server'];
-    }
-
-    if ($original['env'] !== null) {
-        $_ENV['PGSSLMODE'] = $original['env'];
-    }
+    $this->pgSslMode->restore();
 });
 
 $starting = fn (string $command): CommandStarting => new CommandStarting($command, new ArrayInput([]), new NullOutput);
@@ -95,14 +85,13 @@ it('runs as a CommandStarting listener (RL-4)', function () use ($starting): voi
     expect(config('database.connections.pgsql.dump.dump_binary_path'))->toBe($this->bin);
 });
 
-it('hands the backup source\'s sslmode to pg_dump as PGSSLMODE (L-05)', function () use ($starting): void {
+it('hands the backup source\'s sslmode to pg_dump as PGSSLMODE (L-05)', function (): void {
     config([
         'backup.backup.source.databases' => ['pgsql'],
         'database.connections.pgsql.sslmode' => 'verify-full',
-        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
     ]);
 
-    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode();
 
     // Symfony's Process passes on the getenv() keys that $_SERVER also holds, plus every $_ENV key.
     expect(getenv('PGSSLMODE'))->toBe('verify-full')
@@ -110,25 +99,77 @@ it('hands the backup source\'s sslmode to pg_dump as PGSSLMODE (L-05)', function
         ->and($_ENV['PGSSLMODE'] ?? null)->toBe('verify-full');
 });
 
-it('reads the sslmode from the connection\'s url as the app and the dumper do (L-05)', function () use ($starting): void {
+it('reads the sslmode from the connection\'s url as the app and the dumper do (L-05)', function (): void {
     // ConfigurationUrlParser lets the url's query override the sslmode key (DATABASE_URL on managed PostgreSQL).
     config([
         'backup.backup.source.databases' => ['pgsql'],
         'database.connections.pgsql.url' => 'pgsql://backup:secret@db.example.com:5432/app?sslmode=verify-full',
         'database.connections.pgsql.sslmode' => 'prefer',
-        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
     ]);
 
-    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode();
 
     expect(getenv('PGSSLMODE'))->toBe('verify-full')
         ->and($_SERVER['PGSSLMODE'] ?? null)->toBe('verify-full')
         ->and($_ENV['PGSSLMODE'] ?? null)->toBe('verify-full');
 });
 
-it('leaves PGSSLMODE alone for other commands and other databases (L-05)', function (string $command, string $source) use ($starting): void {
+it('leaves PGSSLMODE alone for a SQLite source and a connection --db-name leaves out (L-05, L7b-68)', function (array $sources, ?string $dbName): void {
     config([
-        'backup.backup.source.databases' => [$source],
+        'backup.backup.source.databases' => $sources,
+        'database.connections.pgsql.sslmode' => 'verify-full',
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode($dbName === null ? [] : [$dbName]);
+
+    expect(getenv('PGSSLMODE'))->toBeFalse()
+        ->and($_ENV)->not->toHaveKey('PGSSLMODE');
+})->with([
+    'a SQLite source' => [['sqlite'], null],
+    'a PostgreSQL source --db-name leaves out' => [['pgsql', 'sqlite'], 'sqlite'],
+]);
+
+it('takes the sslmode of the connection --db-name names, not the other sources\' (L7b-68)', function (): void {
+    // pgsql's stricter mode would win were the sources not narrowed to the one --db-name names.
+    config([
+        'backup.backup.source.databases' => ['pgsql', 'pgsql_reports'],
+        'database.connections.pgsql.sslmode' => 'verify-full',
+        'database.connections.pgsql_reports' => [...config('database.connections.pgsql'), 'sslmode' => 'require'],
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode(['pgsql_reports']);
+
+    expect(getenv('PGSSLMODE'))->toBe('require');
+});
+
+it('exports the strictest sslmode of the PostgreSQL sources it dumps, in whatever order they are listed (L7b-68)', function (string $first, string $second, string $expected): void {
+    // spatie's BackupJob runs every source's pg_dump in this one process, so they all inherit one PGSSLMODE.
+    config([
+        'backup.backup.source.databases' => ['pgsql', 'sqlite', 'pgsql_reports'],
+        'database.connections.pgsql.sslmode' => $first,
+        'database.connections.pgsql_reports' => [...config('database.connections.pgsql'), 'sslmode' => $second],
+    ]);
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode();
+
+    expect(getenv('PGSSLMODE'))->toBe($expected)
+        ->and($_SERVER['PGSSLMODE'] ?? null)->toBe($expected)
+        ->and($_ENV['PGSSLMODE'] ?? null)->toBe($expected);
+})->with([
+    'require, then verify-full' => ['require', 'verify-full', 'verify-full'],
+    'verify-full, then require' => ['verify-full', 'require', 'verify-full'],
+    'disable, then verify-ca' => ['disable', 'verify-ca', 'verify-ca'],
+    'verify-ca, then verify-full' => ['verify-ca', 'verify-full', 'verify-full'],
+    'allow, then prefer' => ['allow', 'prefer', 'prefer'],
+    'prefer, then disable' => ['prefer', 'disable', 'prefer'],
+    // An unknown mode wins, so pg_dump refuses it instead of the run falling back to the weaker source's mode.
+    'a misspelt mode, then require' => ['require', 'verify_full', 'verify_full'],
+]);
+
+it('leaves PGSSLMODE to backup:run, which knows its --config, for every command it listens to (L-05, L7b-68)', function (string $command) use ($starting): void {
+    // Before handle() the default configuration's sources are all the listener could read.
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
         'database.connections.pgsql.sslmode' => 'verify-full',
         'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
     ]);
@@ -137,7 +178,18 @@ it('leaves PGSSLMODE alone for other commands and other databases (L-05)', funct
 
     expect(getenv('PGSSLMODE'))->toBeFalse()
         ->and($_ENV)->not->toHaveKey('PGSSLMODE');
-})->with([
-    'another command' => ['migrate', 'pgsql'],
-    'a SQLite source' => ['backup:run', 'sqlite'],
-]);
+})->with(['backup:run', 'migrate']);
+
+it('still exports the default sources\' sslmode should the package\'s command hold backup:run again (L-05, L7b-68)', function () use ($starting): void {
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
+        'database.connections.pgsql.sslmode' => 'verify-full',
+        'database.connections.pgsql.dump.dump_binary_path' => '/opt/postgresql/bin',
+    ]);
+    // The backstop path, bound as RefuseUnencryptedBackupsTest binds it: nothing else would export PGSSLMODE.
+    Artisan::registerCommand(app(BackupCommand::class));
+
+    new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting('backup:run'));
+
+    expect(getenv('PGSSLMODE'))->toBe('verify-full');
+});

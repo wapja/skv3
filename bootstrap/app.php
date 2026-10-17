@@ -21,7 +21,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
+use Webauthn\Exception\CounterException;
 use Webauthn\Exception\WebauthnException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -51,8 +53,26 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(AuthenticatesRequests::class, EnforceImpersonation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class]);
+
         // FU3-1: a failed WebAuthn ceremony is a client error (rendered as a 422 below), not an incident to report.
-        $exceptions->dontReport([TenantNotFoundException::class, InvitationNotFoundException::class, WebauthnException::class]);
+        // CD-6: except a signature counter that did not increase, the sign of a cloned authenticator.
+        $exceptions->dontReportWhen(fn (Throwable $exception): bool => $exception instanceof WebauthnException
+            && ! $exception instanceof CounterException);
+
+        // CD-6: one warning without a stack trace; the request, not the code, is what needs looking at. A credential
+        // id is a public identifier, not a secret.
+        $exceptions->report(function (CounterException $exception): void {
+            $credentialId = request()->input('credential.rawId');
+
+            Log::warning('A passkey was used with a signature counter that did not increase; the authenticator may have been cloned.', [
+                'credential_id' => is_string($credentialId) ? $credentialId : null,
+                'received_counter' => $exception->currentCounter,
+                'stored_counter' => $exception->authenticatorCounter,
+                'host' => request()->getHost(),
+                'ip' => request()->ip(),
+            ]);
+        })->stop();
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),

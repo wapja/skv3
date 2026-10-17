@@ -21,19 +21,17 @@ new class extends Component
     #[Locked]
     public string $variant = 'sidebar';
 
-    /** The page the menu was opened on, captured on the server (RL-7); never taken from the Referer. */
-    #[Locked]
-    public string $returnPath = '/';
-
     public function mount(string $variant = 'sidebar'): void
     {
         $this->variant = $variant === 'header' ? 'header' : 'sidebar';
-        $this->returnPath = '/'.ltrim(request()->path(), '/');
     }
 
     /**
-     * Switch the language and reload the page so every string follows (§4.11).
+     * Switch the language, then let the browser reload the page it shows, so every string follows (§4.11). The
+     * browser's own URL keeps the query string and the filters changed since the page loaded (G3-07); the server
+     * names no target, so nothing a client sends can redirect elsewhere (RL-7).
      */
+    #[Renderless]
     public function setLocale(string $locale, UpdateLocale $updateLocale): void
     {
         $choice = Locale::tryFrom($locale)
@@ -41,7 +39,7 @@ new class extends Component
 
         $updateLocale->handle($this->currentUser(), $choice);
 
-        $this->redirect($this->returnPath);
+        $this->js('window.location.reload()');
     }
 
     /**

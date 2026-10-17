@@ -10,6 +10,7 @@ use App\Concerns\ResolvesCurrentUser;
 use App\Enums\Locale;
 use App\Models\Invitation;
 use App\Models\Organisation;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
@@ -75,13 +76,15 @@ new #[Title('Invite user')] class extends Component
         // Components authorise before calling an action; super admins pass through Gate::before ('create' is not always checked).
         $this->authorize('create', [Invitation::class, $organisation]);
 
-        $inviteUser->handle(
+        // CD-3: a per-user limit on sent invitations, here and not in InviteUser, so a bulk caller counts its own way.
+        // The slot is reserved before the send and given back when InviteUser refuses (DEC-27 (2)).
+        UserActionLimit::invite()->around($this->currentUser(), 'email', fn (): Invitation => $inviteUser->handle(
             $this->currentUser(),
             $organisation,
             $email,
             array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles),
             Locale::from($this->locale),
-        );
+        ));
 
         session()->flash('status', __('Invitation sent to :email.', ['email' => Str::lower($email)]));
         $this->redirectRoute($this->returnRoute(), navigate: true);

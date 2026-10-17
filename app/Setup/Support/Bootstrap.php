@@ -29,9 +29,10 @@ final readonly class Bootstrap implements BootstrapRunner
         $env = new EnvFile($this->basePath.'/.env');
 
         if (! $env->exists() && is_file($this->basePath.'/.env.example')) {
-            $example = $this->basePath.'/.env.example';
-            // Atomically, with the example's mode: a symlinked .env is replaced, never written through (RL-1).
-            StateFile::write($this->basePath.'/.env', (string) file_get_contents($example), fileperms($example) & 0777);
+            // Atomically, so a symlinked .env is replaced, never written through (RL-1); 0600 whatever the example's
+            // mode, because APP_KEY and the generated secrets go into it next (CD-8). An example that cannot be read
+            // stops here instead of leaving an empty .env (L7b-03).
+            StateFile::write($this->basePath.'/.env', new EnvFile($this->basePath.'/.env.example')->contents(), 0600);
             $actions[] = __('Created .env from .env.example');
         }
 

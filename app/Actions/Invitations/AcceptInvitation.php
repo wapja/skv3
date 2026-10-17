@@ -9,18 +9,22 @@ use App\Concerns\ProfileValidationRules;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\Invitation;
+use App\Models\Organisation;
 use App\Models\User;
+use App\Rules\NotAPasswordHash;
+use App\Tenancy\HostScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Accepts an invitation (§4.5) on the invitation's tenant host. The invitation row is locked and
- * its state re-checked inside the transaction (X9), the pending user must still exist, still be
- * pending and not be a super admin (RK-M3, §6.3), the invitee chooses their own name (W14), and the stored token copy is cleared so
- * the link can never be rebuilt (RK-B3). The user is saved quietly because this action records its
- * own event (RL-6). Signing in is the caller's job.
+ * Accepts an invitation (§4.5) on the invitation's tenant host. The organisation, the invitee's row and the
+ * invitation are locked in that order (CD-5, G4-07), and the invitation's state is re-checked inside the
+ * transaction (X9); the pending user must still exist, still be pending and not be a super admin (RK-M3, §6.3),
+ * the invitee chooses their own name (W14), and the stored token copy is cleared so the link can never be rebuilt
+ * (RK-B3). The user is saved quietly because this action records its own event (RL-6). Signing in is the
+ * caller's job.
  */
 final readonly class AcceptInvitation
 {
@@ -35,10 +39,14 @@ final readonly class AcceptInvitation
 
         Validator::make(['name' => $name, 'password' => $password], [
             'name' => $this->nameRules(),
-            'password' => ['required', 'string', Password::default()],
+            'password' => ['required', 'string', Password::default(), new NotAPasswordHash],
         ])->validate();
 
         return DB::transaction(function () use ($invitation, $name, $password): User {
+            // CD-5 (G4-07): the organisation, then the invitee's row, then the invitation, the order ArchiveOrganisation
+            // takes too before its cascade reaches the invitations. An archived organisation is refused here.
+            HostScope::lockForWrite(Organisation::withTrashed()->findOrFail($invitation->organisation_id));
+            $invitee = User::withTrashed()->lockForUpdate()->find($invitation->user_id);
             $locked = Invitation::query()->lockForUpdate()->find($invitation->id)
                 ?? throw ValidationException::withMessages(['invitation' => __('This invitation is no longer valid.')]);
 
@@ -52,10 +60,8 @@ final readonly class AcceptInvitation
                 throw ValidationException::withMessages(['invitation' => __('This invitation has expired.')]);
             }
 
-            $invitee = $locked->user;
-
             // A pending user who became a super admin is never activated through a link (§6.3).
-            if ($invitee->trashed() || $invitee->status !== UserStatus::PendingActivation || $invitee->isSuperAdmin()) {
+            if (! $invitee instanceof User || $invitee->trashed() || $invitee->status !== UserStatus::PendingActivation || $invitee->isSuperAdmin()) {
                 throw ValidationException::withMessages(['invitation' => __('This invitation is no longer valid.')]);
             }
 

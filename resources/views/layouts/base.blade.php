@@ -2,7 +2,8 @@
 
 @php
     $user = auth()->user();
-    $appearance = $user instanceof \App\Models\User ? $user->appearance : null;
+    // G2-05: during an impersonation, the appearance chosen in it.
+    $appearance = $user instanceof \App\Models\User ? \App\Tenancy\Auth\Impersonation::appearanceFor($user) : null;
     $storedAppearance = $appearance instanceof \App\Enums\Appearance && $appearance !== \App\Enums\Appearance::System ? $appearance->value : null;
     $pageTitle = filled($title) ? __((string) $title) : null;
 @endphp

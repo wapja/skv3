@@ -373,6 +373,8 @@ it('names the one Herd command left to run: herd link while unserved, herd secur
     Process::fake([
         "*herd' 'links'*" => Process::result(''),
         "*herd' 'paths'*" => Process::result(json_encode([$served ? dirname($context->basePath) : '/somewhere/else'], JSON_THROW_ON_ERROR)),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
     ]);
 
     expect(new HerdSiteStep()->manualCommand($context))->toBe($command === null ? null : sprintf($command, $context->folderName()));
@@ -382,6 +384,38 @@ it('names the one Herd command left to run: herd link while unserved, herd secur
     'served, HTTPS chosen' => [true, true, 'herd secure %s'],
     'served, no HTTPS' => [true, false, null],
 ]);
+
+it('names herd isolate for a served site on an older PHP, before herd secure, as run() would isolate it (L7b-16)', function (bool $https, string $php): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => $https], $this->detection, $context->folderName());
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*herd' 'secured'*" => Process::result(''),
+        "*php' '-r'*" => Process::result($php),
+    ]);
+
+    expect(new HerdSiteStep()->manualCommand($context))->toBe('herd isolate 8.4 --site='.$context->folderName())
+        ->and(new HerdSiteStep()->confirm($context))->toBeNull();
+    Process::assertDidntRun(fn ($process): bool => in_array('isolate', (array) $process->command, true));
+})->with([
+    'no HTTPS, global PHP 8.3' => [false, '8.3.12'],
+    'HTTPS chosen, global PHP 8.3' => [true, '8.3.12'],
+    'no HTTPS, the PHP probe prints nothing' => [false, ''],
+]);
+
+it('names herd isolate when the PHP check itself fails, never nothing (L7b-16, L7b-18)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], $this->detection, $context->folderName());
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'isolated'*" => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result('')),
+    ]);
+
+    expect(new HerdSiteStep()->manualCommand($context))->toBe('herd isolate 8.4 --site='.$context->folderName());
+});
 
 it('names no Herd command without Herd (RL-7)', function (): void {
     expect(new HerdSiteStep()->manualCommand(setupSandbox()))->toBeNull();

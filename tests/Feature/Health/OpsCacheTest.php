@@ -34,7 +34,7 @@ it('keeps the health report, the throttle and the heartbeat on the ops store, ne
     config(['skv.ops_cache_store' => 'ops-test']);
     config(['skv.health_check.key' => $key]);
     config(['cache.stores.ops-test' => ['driver' => 'array']]);
-    $bucket = ThrottleHealthChecks::KEY_BUCKET_PREFIX.hash('sha256', $key);
+    $bucket = ThrottleHealthChecks::KEY_BUCKET_PREFIX.hash_hmac('sha256', $key, (string) config('app.key'));
     $ops = Cache::store('ops-test');
     $default = Cache::store();
 

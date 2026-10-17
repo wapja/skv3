@@ -102,3 +102,14 @@ it('does not let a request change the configured default (RL-8)', function (): v
 
     expect(Locale::default())->toBe(Locale::English);
 });
+
+it('goes back after a language switch only to a page on this host (G2-02)', function (string $referer, string $expected): void {
+    $this->withHeader('Referer', $referer)
+        ->post(route('locale.update'), ['locale' => 'nl'])
+        ->assertRedirect($expected);
+})->with([
+    'another site' => ['https://evil.example/phish', '/'],
+    'another organisation' => ['http://beta.localhost/login', '/'],
+    'a protocol-relative URL' => ['//evil.example/phish', '/'],
+    'this host, query included' => ['http://acme.localhost/login?next=1', '/login?next=1'],
+]);

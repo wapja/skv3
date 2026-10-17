@@ -18,10 +18,14 @@ use Illuminate\Support\Facades\Date;
  * backup runs, last night's is just over a day old.
  * Skipped while the backups module is off (§6.8, never a 503). A health check, not a doctor check: a fresh install
  * has no backup until the first night. Fails while the backups would be written unencrypted (CD-10): the package
- * silently skips encryption for a blank password, encryption 'none' or a zip without AES-256 (BackupEncryption).
+ * silently skips encryption for a blank password, encryption 'none' or a zip without AES-256 (BackupEncryption); the
+ * message names which of the three applies (G6-05).
  */
 final readonly class LastBackupCheck implements Check
 {
+    /** @param  bool|null  $zipHasAes256  passed to BackupEncryption::problem(); tests pass false for a zip without AES-256 */
+    public function __construct(private ?bool $zipHasAes256 = null) {}
+
     public function key(): string
     {
         return 'last-backup';
@@ -38,8 +42,16 @@ final readonly class LastBackupCheck implements Check
             return CheckResult::skipped(__('The backups module is off'));
         }
 
-        if (! BackupEncryption::available()) {
-            return CheckResult::fail(__('Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty or this PHP zip has no AES-256'), 'php artisan skv:doctor --fix');
+        // G6-05: name the one cause, with its own fix.
+        $unencrypted = match (BackupEncryption::problem($this->zipHasAes256)) {
+            BackupEncryption::NO_PASSWORD => CheckResult::fail(__('Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty'), 'php artisan skv:doctor --fix'),
+            BackupEncryption::ENCRYPTION_OFF => CheckResult::fail(__('Backups are not encrypted: backup.backup.encryption turns encryption off'), 'config/backup.php'),
+            BackupEncryption::NO_AES256 => CheckResult::fail(__('Backups are not encrypted: this PHP zip has no AES-256'), __('Use a PHP whose zip extension supports AES-256')),
+            null => null,
+        };
+
+        if ($unencrypted instanceof CheckResult) {
+            return $unencrypted;
         }
 
         $destinations = BackupDestinations::all();

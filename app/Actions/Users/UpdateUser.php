@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Users;
 
 use App\Actions\Settings\RequestEmailChange;
+use App\Authorization\LockoutGuard;
 use App\Concerns\ProfileValidationRules;
 use App\Enums\UserStatus;
 use App\Models\User;
@@ -26,12 +27,17 @@ use Illuminate\Validation\ValidationException;
  * profile page (E1), and a pending user's address only by cancelling and re-inviting. A changed
  * address applies at once: the old address loses its reset links and any pending self-service
  * change link (FU3-7) and gets a notice after commit (D-14); reset links issued for the new address
- * belong to an earlier holder and go too. user.updated is recorded by
- * UserActivityObserver, not here.
+ * belong to an earlier holder and go too. user.updated is recorded by UserActivityObserver, not here. It locks
+ * the target row through LockoutGuard, decides the policy's preconditions and the pending state again on that row
+ * (FU2-5), then writes the row and its reset tokens, which keeps CD-5's order. It takes no organisation lock, so a
+ * caller may run it after UpdateUserStatus in one transaction (G4-08); that caller already holds the target's row,
+ * and locking it again is harmless.
  */
-final class UpdateUser
+final readonly class UpdateUser
 {
     use ProfileValidationRules;
+
+    public function __construct(private LockoutGuard $lockoutGuard) {}
 
     /**
      * @throws AuthorizationException
@@ -60,7 +66,15 @@ final class UpdateUser
         ])->validate();
 
         try {
-            DB::transaction(function () use ($target, $name, $email, $previousEmail, $changesEmail): void {
+            DB::transaction(function () use ($actor, $target, $name, $email, $previousEmail, $changesEmail): void {
+                // FU2-5: a promotion, a move, a deletion or an acceptance that committed after the policy check.
+                $stored = $this->lockoutGuard->lockUsers([$target->id])[$target->id] ?? throw new AuthorizationException;
+                $this->lockoutGuard->ensureStillManageable($actor, $target, $stored);
+
+                if ($changesEmail && $stored['status'] === UserStatus::PendingActivation) {
+                    throw ValidationException::withMessages(['email' => [__('Cancel the invitation and invite the new address.')]]);
+                }
+
                 $target->forceFill(['name' => $name, 'email' => $email])->save();
 
                 if ($changesEmail) {
@@ -80,8 +94,11 @@ final class UpdateUser
             return;
         }
 
-        // A self-service link requested before this change must not move the address again (FU3-7).
-        Cache::forget(RequestEmailChange::cacheKey($target));
-        Notification::route('mail', $previousEmail)->notify(new EmailChangedByAdministrator($email));
+        // A self-service link requested before this change must not move the address again (FU3-7). After the
+        // commit: when a caller's surrounding transaction rolls back (the edit page's saveAccount(), G4-08), the
+        // address stays and so does the link.
+        DB::afterCommit(fn (): bool => Cache::forget(RequestEmailChange::cacheKey($target)));
+        // In the target's language, not the administrator's (G3-03).
+        Notification::route('mail', $previousEmail)->notify(new EmailChangedByAdministrator($email)->locale($target->locale->value));
     }
 }

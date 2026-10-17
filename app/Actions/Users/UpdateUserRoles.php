@@ -12,6 +12,7 @@ use App\Authorization\SyncPermissions;
 use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Tenancy\HostScope;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -27,7 +28,11 @@ use Spatie\Permission\Models\Role as RoleModel;
  * super_admin badge, other teams' roles, other guards' roles and team roles named like a system role are
  * rejected, and non-super-admins only hand out roles whose permissions they hold (W1). Refuses removing
  * your own organisation admin role and demoting the last active organisation admin (W12). Records
- * user.roles_changed with the old and new role names when the set changes (§4.8).
+ * user.roles_changed with the old and new role names when the set changes (§4.8). The locks follow CD-5: the
+ * organisation, the assigned roles, then one users batch; decisions read the locked rows (FU2-5), the policy's
+ * 'not a super admin, still in this organisation, not deleted' included.
+ *
+ * @phpstan-import-type LockedUser from LockoutGuard
  */
 final readonly class UpdateUserRoles
 {
@@ -45,26 +50,39 @@ final readonly class UpdateUserRoles
 
         $teamId = $target->organisation_id ?? throw new LogicException('updateRoles allows only users with an organisation.');
         $templateId = Role::templateId();
-        $roles = $this->resolveRoles($teamId, $templateId, $roleIds);
-        $keepsAdmin = $roles->contains(fn (RoleModel $role): bool => (int) $role->getKey() === $templateId);
+        $roleIds = array_values(array_unique($roleIds));
 
-        PermissionsTeam::run($teamId, function () use ($actor, $target, $roles, $keepsAdmin, $teamId, $templateId): void {
-            DB::transaction(function () use ($actor, $target, $roles, $keepsAdmin, $teamId, $templateId): void {
+        PermissionsTeam::run($teamId, function () use ($actor, $target, $roleIds, $teamId, $templateId): void {
+            DB::transaction(function () use ($actor, $target, $roleIds, $teamId, $templateId): void {
+                // CD-5: the organisation, then the roles it assigns, then one users batch, before any role
+                // assignment is written. A concurrent DeleteRole holds the same organisation lock, so it can neither
+                // deadlock with this write nor delete a role between the lookup and the insert (cycle 4).
+                HostScope::lockOrganisation($teamId);
+                $roles = $this->lockedRoles($teamId, $templateId, $roleIds);
+                $keepsAdmin = $roles->contains(fn (RoleModel $role): bool => (int) $role->getKey() === $templateId);
+                $removesAdmin = ! $keepsAdmin && $this->holdsTemplate($target, $teamId, $templateId);
+                $locked = $this->lockoutGuard->lockUsers([$target->id], teamAdminsOf: $removesAdmin ? $teamId : null);
+                $stored = $locked[$target->id] ?? null;
+
+                if ($stored === null) {
+                    return;
+                }
+
+                // FU2-5: the policy's preconditions, decided again on the locked row; a promotion, a move or a
+                // deletion that committed while this write waited for the organisation lock is seen here.
+                if ($stored['is_super_admin'] || $stored['organisation_id'] !== $teamId || $stored['deleted']) {
+                    throw new AuthorizationException;
+                }
+
+                $this->guardInvitedRoles($target, $stored['status']);
+
                 $target->unsetRelation('roles');
                 $before = $this->roleNamesOf($target, $teamId);
 
-                // RK-B3 (FU4-7): a pending user's roles stay as invited; the accept link was issued for them.
-                // InviteUser's first assignment, on a fresh invitee without roles, stays allowed.
-                if ($target->status === UserStatus::PendingActivation && $before !== []) {
-                    throw ValidationException::withMessages([
-                        'roles' => __('A pending user keeps the roles they were invited with. Cancel and re-invite to change them.'),
-                    ]);
-                }
-
                 $this->guardEscalation($actor, $target, $roles);
 
-                if (! $keepsAdmin && $this->holdsTemplate($target, $teamId, $templateId)) {
-                    $this->guardAdminRemoval($actor, $target, $teamId);
+                if ($removesAdmin) {
+                    $this->guardAdminRemoval($actor, $target, $locked);
                 }
 
                 $target->syncRoles($roles);
@@ -86,14 +104,18 @@ final readonly class UpdateUserRoles
     }
 
     /**
+     * The requested roles, locked in id order (CD-5 step 2); none when none are requested.
+     *
      * @param  list<int>  $roleIds
      * @return Collection<int, RoleModel>
      *
      * @throws ValidationException
      */
-    private function resolveRoles(int $teamId, int $templateId, array $roleIds): Collection
+    private function lockedRoles(int $teamId, int $templateId, array $roleIds): Collection
     {
-        $roleIds = array_values(array_unique($roleIds));
+        if ($roleIds === []) {
+            return new Collection;
+        }
 
         $roles = RoleModel::query()
             ->whereKey($roleIds)
@@ -101,6 +123,8 @@ final readonly class UpdateUserRoles
             ->where(function (Builder $query) use ($teamId, $templateId): void {
                 $query->where('team_id', $teamId)->orWhere('id', $templateId);
             })
+            ->orderBy('id')
+            ->lockForUpdate()
             ->get();
 
         // A team role that reads like a system role would pass for it in lists and checks (FU2-4, W6).
@@ -115,6 +139,28 @@ final readonly class UpdateUserRoles
         }
 
         return $roles;
+    }
+
+    /**
+     * RK-B3 (FU4-7, G2-06): a pending user's roles stay as invited; the accept link was issued for them. Only
+     * InviteUser's first assignment passes, made before the invitation row exists. Decided on the locked status
+     * and the invitation, never on the roles the user still holds: deleting a custom role can leave an invitee
+     * without any (DeleteRole), which must not reopen the assignment. The invitation read needs no lock of its own:
+     * every write of an organisation's invitations holds the organisation lock taken above.
+     *
+     * @throws ValidationException
+     */
+    private function guardInvitedRoles(User $target, UserStatus $storedStatus): void
+    {
+        if ($storedStatus !== UserStatus::PendingActivation) {
+            return;
+        }
+
+        if (DB::table('invitations')->where('user_id', $target->id)->exists()) {
+            throw ValidationException::withMessages([
+                'roles' => __('A pending user keeps the roles they were invited with. Cancel and re-invite to change them.'),
+            ]);
+        }
     }
 
     /**
@@ -148,8 +194,12 @@ final readonly class UpdateUserRoles
         }
     }
 
-    /** @throws ValidationException */
-    private function guardAdminRemoval(User $actor, User $target, int $teamId): void
+    /**
+     * @param  array<int, LockedUser>  $locked  the batch, the team's template holders included
+     *
+     * @throws ValidationException
+     */
+    private function guardAdminRemoval(User $actor, User $target, array $locked): void
     {
         if ($actor->is($target)) {
             throw ValidationException::withMessages([
@@ -157,7 +207,7 @@ final readonly class UpdateUserRoles
             ]);
         }
 
-        $this->lockoutGuard->ensureAnotherActiveOrganisationAdmin($target, $teamId, 'roles');
+        $this->lockoutGuard->ensureAnotherActiveOrganisationAdmin($target, $locked, 'roles');
     }
 
     /** The template by id, in this team: a team role that merely shares its name does not count (FU2-4). */

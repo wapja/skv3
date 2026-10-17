@@ -36,7 +36,7 @@ it('answers 404 behind a proxy or tunnel (§7.2, DEC-24)', function (string $hea
     $token = (string) new SetupToken($context->basePath)->value();
 
     $this->get('/welcome-setup?token='.$token, [$header => 'x'])->assertNotFound();
-})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-Port', 'X-Forwarded-Prefix', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain']);
+})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-Port', 'X-Forwarded-Prefix', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain', 'Via', 'X-Real-IP', 'True-Client-IP', 'CF-Connecting-IP', 'CF-Ray']);
 
 it('keeps the token in the session and drops it from the address (RL-2)', function (): void {
     $context = useSetupWizard();
@@ -104,6 +104,23 @@ it('issues a new session id when it accepts the token, so a planted id never bec
     expect(session()->getId())->not->toBe($planted)
         ->and(session(EnsureSetupAccess::SESSION_KEY))->toBe(app(SetupToken::class)->hash())
         ->and((string) session()->getHandler()->read($planted))->not->toContain((string) app(SetupToken::class)->hash());
+});
+
+it('carries nothing of a planted session over and destroys its file when it accepts the token (L7b-11)', function (): void {
+    // Arrange: a session file written beforehand under an id the attacker knows, holding data of their choosing.
+    $context = useSetupWizard();
+    $planted = Str::random(40);
+    session()->getHandler()->write($planted, json_encode(['planted' => 'by-someone-else', '_token' => 'known-csrf-token'], JSON_THROW_ON_ERROR));
+
+    $this->withCookie((string) config('session.cookie'), $planted)
+        ->get('/welcome-setup?token='.new SetupToken($context->basePath)->value())
+        ->assertRedirect(url('/welcome-setup'));
+
+    expect(session()->getId())->not->toBe($planted)
+        ->and(session()->has('planted'))->toBeFalse()
+        ->and(session()->token())->not->toBe('known-csrf-token')
+        ->and(session(EnsureSetupAccess::SESSION_KEY))->toBe(app(SetupToken::class)->hash())
+        ->and(session()->getHandler()->read($planted))->toBe('');
 });
 
 it('never stores the token in the session, not even as the previous URL (g3-27)', function (): void {

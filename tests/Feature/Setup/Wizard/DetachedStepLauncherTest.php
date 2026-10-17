@@ -6,7 +6,8 @@ declare(strict_types=1);
 
 use App\Setup\Support\Toolchain;
 use App\Setup\Wizard\DetachedStepLauncher;
-use Illuminate\Process\PendingProcess;
+use App\Setup\Wizard\WizardState;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -27,7 +28,8 @@ it('starts skv:run-step detached with every value as its own argument, its shell
     Process::assertRan(fn ($process): bool => $process->command[0] === 'sh'
         && $process->command[1] === '-c'
         && str_contains($process->command[2], 'nohup')
-        && str_contains($process->command[2], 'echo $$ > "$5"; "$0" artisan skv:run-step')
+        && str_contains($process->command[2], 'echo $$ > "$5"; ')
+        && str_contains($process->command[2], '"$0" artisan skv:run-step "$1" --no-interaction --result="$2" > "$3" 2>&1')
         && array_slice($process->command, 3) === ['sh', '/usr/bin/php', 'frontend', '/r.json', '/l.log', '/e.exit', '/s.started']);
 });
 
@@ -47,15 +49,47 @@ it('reports a launch it could not start (RL-4)', function (): void {
     expect(new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')->start($context->basePath, 'frontend', '/r', '/l', '/e'))->toBeFalse();
 });
 
-it('creates the child\'s log and exit files private: umask 077 before any redirect (g3-16)', function (): void {
+it('keeps the child\'s pid, log and exit files private but lets the step create files under the umask it inherited, and writes the exit file only after the step (g3-16, G6-06)', function (): void {
+    // Arrange: a stand-in for php that creates a file of its own and records whether the exit file already exists.
     $context = setupSandbox();
-    Process::fake(["*sh' '-c'*" => Process::result('')]);
+    $directory = $context->path(WizardState::STEPS);
+    File::ensureDirectoryExists($directory);
+    $php = $context->path('fake-php');
+    File::put($php, "#!/bin/sh\nif [ -e '{$directory}/frontend.exit' ]; then echo early > made-by-step; else echo late > made-by-step; fi\n");
+    chmod($php, 0755);
+    // The real script runs (sh, nohup and the stand-in); nothing else may.
+    Process::preventStrayProcesses(false);
+    $umask = umask(0022);
 
-    new DetachedStepLauncher(app(Toolchain::class), php: '/usr/bin/php')->start($context->basePath, 'frontend', '/r.json', '/l.log', '/e.exit');
+    try {
+        $started = new DetachedStepLauncher(app(Toolchain::class), php: $php)
+            ->start($context->basePath, 'frontend', $directory.'/frontend.json', $directory.'/frontend.log', $directory.'/frontend.exit', $directory.'/frontend.started');
+    } finally {
+        umask($umask);
+    }
 
-    Process::assertRan(function (PendingProcess $process): bool {
-        $script = ((array) $process->command)[2] ?? null;
+    // The child runs detached: wait at most ten seconds for the exit code it writes last.
+    $deadline = microtime(true) + 10;
 
-        return is_string($script) && str_starts_with($script, "nohup sh -c 'umask 077; ");
-    });
+    while ((! is_file($directory.'/frontend.exit') || trim((string) file_get_contents($directory.'/frontend.exit')) === '') && microtime(true) < $deadline) {
+        usleep(50_000);
+        clearstatcache();
+    }
+
+    // A child still running after the deadline (a slow runner) would write into a sandbox the teardown removes:
+    // stop the shell whose pid the script recorded first, before the expectations fail the test.
+    $contents = fn (string $file): string => is_file($file) ? trim((string) file_get_contents($file)) : '';
+    $pid = (int) $contents($directory.'/frontend.started');
+
+    if ($contents($directory.'/frontend.exit') === '' && $pid > 1 && function_exists('posix_kill')) {
+        posix_kill($pid, SIGKILL);
+    }
+
+    expect($started)->toBeTrue()
+        ->and(trim((string) file_get_contents($directory.'/frontend.exit')))->toBe('0')
+        ->and(trim((string) file_get_contents($context->path('made-by-step'))))->toBe('late')
+        ->and(fileperms($context->path('made-by-step')) & 0777)->toBe(0644)
+        ->and(fileperms($directory.'/frontend.log') & 0777)->toBe(0600)
+        ->and(fileperms($directory.'/frontend.exit') & 0777)->toBe(0600)
+        ->and(fileperms($directory.'/frontend.started') & 0777)->toBe(0600);
 });

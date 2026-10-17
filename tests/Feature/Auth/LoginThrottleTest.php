@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.2 */
 
+use App\Enums\ActivityEvent;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -11,7 +12,9 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Sleep;
+use PragmaRX\Google2FA\Google2FA;
 
 /**
  * Sends $size failing requests through the named limiter, each one arriving before the previous one is
@@ -106,6 +109,126 @@ it('does not count successful sign-ins', function (): void {
         ->assertRedirect(route('dashboard'));
 });
 
+it('clears an address\'s failures once it signs in (G1-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 4) as $attempt) {
+        $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+});
+
+it('clears an address\'s failures once it signs in with a second factor (G1-03)', function (): void {
+    $secret = app(Google2FA::class)->generateSecretKey();
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->withTwoFactor()->create(['two_factor_secret' => encrypt($secret)]);
+    onTenant($organisation);
+
+    foreach (range(1, 4) as $attempt) {
+        $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('two-factor.login'));
+    $this->post(route('two-factor.login.store'), ['code' => (string) app(Google2FA::class)->getCurrentOtp($secret)])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('two-factor.login'));
+});
+
+it('keeps the IP-wide failures when an account signs in (G1-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 19) as $attempt) {
+        $this->post(route('login.store'), ['email' => "nobody{$attempt}@example.com", 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => 'nobody20@example.com', 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+    expect(session('errors')?->first('email'))->toStartWith('Too many login attempts');
+});
+
+it('keeps another address\'s failures when an account signs in from the same IP (G1-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    $victim = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 4) as $attempt) {
+        $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    $this->post(route('logout'));
+    $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+
+    $this->post(route('login.store'), ['email' => $victim->email, 'password' => 'password'])->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+    expect(session('errors')?->first('email'))->toStartWith('Too many login attempts');
+});
+
+it('answers array input to the throttled auth routes with a validation error, not a server error (G1-02)', function (string $route, array $input, string $field): void {
+    $organisation = Organisation::factory()->create();
+    // A live reset record for the address, so an array token would reach the broker's token check.
+    Password::broker()->createToken(User::factory()->for($organisation)->create(['email' => 'member@example.com']));
+    onTenant($organisation);
+
+    $this->from(route('login'))->post(route($route), $input)->assertRedirect()->assertSessionHasErrors($field);
+})->with([
+    'sign in' => ['login.store', ['email' => ['member@example.com'], 'password' => 'secret'], 'email'],
+    'request a reset link' => ['password.email', ['email' => ['member@example.com']], 'email'],
+    'reset the password' => ['password.update', ['token' => 'x', 'email' => ['member@example.com'], 'password' => 'new-password', 'password_confirmation' => 'new-password'], 'email'],
+    'reset the password (token)' => ['password.update', ['token' => ['x'], 'email' => 'member@example.com', 'password' => 'new-password', 'password_confirmation' => 'new-password'], 'token'],
+]);
+
+it('answers an array password to the password confirmation with a validation error, not a server error', function (): void {
+    // Fortify's ConfirmPassword takes ?string $password and got the array from $request->input('password').
+    $organisation = Organisation::factory()->create();
+    asMember($organisation);
+
+    $this->from(route('password.confirm'))->post(route('password.confirm.store'), ['password' => ['password']])
+        ->assertRedirect(route('password.confirm'))
+        ->assertSessionHasErrors('password');
+
+    expect(session('auth.password_confirmed_at'))->toBeNull();
+});
+
+it('answers an array credential id to the passkey sign-in with a validation error, not a server error (G1-02)', function (): void {
+    usePasskeysModule(true);
+    onTenant(Organisation::factory()->create());
+
+    $this->postJson(route('passkey.login'), ['credential' => ['id' => ['x']]])->assertUnprocessable();
+});
+
+it('sends a throttled sign-in back to the login page, never to the Referer (CD-13)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    foreach (range(1, 5) as $attempt) {
+        $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong']);
+    }
+
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'wrong'], ['Referer' => 'https://evil.example/phish'])
+        ->assertRedirect(route('login'))
+        ->assertSessionHasErrors('email');
+});
+
 it('locks an address out after five failed attempts', function (): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create();
@@ -171,6 +294,37 @@ it('bounds a burst of parallel passkey attempts from one IP address', function (
     $request = burstRequest('http://acme.localhost/passkeys/login');
 
     expect(admittedInBurst('passkeys', $request, 50))->toBe(30);
+});
+
+it('limits failed passkey sign-ins per IP, whatever credential id the client sends (G1-05)', function (): void {
+    usePasskeysModule(true);
+    onTenant(Organisation::factory()->create());
+
+    foreach (range(1, 10) as $attempt) {
+        $this->postJson(route('passkey.login'), ['credential' => ['id' => "credential-{$attempt}"]])->assertUnprocessable();
+    }
+
+    $this->postJson(route('passkey.login'), ['credential' => ['id' => 'credential-11']])->assertTooManyRequests();
+
+    // CD-6: a throttled request is not a sign-in attempt, so the 429 adds no audit entry.
+    expect(recordedActivity(ActivityEvent::LoginFailed))->toHaveCount(10);
+});
+
+it('limits failed passkey confirmations per user, not per IP (G1-05)', function (): void {
+    usePasskeysModule(true);
+    $organisation = Organisation::factory()->create();
+    $ada = User::factory()->for($organisation)->create();
+    $bob = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+
+    $this->actingAs($ada);
+    foreach (range(1, 10) as $attempt) {
+        $this->postJson(route('passkey.confirm'), ['credential' => ['id' => "credential-{$attempt}"]])->assertUnprocessable();
+    }
+    $this->postJson(route('passkey.confirm'), ['credential' => ['id' => 'credential-11']])->assertTooManyRequests();
+
+    $this->actingAs($bob);
+    $this->postJson(route('passkey.confirm'), ['credential' => ['id' => 'credential-12']])->assertUnprocessable();
 });
 
 it('trusts the proxies named in TRUSTED_PROXIES and none by default', function (): void {

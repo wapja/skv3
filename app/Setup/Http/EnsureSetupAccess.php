@@ -20,7 +20,8 @@ use Symfony\Component\HttpFoundation\Response;
  * - once begin() pinned a host, that host or its admin host (RL-5)
  *
  * The token arrives once in the query, and its hash then lives in a new (file) session. Seeding a super admin
- * therefore never locks the wizard out, and a session id planted beforehand never becomes authorised (g3-26).
+ * therefore never locks the wizard out. Accepting the token invalidates the session first, so a session id planted
+ * beforehand never becomes authorised (g3-26), its file is destroyed and nothing it held carries over (L7b-11).
  * Everything else is a 404.
  */
 final readonly class EnsureSetupAccess
@@ -38,8 +39,10 @@ final readonly class EnsureSetupAccess
 
         if (is_string($candidate)) {
             abort_unless($this->token->matches($candidate), 404);
+            // L7b-11: nothing a planted session held carries over, and its file is destroyed; then a new CSRF token.
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
             $request->session()->put(self::SESSION_KEY, $this->token->hash());
-            $request->session()->regenerate();
             // StartSession stores fullUrl() as _previous.url after this returns, and fullUrl() reads QUERY_STRING (g3-27).
             $request->query->remove('token');
             $request->server->set('QUERY_STRING', Arr::query($request->query->all()));

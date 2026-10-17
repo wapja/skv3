@@ -8,18 +8,24 @@ use App\Setup\SetupContext;
 use App\Setup\SetupStep;
 use App\Setup\StepResult;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthCheckKey;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 /**
  * §5.3.3 step 1: the app name, address and apex, the generated secrets (GENERATED), the faker locale, the module
  * flags and, when Herd Pro mail is active and the installer left mail alone, Herd's SMTP server. Never writes APP_KEY
- * or DB_*.
+ * or DB_*. It also creates public/storage (G6-09, CD-12): this step always runs, while the frontend step is skipped
+ * when a build exists.
  */
-final class EnvironmentStep implements SetupStep
+final readonly class EnvironmentStep implements SetupStep
 {
     /** The secrets setup generates while they are missing (missingSecrets()), with their lengths (§4.9): a usable value is never overwritten, never printed. */
     public const array GENERATED = ['HEALTH_CHECK_KEY' => 40, 'BACKUP_ARCHIVE_PASSWORD' => 32];
+
+    public function __construct(private ?Toolchain $toolchain = null) {}
 
     /**
      * A fresh random value, of its GENERATED length, for every generated secret that is missing in $env (RL-10): blank,
@@ -63,7 +69,7 @@ final class EnvironmentStep implements SetupStep
             return false;
         }
 
-        if (self::missingSecrets($env) !== []) {
+        if (self::missingSecrets($env) !== [] || ! $this->storageIsLinked($context)) {
             return false;
         }
 
@@ -99,6 +105,10 @@ final class EnvironmentStep implements SetupStep
             : __('Mail is written to the log (storage/logs/laravel.log).');
 
         $env->set($variables);
+
+        if (! $this->linkStorage($context)) {
+            return StepResult::manual('php artisan storage:link', trim(__('public/storage is missing').'. '.$note));
+        }
 
         return StepResult::done($note);
     }
@@ -142,6 +152,44 @@ final class EnvironmentStep implements SetupStep
         }
 
         return $variables;
+    }
+
+    /** public/storage exists, as a link or otherwise (the doctor's `storage-link` check). */
+    private function storageIsLinked(SetupContext $context): bool
+    {
+        $link = $context->path('public/storage');
+
+        return is_link($link) || file_exists($link);
+    }
+
+    /**
+     * `php artisan storage:link` as a child process in the project (G6-09, CD-12), so it links the project and honours
+     * its filesystems.links: the CLI php next to the running one, because the wizard runs this step under php-fpm, and
+     * the toolchain's environment (DEC-23). The link is read back, never the exit code; false when it is still missing.
+     */
+    private function linkStorage(SetupContext $context): bool
+    {
+        if ($this->storageIsLinked($context)) {
+            return true;
+        }
+
+        $toolchain = $this->toolchain ?? app(Toolchain::class);
+        $php = $toolchain->phpCli();
+
+        if ($php === null) {
+            return false;
+        }
+
+        try {
+            Process::path($context->basePath)->env($toolchain->environment())->timeout(60)
+                ->run([$php, 'artisan', 'storage:link', '--no-interaction']);
+        } catch (ProcessTimedOutException) {
+            return false;
+        }
+
+        clearstatcache();
+
+        return $this->storageIsLinked($context);
     }
 
     /** Anything but Laravel's default log mailer was chosen before setup (by the installer or the owner). */

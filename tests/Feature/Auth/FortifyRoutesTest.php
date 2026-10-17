@@ -8,7 +8,7 @@ use App\Tenancy\Http\Middleware\StopImpersonationBeforeLogout;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 
-it('keeps the throttled kit routes in place of Fortify\'s when Fortify has a prefix (FU3-3)', function (): void {
+it('keeps the throttled kit routes in place of Fortify\'s when Fortify has a prefix (FU3-3, CD-3)', function (): void {
     config(['fortify.prefix' => 'auth', 'fortify.domain' => null]);
 
     $scratch = new Router(app('events'), app());
@@ -33,6 +33,10 @@ it('keeps the throttled kit routes in place of Fortify\'s when Fortify has a pre
         'password.email' => ['auth/forgot-password', 'throttle:password-email'],
         'password.update' => ['auth/reset-password', 'throttle:password-reset'],
         'password.confirm.store' => ['auth/user/confirm-password', 'throttle:password-confirm'],
+        'two-factor.enable' => ['auth/user/two-factor-authentication', 'throttle:account-security'],
+        'two-factor.confirm' => ['auth/user/confirmed-two-factor-authentication', 'throttle:account-security'],
+        'two-factor.disable' => ['auth/user/two-factor-authentication', 'throttle:account-security'],
+        'two-factor.regenerate-recovery-codes' => ['auth/user/two-factor-recovery-codes', 'throttle:account-security'],
     ] as $name => [$uri, $throttle]) {
         $route = $routes->getByName($name);
 

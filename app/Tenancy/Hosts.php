@@ -9,8 +9,8 @@ use Illuminate\Support\Str;
 use LogicException;
 
 /**
- * Host names and absolute URLs (§4.1, §6.2). Scheme and port come from the current request;
- * in the console and queue workers Laravel builds that request from APP_URL.
+ * Host names and absolute URLs (§4.1, §6.2). The scheme and the port come from APP_URL (CD-4), in a request as in
+ * the console and queue workers, so a request's port or forwarded headers never reach a mailed or redirected link.
  */
 final class Hosts
 {
@@ -75,14 +75,18 @@ final class Hosts
         return $slug;
     }
 
+    /**
+     * The origin of $host with APP_URL's scheme and port (CD-4, G1-04). The host is the caller's: tenancy validated
+     * it, or homeOf() / tenant() built it. A Host-header port, X-Forwarded-Proto and X-Forwarded-Port never count.
+     */
     public static function origin(string $host): string
     {
-        $request = request();
-        $scheme = $request->getScheme();
-        $port = (int) $request->getPort();
+        $appUrl = (string) config('app.url');
+        $scheme = Str::lower((string) (parse_url($appUrl, PHP_URL_SCHEME) ?: 'http'));
+        $port = parse_url($appUrl, PHP_URL_PORT);
         $defaultPort = $scheme === 'https' ? 443 : 80;
 
-        return $scheme.'://'.$host.($port !== 0 && $port !== $defaultPort ? ':'.$port : '');
+        return $scheme.'://'.$host.(is_int($port) && $port !== $defaultPort ? ':'.$port : '');
     }
 
     public static function url(string $host, string $path = '/'): string

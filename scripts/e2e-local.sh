@@ -122,7 +122,7 @@ install_app() {
             git clone --quiet --branch "$BRANCH" "$REPO" "$TARGET"
             (cd "$TARGET" \
                 && composer install --no-interaction \
-                && php -r "file_exists('.env') || copy('.env.example', '.env');" \
+                && php -r "file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));" \
                 && php artisan skv:bootstrap --no-interaction)
             ;;
     esac

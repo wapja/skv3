@@ -80,17 +80,34 @@ it('fails while the backups would not be encrypted, even with a fresh backup (CD
     $result = new LastBackupCheck()->run($this->context);
 
     expect($result->status)->toBe(CheckStatus::Fail)
-        ->and($result->message)->toBe(__('Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty or this PHP zip has no AES-256'))
+        ->and($result->message)->toBe(__('Backups are not encrypted: BACKUP_ARCHIVE_PASSWORD is empty'))
         ->and($result->fix)->toBe('php artisan skv:doctor --fix');
 });
 
-it('fails while the encryption setting turns encryption off (CD-10)', function (): void {
+it('fails while the encryption setting turns encryption off, and says so with its own fix (CD-10, G6-05)', function (string $encryption): void {
+    // useBackupsModule(true) sets a password: only the setting is wrong.
     useBackupsModule(true);
-    config(['backup.backup.encryption' => 'none']);
+    config(['backup.backup.encryption' => $encryption]);
     Storage::fake('backups');
     Storage::disk('backups')->put(config('backup.backup.name').'/'.now()->format('Y-m-d-H-i-s').'.zip', 'fresh');
 
-    expect(new LastBackupCheck()->run($this->context)->status)->toBe(CheckStatus::Fail);
+    $result = new LastBackupCheck()->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('Backups are not encrypted: backup.backup.encryption turns encryption off'))
+        ->and($result->fix)->toBe('config/backup.php');
+})->with(['none' => 'none', 'an unknown value' => 'aes-256']);
+
+it('fails on a PHP zip without AES-256 and says so (CD-10, G6-05)', function (): void {
+    useBackupsModule(true);
+    Storage::fake('backups');
+    Storage::disk('backups')->put(config('backup.backup.name').'/'.now()->format('Y-m-d-H-i-s').'.zip', 'fresh');
+
+    $result = new LastBackupCheck(zipHasAes256: false)->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('Backups are not encrypted: this PHP zip has no AES-256'))
+        ->and($result->fix)->toBe(__('Use a PHP whose zip extension supports AES-256'));
 });
 
 it('fails without a backup or with one older than a day, and passes with a fresh one (CD-4)', function (): void {

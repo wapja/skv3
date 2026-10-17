@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Support\FluxProBranches;
 use Composer\InstalledVersions;
 use Illuminate\Support\Facades\Blade;
+use Tests\Support\FluxProLint;
 
 it('removes the Pro branch and keeps the free branch and the line count', function (): void {
     $blade = <<<'BLADE'
@@ -47,6 +48,66 @@ it('keeps conditions nested in or around a Pro branch intact and ignores directi
         ->toContain('<flux:card data-test="kept" />')
         ->and(substr_count($stripped, '@endif'))->toBe(2)
         ->and(FluxProBranches::strip('<flux:button>Save</flux:button>'))->toBe('<flux:button>Save</flux:button>');
+});
+
+it('keeps cutting a Pro branch past the @else of a nested block directive, as the lint reads it (G5-09)', function (string $open, string $close): void {
+    $blade = <<<BLADE
+        @if (Skv::hasFluxPro())
+            {$open}
+                <p>inner</p>
+            @else
+                <flux:chart />
+            {$close}
+            <flux:date-picker wire:model="from" />
+        @else
+            <flux:input type="date" wire:model="from" />
+        @endif
+        BLADE;
+
+    $stripped = FluxProBranches::strip($blade);
+
+    expect($stripped)->not->toContain('<flux:chart')->not->toContain('<flux:date-picker')
+        ->toContain('<flux:input type="date" wire:model="from" />')
+        ->and(substr_count($stripped, "\n"))->toBe(substr_count($blade, "\n"))
+        ->and(FluxProLint::violations($blade))->toBe([]);
+})->with([
+    '@unless' => ['@unless ($compact)', '@endunless'],
+    '@auth' => ['@auth', '@endauth'],
+    '@guest' => ['@guest', '@endguest'],
+    '@can' => ["@can('users.view')", '@endcan'],
+    '@cannot' => ["@cannot('users.view')", '@endcannot'],
+    '@canany' => ["@canany(['users.view', 'roles.view'])", '@endcanany'],
+    '@isset' => ['@isset($user)', '@endisset'],
+    '@empty with arguments' => ['@empty($users)', '@endempty'],
+    '@env' => ["@env('local')", '@endenv'],
+    '@production' => ['@production', '@endproduction'],
+    '@session' => ["@session('status')", '@endsession'],
+    '@error' => ["@error('email')", '@enderror'],
+    '@hasSection' => ["@hasSection('title')", '@endif'],
+    'upper case' => ['@AUTH', '@ENDAUTH'],
+]);
+
+it('reads @forelse\'s @empty, escaped directives and @verbatim blocks as Blade does (G5-09)', function (): void {
+    $blade = <<<'BLADE'
+        @if (Skv::hasFluxPro())
+            @forelse ($rows as $row)
+                <flux:chart />
+            @empty
+                <p>none</p>
+            @endforelse
+            <p>@@else is text, and so is mail@else.test</p>
+            @verbatim @else @endverbatim
+            <flux:date-picker />
+        @else
+            <p>free</p>
+        @endif
+        BLADE;
+
+    $stripped = FluxProBranches::strip($blade);
+
+    expect($stripped)->not->toContain('<flux:chart')->not->toContain('<flux:date-picker')
+        ->toContain('<p>free</p>')
+        ->and(substr_count($stripped, "\n"))->toBe(substr_count($blade, "\n"));
 });
 
 it('compiles every view of the kit without Flux Pro, as view:cache does (§6.7)', function (): void {

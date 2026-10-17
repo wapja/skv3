@@ -10,17 +10,22 @@ use App\Actions\Users\UpdateUser;
 use App\Authorization\Permission;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
+use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Notifications\EmailChangedByAdministrator;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mime\Email;
 
 /**
  * The validation errors an action throws, or [] when it succeeds.
@@ -188,6 +193,24 @@ it('notifies the old address after an administrator changed it (D-14)', function
         ->toContain(__('An administrator changed the email address of your account to :email.', ['email' => 'new@example.com']));
 });
 
+it('writes the notice in the target\'s language, not the administrator\'s (G3-03)', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com', 'locale' => Locale::English]);
+    $admin = asOrgAdmin($organisation);
+    $admin->forceFill(['locale' => Locale::Dutch])->save();
+    // The Dutch administrator's request answers in Dutch.
+    app()->setLocale('nl');
+
+    app(UpdateUser::class)->handle($admin, $member, $member->name, 'new@example.com');
+
+    $transport = Mail::driver()->getSymfonyTransport();
+    $sent = $transport instanceof ArrayTransport ? $transport->messages()->first() : null;
+    $mail = $sent instanceof SentMessage ? $sent->getOriginalMessage() : null;
+
+    expect($mail)->toBeInstanceOf(Email::class)
+        ->and($mail instanceof Email ? $mail->getSubject() : null)->toBe('An administrator changed your email address');
+});
+
 it('invalidates a pending self-service email change and the old address\'s reset tokens (FU3-7)', function (): void {
     Notification::fake();
     $organisation = Organisation::factory()->create();
@@ -207,6 +230,24 @@ it('invalidates a pending self-service email change and the old address\'s reset
         ->assertSessionHas('status', __('This confirmation link is no longer valid.'));
 
     expect($member->refresh()->email)->toBe('admin-chosen@example.com');
+});
+
+it('keeps a pending self-service email change when the caller\'s transaction rolls back (G4-08)', function (): void {
+    // Fails on main: the link was dropped right after UpdateUser's own transaction, before the caller's committed.
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create(['email' => 'old@example.com']);
+    app(RequestEmailChange::class)->handle($member, 'self-chosen@example.com');
+    $admin = asOrgAdmin($organisation);
+
+    expect(fn () => DB::transaction(function () use ($admin, $member): void {
+        app(UpdateUser::class)->handle($admin, $member, $member->name, 'admin-chosen@example.com');
+
+        throw new RuntimeException('A later step of the same save failed.');
+    }))->toThrow(RuntimeException::class, 'A later step of the same save failed.');
+
+    expect(Cache::has(RequestEmailChange::cacheKey($member)))->toBeTrue()
+        ->and($member->fresh()?->email)->toBe('old@example.com');
 });
 
 it('turns a unique-index race into a validation error, also when confirming an email change (FU3-8)', function () use ($errorsOf): void {
@@ -241,3 +282,25 @@ it('turns a unique-index race into a validation error, also when confirming an e
         ->toBe(['email' => [__('This address can\'t be used.')]])
         ->and($member->refresh()->email)->toBe('old@example.com');
 });
+
+it('decides again on the locked row that an organisation admin may still edit the target (FU2-5)', function (string $change): void {
+    // The policy reads the model, which a promotion, a move or a deletion that committed between the check and the
+    // write leaves stale; without the re-check an organisation admin set a super admin's address (an account takeover
+    // through the reset link).
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $target = User::factory()->for($organisation)->create(['email' => 'member@example.com']);
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(match ($change) {
+        'promoted' => ['is_super_admin' => true],
+        'moved' => ['organisation_id' => Organisation::factory()->create()->id],
+        default => ['deleted_at' => now()],
+    });
+    $before = (array) DB::table('users')->where('id', $target->id)->first();
+
+    expect(fn () => app(UpdateUser::class)->handle($admin, $target, 'Taken Over', 'attacker@example.com'))
+        ->toThrow(AuthorizationException::class);
+
+    expect((array) DB::table('users')->where('id', $target->id)->first())->toBe($before);
+    Notification::assertNothingSent();
+})->with(['promoted', 'moved', 'deleted']);

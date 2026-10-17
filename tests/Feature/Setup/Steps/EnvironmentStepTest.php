@@ -10,6 +10,9 @@ use App\Setup\Steps\EnvironmentStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use Dotenv\Dotenv;
+use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -182,4 +185,48 @@ it('keeps the port of an APP_URL on the same host without Herd (g1-17)', functio
     new EnvironmentStep()->run($context);
 
     expect(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe('http://localhost:8000');
+});
+
+it('links public/storage through php artisan storage:link in the project, and is incomplete without it (G6-09, CD-12)', function (): void {
+    // Arrange: a fresh checkout has no public/storage; the faked command makes the link storage:link would make.
+    $context = setupSandbox();
+    unlink($context->path('public/storage'));
+    Process::fake(["*'artisan' 'storage:link' '--no-interaction'*" => function (PendingProcess $process) use ($context): ProcessResult {
+        symlink($context->path('storage/app/public'), $context->path('public/storage'));
+
+        return Process::result('The [public/storage] link has been connected to [storage/app/public].');
+    }]);
+
+    $result = new EnvironmentStep()->run($context);
+    $linked = is_link($context->path('public/storage'));
+    $complete = new EnvironmentStep()->isComplete($context);
+    File::delete($context->path('public/storage'));
+
+    expect($result->status)->toBe('done')
+        ->and($linked)->toBeTrue()
+        ->and($complete)->toBeTrue()
+        ->and(new EnvironmentStep()->isComplete($context))->toBeFalse();
+    Process::assertRan(fn (PendingProcess $process): bool => array_slice((array) $process->command, 1) === ['artisan', 'storage:link', '--no-interaction']
+        && $process->path === $context->basePath);
+});
+
+it('leaves php artisan storage:link to run when the link does not appear, after writing .env (G6-09)', function (): void {
+    $context = setupSandbox();
+    unlink($context->path('public/storage'));
+    Process::fake(["*'artisan' 'storage:link' '--no-interaction'*" => Process::result('', exitCode: 1)]);
+
+    $result = new EnvironmentStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe('php artisan storage:link')
+        ->and($result->message)->toContain(__('public/storage is missing'))
+        ->and($result->message)->toContain(__('Mail is written to the log (storage/logs/laravel.log).'))
+        ->and(strlen((string) new EnvFile($context->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+});
+
+it('starts no storage:link when public/storage already exists (G6-09)', function (): void {
+    $context = setupSandbox();
+
+    expect(new EnvironmentStep()->run($context)->status)->toBe('done');
+    Process::assertDidntRun(fn (PendingProcess $process): bool => in_array('storage:link', (array) $process->command, true));
 });

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
 
-it('locks every candidate row in id order, the target included (RL-27)', function (): void {
+it('locks the target and every candidate in one statement on users only, in id order (RL-27, G4-06)', function (): void {
     $organisation = Organisation::factory()->create();
     [$firstAdmin, $secondAdmin] = User::factory()->for($organisation)->count(2)->create()->all();
     withPermissionsTeam($organisation->id, function () use ($firstAdmin, $secondAdmin): void {
@@ -21,32 +21,37 @@ it('locks every candidate row in id order, the target included (RL-27)', functio
         $secondAdmin->assignRole(Role::OrganisationAdmin->value);
     });
     $firstSuperAdmin = User::factory()->superAdmin()->create();
-    User::factory()->superAdmin()->create();
+    $secondSuperAdmin = User::factory()->superAdmin()->create();
+    $bystander = User::factory()->for($organisation)->create();
 
     $queries = [];
     DB::listen(function (QueryExecuted $query) use (&$queries): void {
         $queries[] = $query->sql;
     });
 
-    DB::transaction(function () use ($firstSuperAdmin, $firstAdmin, $organisation): void {
-        app(LockoutGuard::class)->ensureAnotherActiveSuperAdmin($firstSuperAdmin, 'is_super_admin');
-        app(LockoutGuard::class)->ensureAnotherActiveOrganisationAdmin($firstAdmin, $organisation->id, 'roles');
-    });
+    $locked = DB::transaction(fn (): array => app(LockoutGuard::class)->lockUsers([$firstSuperAdmin->id], withSuperAdmins: true, teamAdminsOf: $organisation->id));
 
-    $superAdmins = collect($queries)->first(fn (string $sql): bool => str_contains($sql, '"is_super_admin"'));
-    $organisationAdmins = collect($queries)->first(fn (string $sql): bool => str_contains($sql, '"model_has_roles"."role_id"'));
+    $expected = [$firstAdmin->id, $secondAdmin->id, $firstSuperAdmin->id, $secondSuperAdmin->id];
+    sort($expected);
+    $usersStatements = array_values(array_filter($queries, fn (string $sql): bool => str_contains($sql, 'from "users"')));
 
-    foreach ([$superAdmins, $organisationAdmins] as $sql) {
-        // The target is not filtered out in SQL (no "!=" / "<>"): it is locked with the others, in id order.
-        expect($sql)->toBeString()
-            ->toContain('order by "users"."id" asc')
-            ->not->toContain('!=')
-            ->not->toContain('<>');
+    // One batch, the target included and the bystander left alone; the team admins are marked as such.
+    expect(array_keys($locked))->toBe($expected)
+        ->and($locked[$firstAdmin->id]['team_admin'])->toBeTrue()
+        ->and($locked[$firstSuperAdmin->id]['team_admin'])->toBeFalse()
+        ->and($locked)->not->toHaveKey($bystander->id)
+        ->and($usersStatements)->toHaveCount(1);
 
-        // SQLite has no row locks and compiles no FOR UPDATE clause.
-        if (DB::getDriverName() !== 'sqlite') {
-            expect($sql)->toContain('for update');
-        }
+    // Users only (no join under FOR UPDATE), the target not filtered out in SQL, in id order.
+    expect($usersStatements[0])
+        ->toContain('order by "id" asc')
+        ->not->toContain(' join ')
+        ->not->toContain('!=')
+        ->not->toContain('<>');
+
+    // SQLite has no row locks and compiles no FOR UPDATE clause.
+    if (DB::getDriverName() !== 'sqlite') {
+        expect($usersStatements[0])->toEndWith('for update');
     }
 });
 
@@ -56,18 +61,19 @@ it('keeps the existing lock-out messages', function (): void {
     $organisation = Organisation::factory()->create();
     $onlyAdmin = User::factory()->for($organisation)->create();
     withPermissionsTeam($organisation->id, fn (): User => $onlyAdmin->assignRole(Role::OrganisationAdmin->value));
+    $guard = app(LockoutGuard::class);
 
     // A try/catch instead of toThrow(Closure): Pest types that closure as Closure(Throwable), so a
     // ValidationException-typed parameter fails Larastan.
     try {
-        DB::transaction(fn () => app(LockoutGuard::class)->ensureAnotherActiveSuperAdmin($onlySuperAdmin, 'is_super_admin'));
+        DB::transaction(fn () => $guard->ensureAnotherActiveSuperAdmin($onlySuperAdmin, $guard->lockUsers([$onlySuperAdmin->id], withSuperAdmins: true), 'is_super_admin'));
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe(['is_super_admin' => [__('At least one active super admin must remain.')]]);
     }
 
     try {
-        DB::transaction(fn () => app(LockoutGuard::class)->ensureAnotherActiveOrganisationAdmin($onlyAdmin, $organisation->id, 'roles'));
+        DB::transaction(fn () => $guard->ensureAnotherActiveOrganisationAdmin($onlyAdmin, $guard->lockUsers([$onlyAdmin->id], teamAdminsOf: $organisation->id), 'roles'));
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe(['roles' => [__('An organisation needs at least one active organisation admin.')]]);
@@ -93,11 +99,12 @@ it('counts only active, non-deleted template holders of the same organisation as
         $lookAlikeAdmin->assignRole($lookAlikeRole);
     });
     withPermissionsTeam($otherOrganisation->id, fn (): User => $otherOrganisationAdmin->assignRole(Role::OrganisationAdmin->value));
+    $guard = app(LockoutGuard::class);
 
     // Each candidate is active, so each one alone would cover the organisation if its filter were dropped:
     // the team filter (another organisation's admin), the deleted_at filter, and the template-id filter.
     try {
-        DB::transaction(fn () => app(LockoutGuard::class)->ensureAnotherActiveOrganisationAdmin($onlyAdmin, $organisation->id, 'roles'));
+        DB::transaction(fn () => $guard->ensureAnotherActiveOrganisationAdmin($onlyAdmin, $guard->lockUsers([$onlyAdmin->id], teamAdminsOf: $organisation->id), 'roles'));
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe(['roles' => [__('An organisation needs at least one active organisation admin.')]]);
@@ -108,11 +115,12 @@ it('counts only active, non-deleted super admins as another super admin', functi
     $onlySuperAdmin = User::factory()->superAdmin()->create();
     User::factory()->superAdmin()->create(['deleted_at' => now()]);
     User::factory()->create();
+    $guard = app(LockoutGuard::class);
 
     // Each candidate is active, so each one alone would keep a super admin if its filter were dropped: the
     // deleted_at filter (a deleted super admin) and the is_super_admin filter (a regular user).
     try {
-        DB::transaction(fn () => app(LockoutGuard::class)->ensureAnotherActiveSuperAdmin($onlySuperAdmin, 'is_super_admin'));
+        DB::transaction(fn () => $guard->ensureAnotherActiveSuperAdmin($onlySuperAdmin, $guard->lockUsers([$onlySuperAdmin->id], withSuperAdmins: true), 'is_super_admin'));
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe(['is_super_admin' => [__('At least one active super admin must remain.')]]);

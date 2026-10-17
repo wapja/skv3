@@ -4,26 +4,34 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use App\Support\BladeDirectives;
+use App\Support\FluxProBranches;
 use Illuminate\Support\Facades\File;
 
 /**
  * §6.7 / RL-13: Pro-only Flux components may appear only in the true branch of `@if (Skv::hasFluxPro())`.
  * A tag is free when free Flux (or a project override) has its view, or when it is an icon; `flux:select`
- * with a Pro variant is Pro (DEC-25).
+ * with a Pro variant (`variant` or `:variant`, either quote) is Pro (DEC-25).
  *
  * Each Pro `@if` also needs a free `@else` that renders something and binds the same `wire:model` properties
  * as the Pro branch (names only, modifiers ignored). A feature without a free variant (§6.7: the ⌘K palette,
- * the sign-in trend) is marked with a `{{-- pro-only … --}}` comment right before its `@if` instead.
+ * the sign-in trend) is marked with a `{{-- pro-only … --}}` comment right before its `@if` (on the same line or
+ * the line above) instead.
  *
- * An `@else` / `@elseif` ends the Pro branch of its `@if`; `@elseif (Skv::hasFluxPro())` is not a supported
- * pattern, so the free branch is always the `@else`. Tags that span several lines are matched by their first
- * line only, so the `variant` attribute of a `flux:select` must sit on its opening line.
+ * The branches come from FluxProBranches::branches(), the stripper's own grammar (G5-09, G5-10): every block
+ * directive that can take an `@else` nests, Blade comments are no directives, and a tag is read as a whole, also
+ * when it spans several lines. An `@else` / `@elseif` ends the Pro branch of its `@if`; `@elseif (Skv::hasFluxPro())`
+ * is not a supported pattern, so the free branch is always the `@else`.
  *
- * @phpstan-type Frame array{pro: bool, else: bool, hasElse: bool, marked: bool, line: int, freeContent: bool, models: array{0: list<string>, 1: list<string>}}
+ * @phpstan-import-type ProBranch from FluxProBranches
  */
 final class FluxProLint
 {
-    private const string PRO_CONDITION = '/^@(if|elseif)\s*\(\s*\\\\?(App\\\\Support\\\\)?Skv::hasFluxPro\(\)\s*\)/';
+    private const string FLUX_TAG = '/<flux:[a-z0-9.\-]+(?:\s(?:[^>"\']|"[^"]*"|\'[^\']*\')*)?>?/i';
+
+    private const string PRO_VARIANT = '/\s:?variant\s*=\s*(["\'])(?:(?!\1).)*?\b(?:listbox|combobox|custom)\b/is';
+
+    private const string PRO_ONLY_MARKER = '/\{\{--\s*pro-only\b(?:(?!--\}\}).)*--\}\}[ \t]*(?:\R[ \t]*)?\z/s';
 
     private const string WIRE_MODEL = '/\bwire:model(?:\.[\w.-]+)?\s*=\s*"([^"]*)"/';
 
@@ -33,52 +41,29 @@ final class FluxProLint
     /** @return list<string> */
     public static function violations(string $blade): array
     {
-        $violations = [];
-        /** @var list<Frame> $stack */
-        $stack = []; // each open @if / @unless; only a Pro @if collects its branches
-        $marked = false; // a pro-only comment precedes the next @if
+        $scanned = BladeDirectives::blank($blade);
+        $branches = FluxProBranches::branches($blade);
+        $found = []; // [offset, message]
 
-        foreach (preg_split('/\R/', $blade) ?: [] as $index => $line) {
-            $number = $index + 1;
-            $cursor = 0;
+        preg_match_all(self::FLUX_TAG, $scanned, $tags, PREG_OFFSET_CAPTURE);
 
-            foreach (self::tokens($line) as [$token, $position]) {
-                $stack = self::withContent($stack, substr($line, $cursor, $position - $cursor));
-                $cursor = $position + strlen($token);
-
-                if (str_starts_with($token, '{{--')) {
-                    $marked = true;
-
-                    continue;
-                }
-
-                if (str_starts_with($token, '@')) {
-                    if (preg_match('/^@(if|unless)\b/', $token) === 1) {
-                        $pro = str_starts_with($token, '@if') && preg_match(self::PRO_CONDITION, $token) === 1;
-                        $stack[] = ['pro' => $pro, 'else' => false, 'hasElse' => false, 'marked' => $pro && $marked, 'line' => $number, 'freeContent' => false, 'models' => [[], []]];
-                        $marked = false;
-                    } elseif (preg_match('/^@(else|elseif)\b/', $token) === 1 && $stack !== []) {
-                        $last = array_key_last($stack);
-                        $stack[$last]['else'] = true;
-                        $stack[$last]['hasElse'] = $stack[$last]['hasElse'] || ! str_starts_with($token, '@elseif');
-                    } elseif (preg_match('/^@(endif|endunless)\b/', $token) === 1 && $stack !== []) {
-                        array_push($violations, ...self::branchViolations(array_pop($stack)));
-                    }
-
-                    continue;
-                }
-
-                $stack = self::withContent($stack, $token);
-
-                if (! self::insidePro($stack) && self::isPro($token)) {
-                    $violations[] = "line {$number}: {$token}";
-                }
+        foreach ($tags[0] as [$tag, $offset]) {
+            if (self::isPro($tag) && ! self::insideProBranch($branches, $offset)) {
+                $found[] = [$offset, 'line '.self::line($blade, $offset).': '.preg_replace('/\s+/', ' ', $tag)];
             }
-
-            $stack = self::withContent($stack, substr($line, $cursor));
         }
 
-        return $violations;
+        $content = self::withoutDirectives($blade, $scanned);
+
+        foreach ($branches as $branch) {
+            foreach (self::branchViolations($blade, $scanned, $content, $branch) as $violation) {
+                $found[] = [$branch['close'], $violation];
+            }
+        }
+
+        usort($found, fn (array $a, array $b): int => $a[0] <=> $b[0]);
+
+        return array_map(fn (array $violation): string => $violation[1], $found);
     }
 
     /** @return list<string> Free component names such as "sidebar.item" or "button". */
@@ -105,78 +90,56 @@ final class FluxProLint
         return self::$free = array_values(array_unique($names));
     }
 
-    /** @return list<array{string, int}> Pro-only markers, Blade directives and opening flux tags, with their byte offsets, in order. */
-    private static function tokens(string $line): array
-    {
-        preg_match_all('/\{\{--\s*pro-only\b.*?--\}\}|@(?:if|elseif|else|endif|unless|endunless)\b(?:\s*\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))?|<flux:[a-z0-9.\-]+(?:\s[^>]*)?>?/i', $line, $matches, PREG_OFFSET_CAPTURE);
-
-        return $matches[0];
-    }
-
     /**
-     * Records markup in the current branch of the innermost Pro `@if`: whether the free branch renders anything
-     * (Blade comments do not count) and which `wire:model` properties each branch binds.
-     *
-     * @param  list<Frame>  $stack
-     * @return list<Frame>
-     */
-    private static function withContent(array $stack, string $text): array
-    {
-        $innermost = array_key_last(array_filter($stack, fn (array $frame): bool => $frame['pro']));
-
-        if ($innermost === null || trim($text) === '') {
-            return $stack;
-        }
-
-        $branch = $stack[$innermost]['else'] ? 1 : 0;
-
-        if ($branch === 1 && trim((string) preg_replace('/\{\{--.*?--\}\}/', '', $text)) !== '') {
-            $stack[$innermost]['freeContent'] = true;
-        }
-
-        preg_match_all(self::WIRE_MODEL, $text, $models);
-
-        foreach ($models[1] as $model) {
-            $stack[$innermost]['models'][$branch][] = $model;
-        }
-
-        return $stack;
-    }
-
-    /**
-     * @param  Frame  $frame
+     * @param  ProBranch  $branch
      * @return list<string>
      */
-    private static function branchViolations(array $frame): array
+    private static function branchViolations(string $blade, string $scanned, string $content, array $branch): array
     {
-        if (! $frame['pro']) {
-            return [];
+        $at = 'line '.self::line($blade, $branch['if']).': @if (Skv::hasFluxPro())';
+
+        if (! $branch['hasElse'] || $branch['free'] === null) {
+            $marked = preg_match(self::PRO_ONLY_MARKER, substr($blade, 0, $branch['if'])) === 1;
+
+            return $marked ? [] : ["{$at} has no free @else; mark a feature without a free variant (§6.7) with {{-- pro-only --}}"];
         }
 
-        $at = "line {$frame['line']}: @if (Skv::hasFluxPro())";
+        $free = $branch['free'];
 
-        if (! $frame['hasElse']) {
-            return $frame['marked'] ? [] : ["{$at} has no free @else; mark a feature without a free variant (§6.7) with {{-- pro-only --}}"];
-        }
-
-        if (! $frame['freeContent']) {
+        if (trim(substr($content, $free, $branch['close'] - $free)) === '') {
             return ["{$at} has an empty free @else"];
         }
 
-        [$pro, $free] = array_map(function (array $models): string {
-            $models = array_values(array_unique($models));
-            sort($models);
+        [$pro, $freeModels] = array_map(function (string $text): string {
+            preg_match_all(self::WIRE_MODEL, $text, $models);
+            $names = array_values(array_unique($models[1]));
+            sort($names);
 
-            return implode(', ', $models);
-        }, $frame['models']);
+            return implode(', ', $names);
+        }, [substr($scanned, $branch['start'], $branch['end'] - $branch['start']), substr($scanned, $free, $branch['close'] - $free)]);
 
-        return $pro === $free ? [] : ["{$at} binds wire:model [{$pro}] in the Pro branch but [{$free}] in the free @else"];
+        return $pro === $freeModels ? [] : ["{$at} binds wire:model [{$pro}] in the Pro branch but [{$freeModels}] in the free @else"];
     }
 
-    /** @param  list<Frame>  $stack */
-    private static function insidePro(array $stack): bool
+    /** The scanned template with every block directive blanked too: what is left is markup. */
+    private static function withoutDirectives(string $blade, string $scanned): string
     {
-        return array_any($stack, fn (array $frame): bool => $frame['pro'] && ! $frame['else']);
+        foreach (BladeDirectives::tokens($blade) as $directive) {
+            $scanned = substr_replace($scanned, str_repeat(' ', strlen($directive['token'])), $directive['offset'], strlen($directive['token']));
+        }
+
+        return $scanned;
+    }
+
+    /** @param  list<ProBranch>  $branches */
+    private static function insideProBranch(array $branches, int $offset): bool
+    {
+        return array_any($branches, fn (array $branch): bool => $offset >= $branch['start'] && $offset < $branch['end']);
+    }
+
+    private static function line(string $blade, int $offset): int
+    {
+        return substr_count($blade, "\n", 0, $offset) + 1;
     }
 
     private static function isPro(string $tag): bool
@@ -188,7 +151,7 @@ final class FluxProLint
             return false;
         }
 
-        if ($name === 'select' && preg_match('/\bvariant\s*=\s*"(listbox|combobox|custom)"/', $tag) === 1) {
+        if ($name === 'select' && preg_match(self::PRO_VARIANT, $tag) === 1) {
             return true;
         }
 

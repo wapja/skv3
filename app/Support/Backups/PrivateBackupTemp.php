@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Backups;
 
 use App\Console\Commands\BackupRunCommand;
+use App\Support\ProcessAccount;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
@@ -25,6 +26,10 @@ use Symfony\Component\Finder\Finder;
  * alone, because whoever could once write the directory may have planted it to point at the application (lstat()).
  * backup:run then refuses to start (M22): BackupRunCommand prints MESSAGE as one line, and this listener throws it
  * should the package's command hold the name again, as RefuseUnencryptedBackups does.
+ *
+ * "This account" is the process's effective uid (ProcessAccount, CD-9). Without ext-posix it is unknown, so no
+ * directory is this account's and backup:run refuses. Root owns every system directory, so under euid 0 only a
+ * directory inside storage_path() counts as ours (L7b-69): a mistyped /var is never narrowed or emptied.
  */
 final readonly class PrivateBackupTemp
 {
@@ -33,7 +38,7 @@ final readonly class PrivateBackupTemp
 
     public const string MESSAGE = 'backup:run refuses to start: its temporary directory (backup.backup.temporary_directory) is a symbolic link, '
         .'a shared or the system temporary directory, or another account\'s, so the database dump would not be private. '
-        .'Choose a directory of this account.';
+        .'Choose a directory of this account; as root, one inside storage/. Without the PHP posix extension no directory counts as this account\'s.';
 
     /**
      * @param  ?string  $systemTemp  the system temporary directory; null for sys_get_temp_dir() (tests pass a sandbox)
@@ -158,12 +163,27 @@ final readonly class PrivateBackupTemp
         }
 
         $stat = lstat($directory);
-        $user = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
+        $user = app(ProcessAccount::class)->uid();
 
-        if ($stat === false || ($stat['mode'] & 0170000) !== 0040000 || $stat['uid'] !== $user) {
+        // CD-9: an unknown account owns nothing.
+        if ($user === null || $stat === false || ($stat['mode'] & 0170000) !== 0040000 || $stat['uid'] !== $user) {
+            return null;
+        }
+
+        // L7b-69: root owns /usr, /var and the rest, so as root only a directory inside storage_path() is ours.
+        if ($user === 0 && ! $this->insideStorage($directory)) {
             return null;
         }
 
         return $stat['mode'] & 07777;
+    }
+
+    /** Whether the directory, resolved, lies below storage_path(), resolved (a symlinked storage/ counts as itself). */
+    private function insideStorage(string $directory): bool
+    {
+        $real = realpath($directory);
+        $storage = realpath(storage_path());
+
+        return $real !== false && $storage !== false && str_starts_with($real, $storage.'/');
     }
 }

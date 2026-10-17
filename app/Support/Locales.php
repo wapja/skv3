@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Enums\Locale;
 use App\Models\User;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
@@ -13,7 +14,10 @@ use Illuminate\Support\Facades\Date;
 /** Which language a request is answered in (§4.11, RL-8). */
 final class Locales
 {
-    /** The signed-in user's language, else the guest's choice, else the browser's preference, else the default. */
+    /**
+     * The signed-in user's language (during an impersonation the one chosen in it, G2-05), else the guest's choice, else
+     * the browser's preference, else the default.
+     */
     public static function forRequest(Request $request): Locale
     {
         return self::resolve($request, $request->user());
@@ -27,6 +31,16 @@ final class Locales
     public static function forErrorPage(Request $request): Locale
     {
         return self::resolve($request, self::resolvedUser());
+    }
+
+    /**
+     * The language the next page for $user is answered in, or a guest's when nobody will be signed in (G3-01, G3-02):
+     * for a status flashed on a redirect after a sign-out or an impersonation swap, when the request's own language
+     * (applied by SetLocale, or not yet at all) belongs to someone else. Never asks the guard (RL-20, RK-I1).
+     */
+    public static function forNextPage(Request $request, ?User $user): Locale
+    {
+        return self::resolve($request, $user);
     }
 
     /** The web guard's user when something already resolved it, without resolving it here. */
@@ -47,7 +61,7 @@ final class Locales
     private static function resolve(Request $request, mixed $user): Locale
     {
         if ($user instanceof User) {
-            return $user->locale;
+            return Impersonation::localeFor($user);
         }
 
         if ($request->hasSession()) {

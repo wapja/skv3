@@ -18,10 +18,13 @@ final readonly class DetachedStepLauncher implements StepLauncher
 {
     /**
      * Outer: $1 php, $2 key, $3 result, $4 log, $5 exit, $6 pid; inner: $0 php, $1 key, $2 result, $3 log, $4 exit,
-     * $5 pid. The inner script starts with umask 077, so the redirects and `echo $? >` create the pid, log and exit
-     * files 0600 (g3-16).
+     * $5 pid. Only the kit's own files are private (g3-16, G6-06): under umask 077 the inner shell writes the pid file
+     * and creates the log, then puts the umask it inherited back, so the step (npm, composer, claude, boost) creates
+     * public/build, node_modules, vendor and .claude as it would in a terminal. The log's redirect truncates the 0600
+     * file it created. The exit file is created only once the step has ended, again under 077: the runner reads its
+     * existence as "the step exited" (WizardRunner::isRunning(), advanceLong()), so it is never created early.
      */
-    private const string SCRIPT = 'nohup sh -c \'umask 077; echo $$ > "$5"; "$0" artisan skv:run-step "$1" --no-interaction --result="$2" > "$3" 2>&1; echo $? > "$4"\' "$1" "$2" "$3" "$4" "$5" "$6" > /dev/null 2>&1 &';
+    private const string SCRIPT = 'nohup sh -c \'u=$(umask); umask 077; echo $$ > "$5"; : > "$3"; umask "$u"; "$0" artisan skv:run-step "$1" --no-interaction --result="$2" > "$3" 2>&1; rc=$?; umask 077; echo "$rc" > "$4"\' "$1" "$2" "$3" "$4" "$5" "$6" > /dev/null 2>&1 &';
 
     public function __construct(private Toolchain $toolchain, private ?string $php = null) {}
 

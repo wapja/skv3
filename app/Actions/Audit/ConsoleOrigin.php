@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Context;
 /**
  * Which Artisan command is running, for the audit log (CD-7, RL-9). Hidden context: never written to the logs,
  * carried into the jobs a command dispatches, and replaced per job by a queue worker, so a worker's jobs keep the
- * origin they were dispatched with. A nested Artisan::call() keeps the outer command.
+ * origin they were dispatched with. A nested Artisan::call() keeps the outer command. An Artisan::call() inside a
+ * routed web request (the setup wizard's migrate and db:seed) is never an origin: the request owns its entries and
+ * the jobs it dispatches, and a worker, which has no route, would otherwise tag them (G6-04).
  */
 final class ConsoleOrigin
 {
@@ -22,7 +24,7 @@ final class ConsoleOrigin
 
     public static function enter(?string $command): void
     {
-        if ($command === null || $command === '' || in_array($command, self::WORKERS, true) || self::command() !== null) {
+        if ($command === null || $command === '' || in_array($command, self::WORKERS, true) || self::command() !== null || request()->route() !== null) {
             return;
         }
 

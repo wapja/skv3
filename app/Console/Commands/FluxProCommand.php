@@ -10,9 +10,11 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 
 /**
  * Installs the optional Flux Pro layer (§6.7, RL-12): adds the composer.fluxui.dev repository and requires
@@ -20,11 +22,21 @@ use Illuminate\Support\Str;
  * stripped at compile time while Pro is missing (DEC-29). It marks composer.json with extra.skv.flux-pro first, so an
  * app that commits Pro on purpose skips the kit's committed-files test (CD-13); Composer's lock hash covers `extra`,
  * so the mark goes in before the require. It never writes credentials and never prints them.
+ *
+ * An install that does not finish undoes what it added to composer.json, the mark and the repository (L7b-72), and
+ * names the manual command for a key Composer would not remove. It reads first which of those keys composer.json
+ * already holds and undoes only the ones it added: a developer's own `repositories.flux-pro` or other `extra.skv`
+ * keys survive a failed install (an existing value it overwrote stays overwritten). Ctrl-C or SIGTERM is trapped while pcntl is loaded
+ * (L7b-81): Composer, in the same process group, reverts its own change and re-raises the signal, so Symfony throws
+ * ProcessSignaledException instead of returning a failed result; that and a timeout are caught and the same undo
+ * runs; no later step starts.
  */
 #[Description('Install Flux Pro with your Composer credentials (§6.7)')]
 #[Signature('skv:flux-pro')]
 final class FluxProCommand extends Command
 {
+    private bool $interrupted = false;
+
     public function handle(Toolchain $toolchain): int
     {
         if (Skv::hasFluxPro()) {
@@ -45,17 +57,58 @@ final class FluxProCommand extends Command
             return self::FAILURE;
         }
 
+        // Artisan keeps one instance of the command per process: a second run starts uninterrupted.
+        $this->interrupted = false;
+        $this->trap(fn (): array => [SIGINT, SIGTERM], function (): void {
+            $this->interrupted = true;
+        });
+
+        try {
+            // The outermost key each step would create, or null when composer.json holds it already.
+            $markKey = $this->absentKey($toolchain, $composer, ['extra.skv', 'extra.skv.flux-pro']);
+            $repositoryKey = $this->absentKey($toolchain, $composer, ['repositories.flux-pro']);
+        } catch (ProcessSignaledException|ProcessTimedOutException) {
+            $this->components->error(__('Composer could not install Flux Pro.'));
+
+            return self::FAILURE;
+        }
+
+        /** @var list<string> $added the composer.json keys the steps so far have written, undone in reverse */
+        $added = [];
+
         foreach ([
-            [$composer, 'config', 'extra.skv.flux-pro', 'true', '--json'],
-            [$composer, 'config', 'repositories.flux-pro', 'composer', 'https://composer.fluxui.dev'],
-            [$composer, 'require', 'livewire/flux-pro', '--no-interaction'],
-        ] as $command) {
-            $result = $this->process($toolchain, 900)->run($command);
+            [$markKey, [$composer, 'config', 'extra.skv.flux-pro', 'true', '--json']],
+            [$repositoryKey, [$composer, 'config', 'repositories.flux-pro', 'composer', 'https://composer.fluxui.dev']],
+            [null, [$composer, 'require', 'livewire/flux-pro', '--no-interaction']],
+        ] as [$key, $command]) {
+            if ($this->interrupted) {
+                $this->undo($toolchain, $composer, $added);
+                $this->components->error(__('Flux Pro was not installed: the command was interrupted.'));
+
+                return self::FAILURE;
+            }
+
+            if ($key !== null) {
+                $added[] = $key;
+            }
+
+            try {
+                $result = $this->process($toolchain, 900)->run($command);
+            } catch (ProcessSignaledException|ProcessTimedOutException $exception) {
+                // Ctrl-C: Composer re-raises the signal, so Symfony throws instead of returning a failed result; a
+                // timeout throws too (L7b-72, L7b-81).
+                $this->undo($toolchain, $composer, $added);
+                $this->components->error($this->interrupted || $exception instanceof ProcessSignaledException
+                    ? __('Flux Pro was not installed: the command was interrupted.')
+                    : __('Composer could not install Flux Pro.'));
+
+                return self::FAILURE;
+            }
 
             if ($result->failed()) {
                 // An install that did not finish must not mark the app as committing Flux Pro (CD-13).
-                $this->process($toolchain, 60)->run([$composer, 'config', '--unset', 'extra.skv']);
-                $this->components->error($this->lastLine($result));
+                $this->undo($toolchain, $composer, $added);
+                $this->components->error($this->interrupted ? __('Flux Pro was not installed: the command was interrupted.') : $this->lastLine($result));
 
                 return self::FAILURE;
             }
@@ -65,6 +118,45 @@ final class FluxProCommand extends Command
         $this->components->info(__('Flux Pro installed. Its components are available after this step; compiled views were cleared.'));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Removes the composer.json keys an unfinished install added, newest first (CD-13, L7b-72). A key Composer does not
+     * remove is named with the command that does, so the app never keeps the mark without Flux Pro unnoticed.
+     *
+     * @param  list<string>  $keys
+     */
+    private function undo(Toolchain $toolchain, string $composer, array $keys): void
+    {
+        foreach (array_reverse($keys) as $key) {
+            try {
+                $failed = $this->process($toolchain, 60)->run([$composer, 'config', '--unset', $key])->failed();
+            } catch (ProcessSignaledException|ProcessTimedOutException) {
+                // A second Ctrl-C or a hung Composer: the key may still be there, so the manual command is named.
+                $failed = true;
+            }
+
+            if ($failed) {
+                $this->components->warn(__('Could not remove :key from composer.json. Run: composer config --unset :key', ['key' => $key]));
+            }
+        }
+    }
+
+    /**
+     * The first of $keys, outermost first, that composer.json does not hold (`composer config <key>` fails for a key it
+     * does not define), or null when it holds them all: the key an undo may remove without touching anything older.
+     *
+     * @param  non-empty-list<string>  $keys
+     */
+    private function absentKey(Toolchain $toolchain, string $composer, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if ($this->process($toolchain, 60)->run([$composer, 'config', $key])->failed()) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /** The last line Composer printed (it prints no credentials), or a generic message when it printed nothing. */

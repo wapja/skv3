@@ -105,6 +105,30 @@ it('decides on the stored row, not on a stale model (FU2-5)', function () use ($
         ->and(recordedActivity(ActivityEvent::UserDeleted))->toBeEmpty();
 });
 
+it('decides again on the locked row that an organisation admin may still disable or delete the target (FU2-5)', function (string $change, string $action): void {
+    // The policy reads the model, which a promotion or a move that committed while this write waited for the
+    // organisation lock leaves stale; without the re-check an organisation admin disabled or deleted a super admin.
+    $organisation = Organisation::factory()->create();
+    $target = User::factory()->for($organisation)->create();
+    // Another active super admin, so only the re-check can refuse, never the lock-out guard (W2).
+    User::factory()->superAdmin()->create();
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(match ($change) {
+        'promoted' => ['is_super_admin' => true],
+        default => ['organisation_id' => Organisation::factory()->create()->id],
+    });
+    $before = (array) DB::table('users')->where('id', $target->id)->first();
+
+    expect(fn () => match ($action) {
+        'disable' => app(UpdateUserStatus::class)->handle($admin, $target, UserStatus::Disabled),
+        default => app(DeleteUser::class)->handle($admin, $target),
+    })->toThrow(AuthorizationException::class);
+
+    expect((array) DB::table('users')->where('id', $target->id)->first())->toBe($before)
+        ->and(recordedActivity(ActivityEvent::UserStatusChanged))->toBeEmpty()
+        ->and(recordedActivity(ActivityEvent::UserDeleted))->toBeEmpty();
+})->with(['promoted', 'moved'])->with(['disable', 'delete']);
+
 it('refuses to disable or delete yourself (W2, W12)', function () use ($adminOf): void {
     $organisation = Organisation::factory()->create();
     // Another active super admin and organisation admin exist, so only the policy can refuse.

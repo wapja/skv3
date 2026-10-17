@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\BackupDestination\BackupDestination;
 use Spatie\Backup\Config\Config;
+use Tests\Fixtures\PgSslModeSnapshot;
 
 /** The pg_dump directory when it can dump the test server, else null (an older client refuses a newer server). */
 $usablePgDump = function (): ?string {
@@ -37,6 +38,15 @@ $usablePgDump = function (): ?string {
 
     return isset($client[1], $server[1]) && (int) $client[1] >= (int) $server[1] ? dirname($path) : null;
 };
+
+beforeEach(function (): void {
+    // L7b-68: backup:run exports the source's sslmode as PGSSLMODE; put the original back afterwards.
+    $this->pgSslMode = PgSslModeSnapshot::takeAndClear();
+});
+
+afterEach(function (): void {
+    $this->pgSslMode->restore();
+});
 
 it('backs up the database into an encrypted archive on the backups disk (§4.9)', function () use ($usablePgDump): void {
     Storage::fake('backups');

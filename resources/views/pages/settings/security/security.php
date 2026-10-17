@@ -7,6 +7,7 @@ use App\Concerns\ConfirmsPasswords;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\ActivityEvent;
+use App\Support\RateLimits\UserActionLimit;
 use Flux\Flux;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
@@ -77,11 +78,14 @@ new #[Title('Security settings')] class extends Component
     }
 
     /**
-     * Update the password for the currently authenticated user.
+     * Update the password for the currently authenticated user. Every attempt counts against the user's limit
+     * before the current password is checked (CD-3), so the form cannot be used to guess it.
      */
     public function updatePassword(RecordActivity $recordActivity): void
     {
         try {
+            UserActionLimit::passwordUpdate()->attempt($this->currentUser(), 'current_password');
+
             $validated = $this->validate([
                 'current_password' => $this->currentPasswordRules(),
                 'password' => $this->passwordRules(),
@@ -109,6 +113,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function loadPasskeys(): void
     {
+        $this->ensurePasskeysEnabled();
+
         $this->passkeys = $this->currentUser()->passkeys()
             ->select(['id', 'name', 'credential', 'created_at', 'last_used_at'])
             ->latest()
@@ -129,6 +135,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function confirmDelete(int $passkeyId): void
     {
+        $this->ensurePasskeysEnabled();
+
         $passkey = $this->currentUser()->passkeys()->findOrFail($passkeyId);
 
         $this->deletingPasskeyId = $passkey->id;
@@ -141,6 +149,8 @@ new #[Title('Security settings')] class extends Component
      */
     public function deletePasskey(DeletePasskey $deletePasskey): void
     {
+        $this->ensurePasskeysEnabled();
+
         if ($this->passwordConfirmationRequired()) {
             return;
         }
@@ -188,5 +198,14 @@ new #[Title('Security settings')] class extends Component
         $disableTwoFactorAuthentication($this->currentUser());
 
         $this->twoFactorEnabled = false;
+    }
+
+    /**
+     * §6.8 / G2-01: with the passkeys module off, no passkey action runs, whatever a Livewire update calls. Read
+     * on every request, not from the snapshot: the module may have been turned off since the page loaded.
+     */
+    private function ensurePasskeysEnabled(): void
+    {
+        abort_unless(Features::canManagePasskeys(), 404);
     }
 };

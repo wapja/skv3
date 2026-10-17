@@ -89,9 +89,6 @@ final readonly class InviteUser
             ],
         )->validate();
 
-        // Reset tokens are keyed by address: one issued for this address belongs to whoever held it before.
-        DB::table('password_reset_tokens')->where('email', $email)->delete();
-
         $invitee = new User;
         $invitee->forceFill([
             'organisation_id' => $organisation->id,
@@ -102,6 +99,10 @@ final readonly class InviteUser
             'email' => $email,
             'password' => Str::password(32),
         ])->save();
+
+        // Reset tokens are keyed by address: one issued for this address belongs to whoever held it before. Deleted
+        // after the users row is written, as every write deletes reset tokens after its users rows (CD-5).
+        DB::table('password_reset_tokens')->where('email', $email)->delete();
 
         $this->updateUserRoles->handle($actor, $invitee, $roleIds);
 

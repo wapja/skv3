@@ -39,8 +39,8 @@
                 {{ __('Hide recovery codes') }}
             </flux:button>
 
-            @if (filled($recoveryCodes))
-                <div x-show="showRecoveryCodes" class="flex flex-wrap gap-2">
+            <div x-show="showRecoveryCodes" class="flex flex-wrap gap-2">
+                @if (filled($recoveryCodes))
                     <flux:button
                         icon="clipboard"
                         variant="filled"
@@ -55,12 +55,13 @@
                     <flux:button icon="arrow-down-tray" variant="filled" wire:click="downloadRecoveryCodes">
                         {{ __('Download') }}
                     </flux:button>
+                @endif
 
-                    <flux:modal.trigger name="confirm-regenerate-recovery-codes">
-                        <flux:button icon="arrow-path" variant="filled">{{ __('Regenerate codes') }}</flux:button>
-                    </flux:modal.trigger>
-                </div>
-            @endif
+                {{-- G2-07: also when the stored codes cannot be read; this component renders only while 2FA is on. --}}
+                <flux:modal.trigger name="confirm-regenerate-recovery-codes">
+                    <flux:button icon="arrow-path" variant="filled">{{ __('Regenerate codes') }}</flux:button>
+                </flux:modal.trigger>
+            </div>
         </div>
 
         <div

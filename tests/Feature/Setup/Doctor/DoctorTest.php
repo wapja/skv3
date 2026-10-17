@@ -66,6 +66,8 @@ it('skips the checks that do not apply without Herd or a marker (§5.4)', functi
 });
 
 it('reports drift without repairing it, and repairs it with --fix (DEC-26, DEC-28, FU2-13)', function (): void {
+    // Without public/storage, --fix also runs the storage-link repair (a safe repair, §5.4).
+    unlink($this->sandbox->path('public/storage'));
     $badge = RoleModel::query()->whereNull('team_id')->where('name', Role::SuperAdmin->value)->firstOrFail();
     PermissionsTeam::run(null, fn () => $badge->givePermissionTo(Permission::UsersView->value));
 
@@ -77,7 +79,6 @@ it('reports drift without repairing it, and repairs it with --fix (DEC-26, DEC-2
         ->and($stillDrifting)->toBe(1)
         ->and($after['super-admin-badges']->status)->toBe(CheckStatus::Pass)
         ->and($badge->fresh()?->permissions()->count())->toBe(0);
-    // The sandbox has no public/storage, so --fix runs the storage-link repair (a safe repair, §5.4).
     Process::assertRan(fn (PendingProcess $process): bool => str_contains(implode(' ', (array) $process->command), 'artisan storage:link'));
 });
 

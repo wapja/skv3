@@ -15,8 +15,9 @@ use Spatie\Activitylog\Actions\LogActivityAction;
 
 /**
  * Enriches every entry before it is saved (§4.8): the organisation tag (RL-5); for a routed web request only,
- * the IP address and user agent; outside one, while an Artisan command runs, properties.via = console and the
- * command's name (CD-7, ConsoleOrigin). Registered as activitylog.actions.log_activity.
+ * the IP address and the user agent (valid UTF-8, at most 500 characters, G4-03); outside one, while an Artisan
+ * command runs, properties.via = console and the command's name (CD-7, ConsoleOrigin). Registered as
+ * activitylog.actions.log_activity.
  *
  * Host mode (authentication, security, impersonation): the bound tenant, else central. Subject mode
  * (everything else): the explicit organisation, then the subject's, then the bound tenant, else central.
@@ -34,7 +35,7 @@ final class LogActivity extends LogActivityAction
         if ($request->route() !== null) {
             $activity->forceFill([
                 'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
+                'user_agent' => $this->boundedUserAgent($request->userAgent()),
             ]);
         }
 
@@ -46,6 +47,17 @@ final class LogActivity extends LogActivityAction
         }
 
         $this->rewriteImpersonatedCauser($activity);
+    }
+
+    /**
+     * The header as Laravel's database session handler keeps it (G4-03): valid UTF-8, invalid bytes replaced by "?",
+     * at most 500 characters, and without NUL bytes, which are valid UTF-8 but which PostgreSQL's text type cannot
+     * hold (pdo_pgsql cut the value at the first one). A failed sign-in writes an entry for any visitor, so the raw
+     * header must neither fill the log nor make PostgreSQL refuse or truncate the insert.
+     */
+    private function boundedUserAgent(?string $userAgent): ?string
+    {
+        return $userAgent === null ? null : mb_substr(str_replace("\0", '', mb_scrub($userAgent, 'UTF-8')), 0, 500, 'UTF-8');
     }
 
     private function organisationIdFor(Model $activity): ?int

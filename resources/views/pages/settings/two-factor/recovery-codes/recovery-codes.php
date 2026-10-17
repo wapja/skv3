@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 use App\Concerns\ConfirmsPasswords;
 use App\Concerns\ResolvesCurrentUser;
+use App\Models\User;
 use Flux\Flux;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
+use Laravel\Fortify\Fortify;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -66,7 +69,16 @@ new class extends Component
         }
 
         // The stored codes, not this page's snapshot; the page then shows the same codes it downloads.
-        $this->recoveryCodes = array_values(array_filter($user->recoveryCodes(), is_string(...)));
+        $stored = $this->storedRecoveryCodes($user);
+
+        if ($stored === null) {
+            $this->recoveryCodes = [];
+            $this->addError('recoveryCodes', __('Failed to load recovery codes'));
+
+            return null;
+        }
+
+        $this->recoveryCodes = $stored;
         $codes = implode(PHP_EOL, $this->recoveryCodes).PHP_EOL;
 
         return response()->streamDownload(function () use ($codes): void {
@@ -81,14 +93,35 @@ new class extends Component
     {
         $user = $this->currentUser();
 
-        if ($user->hasEnabledTwoFactorAuthentication() && $user->two_factor_recovery_codes) {
-            try {
-                $this->recoveryCodes = json_decode(decrypt($user->two_factor_recovery_codes), true);
-            } catch (Exception) {
-                $this->addError('recoveryCodes', __('Failed to load recovery codes'));
-
-                $this->recoveryCodes = [];
-            }
+        if (! $user->hasEnabledTwoFactorAuthentication() || ! $user->two_factor_recovery_codes) {
+            return;
         }
+
+        $stored = $this->storedRecoveryCodes($user);
+
+        if ($stored === null) {
+            $this->addError('recoveryCodes', __('Failed to load recovery codes'));
+        }
+
+        $this->recoveryCodes = $stored ?? [];
+    }
+
+    /**
+     * The stored codes, or null when they cannot be read (G2-07): encrypted with another APP_KEY that
+     * APP_PREVIOUS_KEYS does not list, or not a JSON list. Decrypted like Fortify's recoveryCodes().
+     *
+     * @return list<string>|null
+     */
+    private function storedRecoveryCodes(User $user): ?array
+    {
+        try {
+            $decrypted = Fortify::currentEncrypter()->decrypt((string) $user->two_factor_recovery_codes);
+        } catch (DecryptException) {
+            return null;
+        }
+
+        $codes = is_string($decrypted) ? json_decode($decrypted, true) : null;
+
+        return is_array($codes) ? array_values(array_filter($codes, is_string(...))) : null;
     }
 };

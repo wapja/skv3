@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A collapsible sidebar with three groups (Overzicht, Beheer, Systeem), driven by one navigation definition that hides what you may not open.
 - One user menu with settings, language, appearance and log out.
 - Dutch and English on every screen and page title: your language is saved in your profile, guests follow their browser and get a language toggle on the sign-in pages.
-- Friendly, self-contained error pages (403, 404, 419, 429, 500, 503) in the visitor's language, and a clear page for an invitation link that is no longer valid.
+- Friendly, self-contained error pages (401, 402, 403, 404, 419, 429, 500, 503, and one for every other 4xx and 5xx status, such as 405 when a POST-only address is opened or 502 from a proxy) in the visitor's language, and a clear page for an invitation link that is no longer valid.
 - A dashboard with your organisation and roles, counts for users, pending invitations and organisations, recent activity and a getting-started checklist for administrators.
 - Optional passkeys module (`MODULE_PASSKEYS`): when it is off, passkey routes, buttons and the settings section are gone.
 - An optional Flux Pro layer: with `livewire/flux-pro` installed you get a listbox for roles, tabs, date pickers, a ⌘K command palette and a sign-in chart; without it everything works on free Flux.
@@ -55,6 +55,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - An hourly clean-up (`backup-temp-cleanup`, at :15, also while the backups module is off) removes the files older than six hours that a killed backup left in the package's working directory (`storage/app/backup-temp/temp`); `backup:run` now keeps the temporary directory private (mode 0700), and neither follows a symbolic link; `backup:run` refuses to start with one error line when the directory cannot be private (a symbolic link, a shared or the system temporary directory, or another account's).
 - `DB_CONNECT_TIMEOUT` (5 seconds, at least 1, because 0 waits forever) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
+- Per-user limits on sending email-change links (3 per 10 minutes), password changes and two-factor confirmations (5 per minute, every attempt), invitations and reminders (10 per minute), and on the two-factor and passkey management routes (10 per minute); an invitation is sent again at most once per 10 minutes.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
@@ -70,11 +71,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - Demo data runs only in the `local` and `testing` environments; elsewhere `skv:install` refuses `start_with=demo` before anything is written.
 - The demo accounts use the app's default language.
 - `skv:create-organisation --locale` defaults to the app's default language instead of `nl`.
-- The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.0/8` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `X-Original-Host` or `Forwarded` header, check the pinned host on every request, start a new session when the token is accepted, and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
+- The setup wizard and the Herd stage answer only requests from this machine (`127.0.0.0/8` or `::1`) without an `X-Forwarded-*`, `X-Expose-*`, `CF-*`, `X-Original-Host`, `Forwarded`, `Via`, `X-Real-IP` or `True-Client-IP` header, check the pinned host on every request, start a new session when the token is accepted (nothing of an earlier session carries over, and its file is deleted), and send `Referrer-Policy: no-referrer` on the Herd-stage pages.
 - Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
 - The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
-- After setup, a super admin who confirmed two-factor sign-in is sent to the login page instead of signed in with the single-use link.
-- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
+- After setup, a super admin who confirmed two-factor sign-in is sent to the login page of the admin host instead of signed in with the single-use link.
+- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>`, `herd isolate 8.4 --site=<name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
 - The wizard no longer adds the demo data by default when a super admin already exists, as `skv:install` already refused.
 - `skv:create-super-admin --password-stdin` refuses to read a password from a terminal, where it would echo; pipe it in.
 - A `HEALTH_CHECK_KEY` shorter than 32 characters counts as no key: `/health-check` answers 403, the doctor's `health-check-key` row fails, and `skv:doctor --fix` replaces it with a random 40-character key; setup and the production `skv:bootstrap` replace it too.
@@ -85,6 +86,20 @@ All notable changes to this project are documented here. The format follows [Kee
 - The setup's super-admin password follows the app's password rules (`Password::default()`).
 - The Dutch copy says *installatie* and *installatietoken* instead of *setup* and *setup-token*, and the doctor is *Diagnose*, no longer the same word as a check (*Controle*).
 - The answers examples keep the answers file outside the project, and `/answers.json` is git-ignored.
+- Links the kit builds for another request (password reset, email change, invitation and handoff links) and the passkey origin take their scheme and port from APP_URL, never from the request's port or forwarded headers.
+- A failed passkey sign-in is recorded in the audit log like a failed password sign-in (*Sign-in failed*, with `method: passkey`); it names the account only when the passkey belongs to a member of the host's organisation, or on the central hosts.
+- A passkey whose signature counter did not increase (a sign of a cloned authenticator) is refused as before and now also writes one warning to the log.
+- While you impersonate someone, a language or appearance you pick lasts until the impersonation ends and never changes their account.
+- While you impersonate someone, their profile page refuses an email change, so no confirmation link goes out and their own pending link keeps working.
+- An email-change link stops working once the account's address is no longer the one the change was requested from, so it never overwrites an administrator's correction made in the meantime.
+- The language switch in the user menu reloads the page you are on, query string and filters included.
+- `config/app.php` defaults `APP_LOCALE` to `nl`, the same default as the kit's own language setting.
+- `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`, also when Composer's install hook (`post-root-package-install`, `composer setup`) creates `.env`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.
+- `/health-check` keeps its per-key counter under an HMAC of the key with `APP_KEY` instead of a plain SHA-256, and while the ops store is broken it logs one warning line instead of an exception with a stack trace on every request.
+- The last-backup health check names why backups would not be encrypted (no `BACKUP_ARCHIVE_PASSWORD`, encryption switched off in `config/backup.php`, or a PHP zip without AES-256), each with its own fix.
+- Without the PHP posix extension the backups trust no directory as this account's: `backup:run` refuses to start, Herd's `pg_dump` counts only when root owns it, and the doctor's `pg-dump` row says why. Running as root, `backup:run` accepts only a temporary directory inside `storage/`.
+- Every environment except `local` and `testing` uses the strict password rule (12 characters, mixed case, letters, numbers, symbols, not in a known breach), so a staging install's super admin gets it too.
+- `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout. It removes only the keys it added, so your own `repositories.flux-pro` entry or other `extra.skv` keys stay.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -132,6 +147,37 @@ All notable changes to this project are documented here. The format follows [Kee
 - The System page no longer answers 500 when the ops store or a backup disk fails, no longer needs ext-intl for its sizes, no longer boots the console kernel or looks up the PHP binary on every render, and no longer takes the backup lock to show whether a job is on.
 - The backups' source connection defaults to the app's default database (`sqlite`), like `config/database.php`.
 - The test suite flushes Livewire's per-request state before every test, so an asset one test's page registers no longer shows up in the next test's page.
+- A successful sign-in, also with a second factor or a passkey, clears the failed attempts of that address from that IP address.
+- An array sent as the address to the sign-in, reset-link and reset routes, as the token to the reset route, or as the credential id to the passkey sign-in, answers with a validation error instead of a server error.
+- Failed passkey sign-ins are limited per IP address and failed passkey confirmations per user, whatever credential id the client sends.
+- A throttled sign-in returns to the login page, never to the page the Referer names.
+- With the passkeys module off, the security page refuses its passkey actions (404) even when a Livewire request calls them directly.
+- Recovery codes that can no longer be decrypted (after an `APP_KEY` change without `APP_PREVIOUS_KEYS`) show "Failed to load recovery codes" instead of a server error, on the security page and on download, and "Regenerate codes" stays available to replace them.
+- A failed passkey sign-in never names a super admin in an organisation's audit log, also not one promoted from that organisation, and a form post with a malformed credential id no longer answers with a server error.
+- The language toggle goes back only to a page on the same host; a `Referer` from another site or another organisation's address leads to the home page instead.
+- The message after you are signed out on an address you may not use, after an impersonation ends by itself and after *Stop impersonating* is worded in the language of the page that shows it, no longer in the server's default or the impersonated user's language.
+- The email-change mails (the confirmation link and the notice to the old address) and the notice after an administrator changed your address are written in the account's language, also when a queue worker sends them; the email-change mails are queued only once the surrounding transaction commits.
+- Changing the language on the profile page shows its confirmation after the reload, in the new language.
+- *Try again* on the 429, 500 and 503 pages keeps the address's query string, reloads the page behind Livewire's error dialog, and after a refused form post goes back to the page you came from instead of opening an address that only accepts POST. *Back* on the 403 page only leads to a page on the same host.
+- *Reload the page* on the 419 page goes back to the form's page after an expired form post, instead of posting the same expired token again; *Try again* and *Go to the home page* link within the current origin.
+- Administrative changes lock their rows in one order (organisation, roles, users, then the rest), so concurrent changes in one organisation wait for each other instead of deadlocking on PostgreSQL. Accepting an invitation while its organisation is archived, disabling or deleting a user during an archive, and changing roles while a role is deleted no longer deadlock. Demoting a super admin or restoring a user while their organisation is archived is refused instead of slipping through.
+- A pending invitee keeps the roles they were invited with, also after their only role was deleted.
+- Saving a user's name, address and status is all or nothing: a refused status change no longer saves the new name or address, and an address change that fails keeps a pending self-service change link.
+- A password reset of a super admin who was promoted from an organisation is no longer recorded in that organisation's audit log.
+- The audit log keeps at most 500 characters of a visitor's user agent, as valid UTF-8 without NUL bytes, so an unusual browser header can no longer break the entry of a failed sign-in.
+- A queued invitation mail or reminder whose invitation was cancelled, accepted or has expired before the queue worker ran is dropped instead of ending as a failed job.
+- Jobs dispatched while a web request runs an Artisan command itself (the setup wizard's migrations and seeders) no longer write *Command line* entries in the audit log.
+- The sign-in pages show the organisation's name under the mark on its own address, and the platform name on the central addresses; until now the name was there for screen readers only.
+- On a central address, the dashboard's recent activity also lists the entries of archived organisations, as the audit log does.
+- Without Flux Pro, a Pro branch that holds `@auth`, `@can`, `@isset`, `@error` or another block with its own `@else` no longer breaks the page; the Flux Pro check reads the views the same way, including tags over several lines, a bound or single-quoted `variant`, Blade comments and a `pro-only` marker that is not right before its `@if`.
+- Under Herd, `/` on a host the setup refuses asks `herd tld` once instead of twice, so a Herd that does not answer delays it by at most 5 seconds.
+- A Herd step that could not start, or failed, on a site Herd serves with an older PHP now leaves `herd isolate 8.4 --site=<name>` to run instead of ending as skipped, and the Herd stage no longer reports such a site as done.
+- The setup's background steps (frontend build, Claude) no longer create `public/build`, `node_modules`, `vendor` or `.claude` readable by their owner only; only the steps' own log, exit and pid files stay private.
+- Setup creates the `public/storage` link, so the doctor's `storage-link` row no longer warns after a fresh install.
+- Backup archives on the local `backups` disk are readable by this account only (0600, folders 0700).
+- `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's. All of a run's dumps share one `PGSSLMODE`, so when the sources' modes differ the strictest one applies to every source (`verify-full` before `verify-ca`, `require`, `prefer`, `allow`, `disable`), and a mode PostgreSQL does not know makes `pg_dump` refuse.
+- `skv:create-super-admin` refuses a password hash given in place of the password, which the `hashed` cast would have stored as it was.
+- Accepting an invitation, resetting a password and changing it on the security page refuse a password hash as the new password too, instead of storing it as the account's hash or answering a server error.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

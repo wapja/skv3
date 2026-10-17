@@ -4,5 +4,5 @@
 @section('title', __('Something went wrong'))
 @section('message', __('An unexpected error occurred. Try again in a moment.'))
 @section('actions')
-    <a href="{{ url()->current() }}">{{ __('Try again') }}</a>
+    @include('errors.partials.try-again')
 @endsection

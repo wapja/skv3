@@ -109,7 +109,7 @@ it('never hands the token to a proxied or tunnelled request (§5.3.4, DEC-24)', 
     useSetupWizard();
 
     $this->get('/', [$header => 'x'])->assertRedirect(route('login'));
-})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain']);
+})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain', 'Via', 'X-Real-IP', 'True-Client-IP', 'CF-Connecting-IP', 'CF-Ray']);
 
 it('leaves / alone outside setup mode (§6.2)', function (): void {
     $this->get('/')->assertRedirect(route('login'));
@@ -201,4 +201,13 @@ it('shows on / that Herd did not answer while herd tld fails (§5.3.4, g3-28)', 
     $this->get('/')->assertStatus(409)
         ->assertSee(__('Herd did not answer. Reload the page in a moment.'))
         ->assertDontSee((string) new SetupToken($context->basePath)->value());
+});
+
+it('resolves the host once when / refuses it under Herd, so a hung herd tld stalls / for one timeout (G6-07)', function () use ($withHerd): void {
+    $context = useSetupWizard();
+    $withHerd($context);
+
+    $this->get('http://evil.test/')->assertRedirect('http://'.Str::lower($context->folderName()).'.test/');
+
+    Process::assertRanTimes(fn ($process): bool => array_slice((array) $process->command, -1) === ['tld'], 1);
 });

@@ -142,7 +142,7 @@ final readonly class HerdSiteStep implements SetupStep
                 $linked = true;
             }
 
-            $pending = 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
+            $pending = $this->isolateCommand($name);
 
             if (! $this->runsSupportedPhp($context, $herd)) {
                 $this->herd($context, $herd, ['isolate', self::PHP_VERSION, '--site='.$name]);
@@ -173,10 +173,11 @@ final readonly class HerdSiteStep implements SetupStep
     }
 
     /**
-     * The result run() gives when nothing is left to do: Herd already serves the project and, when HTTPS was chosen,
-     * `herd secured` lists it (secured by hand, or by a detached step that did not live to write its result). A
-     * secured site gets its APP_URL and marker like run(). Null when Herd confirms less, or a listing fails. Only Herd's
-     * read-only listings run, never link, isolate or secure, so a web request may call it (§5.3.4, RL-6, DEC-23).
+     * The result run() gives when nothing is left to do: Herd already serves the project on PHP 8.4 or newer and, when
+     * HTTPS was chosen, `herd secured` lists it (secured by hand, or by a detached step that did not live to write its
+     * result). A secured site gets its APP_URL and marker like run(). Null when Herd confirms less (L7b-16: also a site
+     * still on an older PHP), or a listing fails. Only Herd's read-only listings and the PHP version probe run, never
+     * link, isolate or secure, so a web request may call it (§5.3.4, RL-6, DEC-23).
      */
     public function confirm(SetupContext $context): ?StepResult
     {
@@ -187,7 +188,7 @@ final readonly class HerdSiteStep implements SetupStep
         }
 
         try {
-            if ($this->siteState($context, $herd) !== self::SERVED) {
+            if ($this->siteState($context, $herd) !== self::SERVED || ! $this->runsSupportedPhp($context, $herd)) {
                 return null;
             }
 
@@ -206,10 +207,12 @@ final readonly class HerdSiteStep implements SetupStep
     }
 
     /**
-     * The one Herd command the user still has to run for this project (RL-7): `herd link` while Herd does not serve
-     * it, `herd secure` when HTTPS was chosen, and null without Herd or with nothing left to do. A listing that fails
-     * counts as unknown, so the command HTTPS asks for is named. Only Herd's read-only listings run, so the wizard,
-     * the Herd stage and skv:run-step may call it from a web request (DEC-23).
+     * The one Herd command the user still has to run for this project (RL-7), in run()'s order: `herd link` while Herd
+     * does not serve it, `herd isolate 8.4 --site=…` while the site runs an older PHP (L7b-16), `herd secure` when
+     * HTTPS was chosen, and null without Herd or with nothing left to do, so a caller that finds none may settle the
+     * step as skipped (L7b-18). A site listing that fails counts as unknown, so the command HTTPS asks for is named; a
+     * PHP check that fails names `herd isolate`, which is harmless to repeat. Only Herd's read-only listings and the
+     * PHP version probe run, so the wizard, the Herd stage and skv:run-step may call it from a web request (DEC-23).
      */
     public function manualCommand(SetupContext $context): ?string
     {
@@ -219,19 +222,30 @@ final readonly class HerdSiteStep implements SetupStep
             return null;
         }
 
-        $name = ShellArgument::quote($context->folderName());
+        $name = $context->folderName();
+        $quoted = ShellArgument::quote($name);
 
         try {
             $served = $this->siteState($context, $herd) === self::SERVED;
         } catch (Throwable) {
-            return $context->answers->https ? 'herd secure '.$name : 'herd link '.$name;
+            return $context->answers->https ? 'herd secure '.$quoted : 'herd link '.$quoted;
         }
 
         if (! $served) {
-            return 'herd link '.$name;
+            return 'herd link '.$quoted;
         }
 
-        return $context->answers->https ? 'herd secure '.$name : null;
+        try {
+            $supported = $this->runsSupportedPhp($context, $herd);
+        } catch (Throwable) {
+            $supported = false;
+        }
+
+        if (! $supported) {
+            return $this->isolateCommand($name);
+        }
+
+        return $context->answers->https ? 'herd secure '.$quoted : null;
     }
 
     /**
@@ -405,5 +419,11 @@ final readonly class HerdSiteStep implements SetupStep
             ->env($this->toolchain->environment())
             ->timeout(self::TIMEOUT)
             ->run([$herd, ...$arguments]);
+    }
+
+    /** The `herd isolate` command the step prints for a site that runs an older PHP, built in one place. */
+    private function isolateCommand(string $name): string
+    {
+        return 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
     }
 }
