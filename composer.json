@@ -5,9 +5,18 @@
     "description": "An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, invitations, roles and permissions, impersonation, audit logging and a Flux UI, set up from Herd in minutes.",
     "keywords": [
         "laravel",
-        "framework"
+        "starter-kit",
+        "multi-tenant",
+        "livewire",
+        "flux",
+        "saas"
     ],
+    "homepage": "https://github.com/frankcornet/skv3",
     "license": "MIT",
+    "support": {
+        "issues": "https://github.com/frankcornet/skv3/issues",
+        "source": "https://github.com/frankcornet/skv3"
+    },
     "require": {
         "php": "^8.4",
         "intervention/image": "^4",
