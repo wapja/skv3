@@ -8,6 +8,7 @@ use App\Concerns\ProfileValidationRules;
 use App\Models\User;
 use App\Notifications\ConfirmEmailChange;
 use App\Notifications\EmailChangeRequested;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
@@ -19,7 +20,9 @@ use Illuminate\Validation\ValidationException;
 /**
  * Starts an email change (E1): the new address gets a signed link on the user's own host, the
  * current address gets a notice. Nothing changes until ConfirmEmailChange runs. The link carries a
- * nonce whose hash is cached per user, so only the newest link works, and only once.
+ * nonce whose hash is cached per user, so only the newest link works, and only once. An impersonation never
+ * starts one for its target (G2-05): the link would go to an address the impersonator chooses, the notice to the
+ * target's mailbox, and the new nonce would void the target's own pending link.
  */
 final class RequestEmailChange
 {
@@ -39,6 +42,10 @@ final class RequestEmailChange
 
         if ($email === $user->email) {
             return;
+        }
+
+        if (Impersonation::isTarget($user)) {
+            throw ValidationException::withMessages(['email' => [__('The address can\'t be changed during an impersonation.')]]);
         }
 
         Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();

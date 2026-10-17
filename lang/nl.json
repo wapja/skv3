@@ -574,6 +574,7 @@
     "The PostgreSQL database :name already exists and holds tables of another project; drop or rename it, or rename this folder.": "De PostgreSQL-database :name bestaat al en bevat tabellen van een ander project; verwijder of hernoem hem, of hernoem deze map.",
     "The Vite build is current": "De Vite-build is actueel",
     "The Vite build is missing or out of date": "De Vite-build ontbreekt of is verouderd",
+    "The address can't be changed during an impersonation.": "Je kunt het adres niet wijzigen terwijl je bent ingelogd als deze gebruiker.",
     "The answers file :path cannot be read.": "Het antwoordenbestand :path is niet leesbaar.",
     "The apex domain matches APP_URL": "Het apexdomein komt overeen met APP_URL",
     "The app has not been set up yet": "De app is nog niet ingericht",

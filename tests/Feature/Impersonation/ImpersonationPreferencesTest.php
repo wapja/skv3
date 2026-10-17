@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 /** covers §4.7, §4.11 */
 
+use App\Actions\Settings\RequestEmailChange;
 use App\Authorization\Role;
 use App\Enums\Appearance;
 use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Auth\Impersonation;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 
 beforeEach(function (): void {
     useImpersonationModule(true);
@@ -90,4 +95,31 @@ it('starts the profile form from the language chosen during an impersonation and
 
     expect($member->fresh()?->locale)->toBe(Locale::Dutch)
         ->and(session(Impersonation::LOCALE_KEY))->toBe('nl');
+});
+
+it('keeps a language saved on the profile page while impersonating off the target\'s account (G2-05)', function () use ($impersonating): void {
+    // The other profile test saves the language the target already has, so a write to the account went unseen.
+    [, $member] = $impersonating();
+
+    callPageAction(pageSnapshot(route('profile.edit'), 'pages::settings.profile'), 'updateProfileInformation', [], ['locale' => 'en'])->assertOk();
+
+    expect($member->fresh()?->locale)->toBe(Locale::Dutch)
+        ->and(session(Impersonation::LOCALE_KEY))->toBe('en');
+});
+
+it('starts no email change for the target while impersonating (G2-05)', function () use ($impersonating): void {
+    // The link would go to an address the impersonator chooses, the notice to the target's mailbox, and the new
+    // nonce would void the target's own pending link.
+    Notification::fake();
+    [, $member] = $impersonating();
+    Cache::put(RequestEmailChange::cacheKey($member), 'the target\'s own pending link', now()->addHour());
+
+    $response = callPageAction(pageSnapshot(route('profile.edit'), 'pages::settings.profile'), 'updateProfileInformation', [], ['email' => 'impersonator@example.com'])->assertOk();
+
+    /** @var array{memo: array{errors?: array<string, list<string>>}} $snapshot */
+    $snapshot = json_decode((string) $response->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+    expect($snapshot['memo']['errors'] ?? [])->toBe(['email' => [__('The address can\'t be changed during an impersonation.')]])
+        ->and(Cache::get(RequestEmailChange::cacheKey($member)))->toBe('the target\'s own pending link')
+        ->and(RateLimiter::attempts(UserActionLimit::emailChange()->key($member)))->toBe(0);
+    Notification::assertNothingSent();
 });

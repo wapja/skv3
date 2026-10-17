@@ -1239,7 +1239,7 @@ php artisan skv:bootstrap</code></pre>
   <p>Bij elk verzoek controleert de kit of het nog mag. Het stopt als de module uitgaat, als jouw of zijn wachtwoord verandert, als de ander wordt uitgeschakeld of verwijderd, of als de regels niet meer kloppen. Je ziet dan <span class="ui">Inloggen als deze gebruiker is beëindigd. Je bent terug in je eigen account.</span> Uitloggen stopt de inloggen-als-sessie eerst en logt je daarna zelf uit. Zo&rsquo;n sessie blijft altijd op de host waar je begon.</p>
   <p>Alles wat je tijdens zo&rsquo;n sessie doet, komt in het log op jouw naam, bijvoorbeeld als &lsquo;<em>Beheerder</em> als <em>Jan Jansen</em>&rsquo;.</p>
   <ul>
-    <li>Kies je tijdens zo&rsquo;n sessie een taal of weergave, dan geldt die tot de sessie eindigt; het account van de ander verandert niet.</li>
+    <li>Kies je tijdens zo&rsquo;n sessie een taal of weergave, dan geldt die tot de sessie eindigt; het account van de ander verandert niet. Het e-mailadres van de ander kun je tijdens zo&rsquo;n sessie niet wijzigen.</li>
     <li>De melding na het stoppen staat in de taal van de pagina die hem toont, niet in die van de ander.</li>
     <li>Wordt jouw eigen account uitgeschakeld, verwijderd, gearchiveerd of definitief verwijderd, dan verdwijnt je sessie en komt er geen regel <code>impersonation.stop</code>: de startregel en de statuswijziging zijn dan het spoor.</li>
   </ul>
