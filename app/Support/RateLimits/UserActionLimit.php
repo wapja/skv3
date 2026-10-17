@@ -41,6 +41,17 @@ final readonly class UserActionLimit
     }
 
     /**
+     * Look up whether a typed address can be used (FM-18): 500 addresses per day per user. The profile's email change,
+     * the invite page, users.edit and the bulk page's "Check" (one per row) count each lookup with attempt() before
+     * AvailableEmail runs, and never give it back, so their answers cannot list which addresses have an account. A
+     * bulk Check costs up to InvitationList::MAX_ROWS at once, so the limit never drops below it (assertCost()).
+     */
+    public static function addressLookup(): self
+    {
+        return new self('address-lookup', 500, 86400);
+    }
+
+    /**
      * Save a profile photo: 10 attempts per 10 minutes, counted before the upload is checked. Each save can decode up
      * to 4096 × 4096 pixels with memory_limit raised for it (§6.6), so a member who repeats it is held back like a
      * secret check.

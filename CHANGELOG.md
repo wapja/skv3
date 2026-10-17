@@ -191,3 +191,6 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
 - Vite+, Sail, Chisel and `concurrently`.
+
+### Security
+- Looking up whether an address can be used is limited to 500 addresses a day per user, every lookup counted, refused ones too: the profile's email change, *Invite user*, an administrator's address change and each row of the bulk invitation page's *Check the list*; during an impersonation the impersonator's lookups count, and the profile refuses a new address before looking it up. Before, a member could test without limit which addresses have an account (FM-18).

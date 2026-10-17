@@ -8,6 +8,7 @@ use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Support\Invitations\InvitationList;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -90,7 +91,7 @@ new #[Title('Invite several people')] class extends Component
         $this->rows = [];
     }
 
-    /** Parses the input and reviews every row; nothing is written or sent. */
+    /** Parses the input and reviews every row, one address lookup each (FM-18); nothing is written or sent. */
     public function check(InviteUser $inviteUser): void
     {
         $this->summary = null;
@@ -114,6 +115,11 @@ new #[Title('Invite several people')] class extends Component
         if (count($entries) > InvitationList::MAX_ROWS) {
             throw ValidationException::withMessages(['addresses' => __('Add at most :max addresses at a time.', ['max' => InvitationList::MAX_ROWS])]);
         }
+
+        // FM-18: review() looks every row up with InviteUser's address rules, so each row counts, an invalid or a
+        // repeated one included, and is never given back (CD-2); during an impersonation the impersonator pays.
+        // send() re-reviews only these #[Locked] rows.
+        UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $this->currentUser(), 'addresses', count($entries));
 
         $this->rows = $this->review($entries, $organisation, $inviteUser);
     }

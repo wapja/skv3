@@ -276,16 +276,17 @@ it('counts nothing for a list larger than what is left, not even for a moment, s
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($acme);
     UserActionLimit::bulkInvite()->hit($admin, cost: 98);
-    // A reservation that is given back still pushes the counter past the limit while it lasts; the pre-check refuses first.
+    $page = Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
+        ->call('check');
+    // A reservation that is given back still pushes the counter past the limit while it lasts; the pre-check refuses
+    // first. The mock starts after the Check, whose address lookups count with increment() (FM-18).
     $limiter = Mockery::mock(CacheRateLimiter::class, [Cache::store()])->makePartial();
     $limiter->shouldNotReceive('increment');
     RateLimiter::swap($limiter);
 
-    Livewire::test('pages::invitations.bulk')
-        ->set('roles', [$templateRoleId()])
-        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
-        ->call('check')
-        ->call('send')
+    $page->call('send')
         ->assertHasErrors(['addresses' => __('Too many attempts. Try again in :seconds seconds.', ['seconds' => 3600])]);
 
     expect($deliveredMails())->toBe([])
@@ -312,6 +313,52 @@ it('gives back a reservation a parallel send outran (CD-6, plan review K4)', fun
 
     expect($deliveredMails())->toBe([])
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(98);
+});
+
+it('refuses a Check whose rows would pass the address-lookup limit before it reviews a row, and counts it (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    UserActionLimit::addressLookup()->hit($admin, cost: 450);
+    $snapshot = pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk');
+    $hundred = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 100)));
+
+    $refused = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $hundred, 'roles' => [$templateRoleId()]]));
+
+    expect($refused['memo']['errors'] ?? [])->toBe(['addresses' => [__('Too many attempts. Try again in :seconds seconds.', ['seconds' => 86400])]])
+        ->and($refused['data']['rows'])->toBe([[], ['s' => 'arr']])
+        // attempt() counts the refused list too, so the next Check of one row is refused as well.
+        ->and(RateLimiter::attempts($lookups))->toBe(550);
+
+    $single = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => 'ada@example.com', 'roles' => [$templateRoleId()]]));
+
+    expect($single['memo']['errors'] ?? [])->toHaveKey('addresses')
+        ->and($single['data']['rows'])->toBe([[], ['s' => 'arr']]);
+});
+
+it('charges a Check one lookup per row after the list checks, and never charges the Send that follows (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    $snapshot = pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk');
+    $tooMany = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 101)));
+
+    // A list the page refuses before it reviews a row looks nothing up.
+    expect($snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $tooMany, 'roles' => [$templateRoleId()]]))['memo']['errors'] ?? [])
+        ->toBe(['addresses' => [__('Add at most :max addresses at a time.', ['max' => 100])]])
+        ->and(RateLimiter::attempts($lookups))->toBe(0);
+
+    // Every row counts, an invalid and a repeated one included.
+    $checked = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => 'ada@example.com, not-an-address, bob@example.com, ada@example.com', 'roles' => [$templateRoleId()]]));
+
+    expect($checked['memo']['errors'] ?? [])->toBe([])
+        ->and(RateLimiter::attempts($lookups))->toBe(4);
+
+    // Send reviews only the rows the server checked (#[Locked]), so it looks up nothing new.
+    expect($snapshotOf(callPageAction($checked, 'send'))['memo']['errors'] ?? [])->toBe([])
+        ->and($deliveredMails())->toHaveCount(2)
+        ->and(RateLimiter::attempts($lookups))->toBe(4)
+        ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(2);
 });
 
 it('sends only the rows the server checked, whatever a forged update says (CD-6)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {

@@ -14,6 +14,7 @@ use App\Concerns\ResolvesCurrentUser;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\HostScope;
 use Flux\Flux;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -80,7 +81,9 @@ new #[Title('Edit user')] class extends Component
      * read-only and never sent (E1); another user's new address needs a fresh password confirmation first (RL-18).
      * A new address mails the old one, so it is limited per administrator (FM-19): the slot is reserved after the
      * confirmation and before anything is saved, so a refusal saves nothing, and given back when the save throws
-     * (UserActionLimit::around()). A save that keeps the address counts nothing.
+     * (UserActionLimit::around()). A save that keeps the address counts nothing. A new address is first counted
+     * under UserActionLimit::addressLookup() (FM-18, CD-2), before the validation looks it up; during an
+     * impersonation the impersonator's bucket pays.
      */
     public function saveAccount(UpdateUser $updateUser, UpdateUserStatus $updateUserStatus): void
     {
@@ -91,6 +94,12 @@ new #[Title('Edit user')] class extends Component
         $pending = $target->status === UserStatus::PendingActivation;
         $emailEditable = $actor->isNot($target) && ! $pending;
         $this->email = Str::lower(trim($this->email));
+
+        // FM-18: AvailableEmail looks a new address up, so the lookup counts first and is never given back (CD-2).
+        // The person behind the session pays: during an impersonation the impersonator.
+        if ($emailEditable && $this->email !== $target->email) {
+            UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $actor, 'email');
+        }
 
         $this->validate([
             'name' => $this->nameRules(),
