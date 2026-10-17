@@ -29,11 +29,17 @@ $usablePgDump = function (): ?string {
         return null;
     }
 
-    // The one test that runs a real pg_dump (AGENTS.md › Ops): its version probe runs for real, not faked (RL-12).
+    // The one test that runs a real pg_dump (AGENTS.md › Ops): its version probe runs for real, not faked (RL-12), and
+    // the guard is back on for the rest of the test (L7b-71). F19: through Process with the toolchain's environment,
+    // never exec(). The package's pg_dump runs through Symfony's Process directly, so the facade's fake never touches it.
     Process::preventStrayProcesses(false);
-    // F19: through Process with the toolchain's environment, never exec(). The package's pg_dump runs through Symfony's
-    // Process directly, so the facade's fake never touches it.
-    preg_match('/(\d+)(?:\.\d+)?/', Process::env($toolchain->environment())->run([$path, '--version'])->output(), $client);
+
+    try {
+        preg_match('/(\d+)(?:\.\d+)?/', Process::env($toolchain->environment())->run([$path, '--version'])->output(), $client);
+    } finally {
+        Process::preventStrayProcesses();
+    }
+
     preg_match('/^(\d+)/', DB::connection()->getServerVersion(), $server);
 
     return isset($client[1], $server[1]) && (int) $client[1] >= (int) $server[1] ? dirname($path) : null;

@@ -53,6 +53,7 @@ use Pest\TestSuite;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Fixtures\InlineStepLauncher;
+use Tests\Fixtures\RecordingProcessFactory;
 use Tests\TestCase;
 
 use function Pest\Laravel\actingAs;
@@ -80,11 +81,23 @@ pest()->extend(TestCase::class)->in('Arch');
 /*
 | RL-12: every setup, console, backup, health and System-page test refuses a process it did not fake. Recording starts
 | with fake([]): preventStrayProcesses() alone guards nothing until a fake is recording. A file's own
-| Process::fake([...]) adds its named patterns; catch-alls are banned (tests/Arch/KitRulesTest.php).
+| Process::fake([...]) adds its named patterns. The factory is a RecordingProcessFactory, so after each test two
+| runtime checks back the static ban in tests/Arch/KitRulesTest.php: no fake pattern matches a command nobody names
+| (L7b-77: a '**' key, a list value after a named key, Process::fake($fakes)), and no command ran into the guard,
+| even one a caller's catch (Throwable) swallowed (L7b-78).
 */
 pest()->beforeEach(function (): void {
+    Process::swap(new RecordingProcessFactory);
     Process::preventStrayProcesses();
     Process::fake([]);
+})->afterEach(function (): void {
+    $factory = RecordingProcessFactory::current();
+
+    // Only a finding asserts: a throwsNoExceptions() test expects no assertion at all and would turn risky.
+    if ($factory->catchAllPatterns() !== [] || $factory->strays() !== []) {
+        expect($factory->catchAllPatterns())->toBe([], 'A Process fake matches every command: fake each command by name (RL-12).')
+            ->and($factory->strays())->toBe([], 'A command ran without a matching fake, even if the code caught the exception (RL-12).');
+    }
 })->in('Feature/Setup', 'Feature/Console', 'Feature/Backups', 'Feature/Health', 'Feature/System');
 
 // §7.2: browser tests serve the app in-process; RefreshDatabase on in-memory SQLite works because the

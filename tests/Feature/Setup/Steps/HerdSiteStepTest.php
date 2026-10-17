@@ -11,6 +11,7 @@ use App\Setup\SetupContext;
 use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\ShellArgument;
 use App\Setup\Support\Toolchain;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\File;
@@ -424,11 +425,22 @@ it('names no Herd command without Herd (RL-7)', function (): void {
 it('names the command HTTPS asks for when Herd\'s listings fail (RL-7)', function (bool $https, string $command): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => $https], $this->detection, $context->folderName());
+    // L7b-21: every listing siteState() runs is faked and only `herd links` fails, so the answer comes from that failure,
+    // not from a stray the step's catch (Throwable) swallowed. The parked directory is elsewhere: without the links
+    // call the name would be free and the answer `herd link` for both rows. A fake that throws is not recorded, so
+    // the links fake notes its own call.
+    $askedForLinks = false;
     Process::fake([
-        "*herd' 'links'*" => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result('')),
+        "*herd' 'links'*" => function () use (&$askedForLinks): never {
+            $askedForLinks = true;
+
+            throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result(''));
+        },
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),
     ]);
 
-    expect(new HerdSiteStep()->manualCommand($context))->toBe(sprintf($command, $context->folderName()));
+    expect(new HerdSiteStep()->manualCommand($context))->toBe(sprintf($command, $context->folderName()))
+        ->and($askedForLinks)->toBeTrue();
 })->with([
     'HTTPS chosen' => [true, 'herd secure %s'],
     'no HTTPS' => [false, 'herd link %s'],
@@ -445,6 +457,9 @@ it('quotes a folder name with a space in the commands it prints, never in the ar
     expect($result->status)->toBe('manual')
         ->and($result->command)->toBe(str_replace('{name}', $name, $command));
     Process::assertRan(fn ($process): bool => in_array($name, (array) $process->command, true) || in_array('--site='.$name, (array) $process->command, true));
+    // L7b-22: and no command got the printed (quoted) form, whatever other command got the bare name.
+    Process::assertDidntRun(fn ($process): bool => in_array(ShellArgument::quote($name), (array) $process->command, true)
+        || in_array(ShellArgument::quote('--site='.$name), (array) $process->command, true));
 })->with([
     'herd link' => [fn (SetupContext $context): array => [
         "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),

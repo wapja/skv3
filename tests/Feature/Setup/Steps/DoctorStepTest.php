@@ -25,6 +25,8 @@ it('defers the Herd and token checks to after the Herd step (A6, RL-8)', functio
     expect(DoctorStep::DEFERRED)->toBe(['herd-site', 'herd-secured', 'setup-token']);
 
     $context = setupSandbox(new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: 'x.test', scheme: 'http'));
+    // The node check finds a node on the system PATH of most machines (CI's included); the Doctor catches a stray (L7b-78).
+    Process::fake(["*node' '-v'*" => Process::result('v22.12.0')]);
     $results = app(Doctor::class)->run(DoctorContext::fromSetup($context, app(Toolchain::class)), deferred: DoctorStep::DEFERRED);
 
     foreach (DoctorStep::DEFERRED as $key) {
