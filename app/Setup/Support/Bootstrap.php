@@ -91,13 +91,18 @@ final readonly class Bootstrap implements BootstrapRunner
     /**
      * Whether the project this Bootstrap prepares is a production install (CD-3): its .env, or the process environment,
      * names an APP_ENV outside local, testing and staging, the environments skv:install runs in (`prod` and `live`
-     * count too). A server's own APP_ENV overrides the file, and the running app's loaded .env shows there too.
+     * count too). A server's own APP_ENV overrides the file, and the running app's loaded .env shows there too. When
+     * no source names one, it is production too, as Laravel's own default is (config/app.php, CD-12): run() copies
+     * .env.example (APP_ENV=local) first, so only a .env written without APP_ENV gets here (C37).
      */
     public function isProduction(): bool
     {
-        $environments = [new EnvFile($this->basePath.'/.env')->get('APP_ENV'), getenv('APP_ENV'), $_SERVER['APP_ENV'] ?? null];
+        $environments = array_filter(
+            [new EnvFile($this->basePath.'/.env')->get('APP_ENV'), getenv('APP_ENV'), $_SERVER['APP_ENV'] ?? null],
+            fn (mixed $environment): bool => is_string($environment) && $environment !== '',
+        );
 
-        return array_any($environments, fn ($environment): bool => is_string($environment) && $environment !== '' && ! in_array($environment, self::DEVELOPMENT, true));
+        return $environments === [] || array_any($environments, fn (string $environment): bool => ! in_array($environment, self::DEVELOPMENT, true));
     }
 
     /** The `APP_URL` of the project this Bootstrap prepares (RL-10), never the running app's own `.env`. */

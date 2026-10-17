@@ -65,6 +65,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Profile photos: upload a JPEG, PNG or WebP (at most 2 MB and 4096 × 4096 pixels) on the profile page. The photo is turned upright, cropped to a 512 × 512 square and stored as WebP without its metadata. It shows in the user menu and the users list, with the initials when there is none. Replacing or removing it deletes the old file, and purging an organisation deletes its users' photos. At most 10 saves per 10 minutes per user, every attempt counted; the uploaded original is deleted once it is processed. Not available during an impersonation. With Flux Pro the upload is a drop zone.
 - Livewire's temporary uploads take one file of at most 2 MB per request, only from signed-in users, at most 10 a minute and 60 an hour per user.
 - An hourly clean-up (`livewire-tmp-cleanup`, at :45, on every server) removes Livewire's temporary uploads older than 24 hours, so a photo with its metadata or a list of addresses left on an abandoned page no longer waits for the next upload; on an S3 temporary-upload disk it does nothing (`php artisan livewire:configure-s3-upload-cleanup` sets the bucket's lifecycle rule instead), and neither does it while Livewire's own clean-up is switched off (`livewire.temporary_file_upload.cleanup`).
+- The doctor's `gd` row warns when GD has no WebP support, which profile photos need.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
@@ -110,6 +111,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Every environment except `local` and `testing` uses the strict password rule (12 characters, mixed case, letters, numbers, symbols, not in a known breach), so a staging install's super admin gets it too.
 - `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout. It removes only the keys it added, so your own `repositories.flux-pro` entry or other `extra.skv` keys stay.
 - New dependency `intervention/image` ^4, through Laravel's own image API on the GD driver, for profile photos. GD needs WebP support; ext-exif is used, when loaded, to turn photos upright.
+- `skv:bootstrap` treats a project where no source names an `APP_ENV` (no line in `.env`, a blank value, nothing in the process environment) as production, as Laravel does, and only prepares `.env`, `APP_KEY` and the generated secrets there; a fresh copy of `.env.example` still says `local`.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -192,6 +194,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Recovery codes stored in a form Fortify never writes (encrypted without serialising, a JSON object, an empty list or a list with other values than codes) show *Failed to load recovery codes* instead of a server error or an empty download.
 - Bulk invitations: on a central host *Check* asks for the organisation before the roles, and an unexpected error halfway through *Send* no longer answers with a server error: it is reported, the summary lists what was sent, and the rows it did not reach are skipped as *Not sent: something went wrong.* without counting against the limit.
 - Removing a profile photo when there is none no longer says *Profile photo removed.*
+- Setup no longer reports the Herd step as already done for a site Herd serves with a PHP older than 8.4: a re-run isolates it with `herd isolate 8.4 --site=<name>`.
+- Setup and the doctor accept `public/storage` only as a link to `storage/app/public`: a link elsewhere (one to the project root would serve `.env` under `/storage`), a dangling link or a directory in its place makes the doctor's `storage-link` row fail; setup and `skv:doctor --fix` replace a wrong link with `storage:link --force` and never remove a directory.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
