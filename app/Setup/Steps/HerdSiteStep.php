@@ -64,9 +64,10 @@ final readonly class HerdSiteStep implements SetupStep
     }
 
     /**
-     * Served (parked or linked) and, when HTTPS was chosen, secured with APP_URL on that https address (RL-16): a site
-     * secured by hand, or by a detached run that died before writing APP_URL, still needs run()'s rewrite (g1-08).
-     * False on any process failure.
+     * Served (parked or linked), on PHP 8.4 or newer and, when HTTPS was chosen, secured with APP_URL on that https
+     * address (RL-16): a site secured by hand, or by a detached run that died before writing APP_URL, still needs
+     * run()'s rewrite (g1-08), and a site on an older PHP still needs run()'s `herd isolate`, which "Already done"
+     * would skip (K9, DEC-34 (14)). The PHP check runs last, after the cheaper listings. False on any process failure.
      */
     public function isComplete(SetupContext $context): bool
     {
@@ -78,7 +79,8 @@ final readonly class HerdSiteStep implements SetupStep
 
         try {
             return $this->siteState($context, $herd) === self::SERVED
-                && (! $context->answers->https || ($this->appUrlIsSecured($context) && $this->isSecured($context, $herd)));
+                && (! $context->answers->https || ($this->appUrlIsSecured($context) && $this->isSecured($context, $herd)))
+                && $this->runsSupportedPhp($context, $herd);
         } catch (Throwable) {
             return false;
         }
