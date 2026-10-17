@@ -99,9 +99,13 @@ final class HostScope
     /**
      * Locks the row of the organisation a user write concerns, first in the caller's transaction (CD-5 step 1), and
      * returns it, archived or not; null for a user without an organisation or one that is gone. Unlike lockForWrite()
-     * it refuses nothing: the user policies have placed the target already, and each action decides on the archived
-     * state itself, on this locked row. Every write of an organisation's users, roles and invitations takes this lock
-     * or lockForWrite() first, so those writes take turns per organisation instead of deadlocking.
+     * it refuses no archived organisation: the user policies have placed the target already, and each action decides
+     * on the archived state itself, on this locked row. Like lockForWrite() it refuses another organisation than the
+     * bound tenant (RK-I11), as defence in depth behind the tenant scope. Every write of an organisation's users,
+     * roles and invitations takes this lock or lockForWrite() first, so those writes take turns per organisation
+     * instead of deadlocking.
+     *
+     * @throws AuthorizationException
      */
     public static function lockOrganisation(?int $organisationId): ?Organisation
     {
@@ -111,6 +115,12 @@ final class HostScope
 
         if ($organisationId === null) {
             return null;
+        }
+
+        $tenant = Tenant::current();
+
+        if ($tenant instanceof Organisation && $tenant->id !== $organisationId) {
+            throw new AuthorizationException;
         }
 
         return Organisation::withTrashed()->lockForUpdate()->find($organisationId);

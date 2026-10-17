@@ -105,14 +105,24 @@ it('locks an organisation for writing and refuses an archived one or another ten
         ->toThrow(ValidationException::class, __('This organisation is archived.'));
 });
 
-it('locks the organisation of a user write without refusing an archived one or another tenant\'s (CD-5)', function (): void {
+it('locks the organisation of a user write without refusing an archived one, but refuses another tenant\'s (CD-5, RK-I11)', function (): void {
     $organisation = Organisation::factory()->create();
     $archived = Organisation::factory()->create();
     $archived->delete();
-    // A tenant host of another organisation: the user policies place the target, this lock refuses nothing.
-    onTenant(Organisation::factory()->create());
+
+    // A central host: the user policies place the target, and the action decides on the archived state itself.
+    onAdminHost();
 
     expect(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($organisation->id))?->id)->toBe($organisation->id)
         ->and(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($archived->id))?->trashed())->toBeTrue()
         ->and(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation(null)))->toBeNull();
+
+    // Its own tenant host locks it; another tenant's host refuses it, as lockForWrite() does (defence in depth).
+    onTenant($organisation);
+    expect(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($organisation->id))?->id)->toBe($organisation->id)
+        ->and(DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation(null)))->toBeNull();
+
+    onTenant(Organisation::factory()->create());
+    expect(fn (): ?Organisation => DB::transaction(fn (): ?Organisation => HostScope::lockOrganisation($organisation->id)))
+        ->toThrow(AuthorizationException::class);
 });
