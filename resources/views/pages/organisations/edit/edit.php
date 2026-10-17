@@ -27,12 +27,16 @@ use Livewire\Component;
  * Both also switch the second-factor rule (§6.6, CD-3). A change in either direction asks for a fresh password
  * confirmation first, because the switch decides how every member signs in; an organisation admin turns the rule
  * on only with a second factor of their own, which this page checks before asking and UpdateOrganisation again.
+ * The unsaved form is parked in the session meanwhile and comes back with a notice, as on users.edit (RL-18).
  */
 new #[Title('Edit organisation')] class extends Component
 {
     use ConfirmsPasswords;
     use OrganisationValidationRules;
     use ResolvesCurrentUser;
+
+    /** Session key prefix of the form parked while the actor confirms their password (CD-3, as users.edit's RL-18). */
+    private const string DRAFT_PREFIX = 'organisations.edit.draft.';
 
     #[Locked]
     public int $organisationId;
@@ -48,6 +52,9 @@ new #[Title('Edit organisation')] class extends Component
     /** What the switch showed when the page was rendered: a save that did not touch it keeps what is stored now (plan review K0). */
     #[Locked]
     public bool $shownRequireSecondFactor = false;
+
+    #[Locked]
+    public bool $draftRestored = false;
 
     /**
      * The organisation, read once per request; private properties are never dehydrated. An error re-render
@@ -67,6 +74,7 @@ new #[Title('Edit organisation')] class extends Component
         $this->description = $model->description;
         $this->requireSecondFactor = $model->require_second_factor;
         $this->shownRequireSecondFactor = $model->require_second_factor;
+        $this->restoreDraft();
     }
 
     public function save(UpdateOrganisation $updateOrganisation, IssueHandoff $issueHandoff): void
@@ -84,7 +92,7 @@ new #[Title('Edit organisation')] class extends Component
                 throw ValidationException::withMessages(['requireSecondFactor' => __('Set up a second factor for your own account first.')]);
             }
 
-            if ($this->passwordConfirmationRequired(route('organisations.edit', $this->organisationId, absolute: false))) {
+            if ($this->confirmationParked()) {
                 return;
             }
         }
@@ -122,6 +130,7 @@ new #[Title('Edit organisation')] class extends Component
         $this->slug = $updated->slug;
         $this->requireSecondFactor = $updated->require_second_factor;
         $this->shownRequireSecondFactor = $updated->require_second_factor;
+        $this->draftRestored = false;
         Flux::toast(variant: 'success', text: __('Organisation saved.'));
     }
 
@@ -148,5 +157,57 @@ new #[Title('Edit organisation')] class extends Component
     public function canChangeSlug(): bool
     {
         return $this->currentUser()->isSuperAdmin();
+    }
+
+    /**
+     * Parks the unsaved name, address, description and switch, then sends the actor to confirm their password. True
+     * means stop.
+     */
+    private function confirmationParked(): bool
+    {
+        $key = self::DRAFT_PREFIX.$this->organisationId;
+        session()->put($key, [
+            'name' => $this->name,
+            'slug' => $this->slug,
+            'description' => $this->description,
+            'requireSecondFactor' => $this->requireSecondFactor,
+        ]);
+
+        if ($this->passwordConfirmationRequired(route('organisations.edit', $this->organisationId, absolute: false))) {
+            return true;
+        }
+
+        session()->forget($key);
+
+        return false;
+    }
+
+    /**
+     * Brings back a form parked before a password confirmation. The switch shown stays the stored value, so save() still
+     * sees the parked switch as a change and checks it again (plan review K0); save() also still ignores the address
+     * of anyone but a super admin (OD-3).
+     */
+    private function restoreDraft(): void
+    {
+        $draft = session()->pull(self::DRAFT_PREFIX.$this->organisationId);
+
+        if (! is_array($draft)) {
+            return;
+        }
+
+        $name = $draft['name'] ?? null;
+        $slug = $draft['slug'] ?? null;
+        $description = $draft['description'] ?? null;
+        $requireSecondFactor = $draft['requireSecondFactor'] ?? null;
+
+        if (! is_string($name) || ! is_string($slug) || ! is_bool($requireSecondFactor)) {
+            return;
+        }
+
+        $this->name = $name;
+        $this->slug = $slug;
+        $this->description = is_string($description) ? $description : null;
+        $this->requireSecondFactor = $requireSecondFactor;
+        $this->draftRestored = true;
     }
 };

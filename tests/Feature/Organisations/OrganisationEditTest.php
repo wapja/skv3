@@ -144,25 +144,69 @@ it('names a passkey in the rule\'s description only while the passkeys module is
         ->assertDontSee($passkeys ? $totpOnly : $withPasskey);
 })->with(['passkeys on' => true, 'passkeys off' => false]);
 
-it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page (CD-3)', function (bool $before): void {
-    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $before]);
+it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page with the unsaved form (CD-3)', function (bool $before): void {
+    $acme = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme', 'description' => null, 'require_second_factor' => $before]);
     asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
     $page = route('organisations.edit', $acme->id);
     $snapshot = pageSnapshot($page, 'pages::organisations.edit');
 
-    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $before])
+    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $before, 'name' => 'Acme Renamed', 'description' => 'Parked'])
         ->assertOk()
         ->assertJsonPath('components.0.effects.redirect', route('password.confirm'));
 
-    expect($acme->fresh()?->require_second_factor)->toBe($before);
+    expect($acme->fresh()?->only(['name', 'description', 'require_second_factor']))
+        ->toBe(['name' => 'Acme', 'description' => null, 'require_second_factor' => $before]);
 
     $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect($page);
-    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $before])
+
+    // The unsaved form comes back after the confirmation, with a notice; the switch still counts as changed.
+    $restored = pageSnapshot($page, 'pages::organisations.edit');
+
+    expect($restored['data']['requireSecondFactor'] ?? null)->toBe(! $before)
+        ->and($restored['data']['shownRequireSecondFactor'] ?? null)->toBe($before)
+        ->and($restored['data']['name'] ?? null)->toBe('Acme Renamed')
+        ->and($restored['data']['description'] ?? null)->toBe('Parked')
+        ->and($restored['data']['draftRestored'] ?? null)->toBeTrue();
+
+    callPageAction($restored, 'save')->assertOk()->assertJsonMissingPath('components.0.effects.redirect');
+
+    expect($acme->fresh()?->only(['name', 'description', 'require_second_factor']))
+        ->toBe(['name' => 'Acme Renamed', 'description' => 'Parked', 'require_second_factor' => ! $before]);
+})->with(['turning it on' => false, 'turning it off' => true]);
+
+it('shows the parked switch and a notice on the first render after the confirmation, and only then (CD-3)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => false]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $page = route('organisations.edit', $acme->id);
+    $notice = __('Your unsaved changes are back. Save again to apply them.');
+
+    callPageAction(pageSnapshot($page, 'pages::organisations.edit'), 'save', updates: ['requireSecondFactor' => true, 'name' => 'Acme Renamed'])
+        ->assertJsonPath('components.0.effects.redirect', route('password.confirm'));
+    $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect($page);
+
+    // The form's values travel in the component's snapshot, which the page renders as an escaped attribute.
+    $this->get($page)->assertOk()
+        ->assertSee($notice)
+        ->assertSee('&quot;name&quot;:&quot;Acme Renamed&quot;', escape: false)
+        ->assertSee('&quot;requireSecondFactor&quot;:true', escape: false);
+    $this->get($page)->assertOk()
+        ->assertDontSee($notice)
+        ->assertSee('&quot;requireSecondFactor&quot;:false', escape: false);
+});
+
+it('keeps no parked form after a save that needs no confirmation (CD-3)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => false]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $page = route('organisations.edit', $acme->id);
+
+    callPageAction(pageSnapshot($page, 'pages::organisations.edit'), 'save', updates: ['requireSecondFactor' => true, 'name' => 'Acme Renamed'])
         ->assertOk()
         ->assertJsonMissingPath('components.0.effects.redirect');
 
-    expect($acme->fresh()?->require_second_factor)->toBe(! $before);
-})->with(['turning it on' => false, 'turning it off' => true]);
+    expect($acme->fresh()?->require_second_factor)->toBeTrue()
+        ->and(pageSnapshot($page, 'pages::organisations.edit')['data']['draftRestored'] ?? null)->toBeFalse();
+});
 
 it('tells an organisation admin without a second factor to set one up before asking for the password (CD-3)', function (): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
