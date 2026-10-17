@@ -173,7 +173,7 @@ it('limits a resend from the accept page with the pending list\'s limit and show
         ->and(Invitation::query()->findOrFail($invitation->id)->reminder_sent_at)->toBeNull();
 });
 
-it('limits the account-security routes to ten requests a minute per user (CD-3)', function (string $method, string $route): void {
+it('limits the account-security routes to ten requests a minute per user, not per IP (CD-3)', function (string $method, string $route): void {
     usePasskeysModule(true);
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->withTwoFactor()->create();
@@ -187,6 +187,12 @@ it('limits the account-security routes to ten requests a minute per user (CD-3)'
     }
 
     $this->json($method, $uri)->assertTooManyRequests();
+
+    // Per user: another member behind the same IP still gets through.
+    $this->actingAs(User::factory()->for($organisation)->withTwoFactor()->create());
+    withSession(['auth.password_confirmed_at' => time()]);
+
+    expect($this->json($method, $uri)->getStatusCode())->not->toBe(429);
 })->with([
     'enable 2FA' => ['POST', 'two-factor.enable'],
     'confirm 2FA' => ['POST', 'two-factor.confirm'],

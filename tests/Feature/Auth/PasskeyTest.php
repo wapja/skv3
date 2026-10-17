@@ -272,6 +272,19 @@ it('records a failed passkey sign-in like a failed password sign-in, naming the 
         ->and($entry->properties?->all())->toBe(['method' => 'passkey']);
 });
 
+it('names the passkey\'s user on a central host, where every user belongs (CD-6)', function (string $host): void {
+    $superAdmin = User::factory()->superAdmin()->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($superAdmin, $authenticator, passkeyHost('admin', Organisation::factory()->create()));
+    passkeyHost($host, Organisation::factory()->create());
+
+    signInWithPasskey($authenticator, 'http://evil.localhost')->assertUnprocessable();
+
+    $entry = recordedActivity(ActivityEvent::LoginFailed)->sole();
+    expect([$entry->subject_id, $entry->organisation_id])->toBe([$superAdmin->id, null])
+        ->and($entry->getProperty('method'))->toBe('passkey');
+})->with(['admin', 'apex']);
+
 it('records a failed passkey sign-in without a user when the passkey names nobody this host may show (CD-6, R1)', function (string $owner): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $beta = Organisation::factory()->create(['slug' => 'beta']);
