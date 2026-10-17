@@ -200,9 +200,11 @@ it('writes both email-change mails in the account\'s language when the worker se
     app(RequestEmailChange::class)->handle($member, 'new@example.com');
     // The worker answers in its own language (here Dutch), not in the account's.
     app()->setLocale('nl');
-    // Two jobs in one daemon run: --sleep=0 skips the 3-second sleep once the queue is empty, and --memory=0 keeps
-    // the loop from stopping after the first job once a long test process passes 128 MB (Worker::memoryExceeded).
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+    // One --once run per queued job: the daemon loop (--stop-when-empty alone) installs SIGINT, SIGTERM and SIGQUIT
+    // handlers and an alarm it never restores, which then hold for the rest of this test process.
+    foreach (range(1, 2) as $job) {
+        Artisan::call('queue:work', ['--once' => true, '--sleep' => 0, '--tries' => 1]);
+    }
 
     expect($deliveredSubjects())->toBe([
         'new@example.com' => 'Confirm your new email address',

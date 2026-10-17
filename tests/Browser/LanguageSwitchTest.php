@@ -23,7 +23,8 @@ it('switches the language from the user menu and keeps the filters chosen on the
     // The filter changes after the page loaded: only the browser's own URL still knows it.
     $page->navigate(sameOrigin($page->url(), '/activity'))
         ->assertSee('Activiteitenlog')
-        ->select('event', ActivityEvent::Login->value)
+        ->select('@filter-event', ActivityEvent::Login->value)
+        // Retried until the timeout like every awaitable assertion, so the Livewire round trip may finish first.
         ->assertQueryStringHas('event', ActivityEvent::Login->value)
         ->click('@sidebar-menu-button')
         ->click('@user-menu-locale-en')

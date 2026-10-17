@@ -108,10 +108,11 @@ $queueBothMails = function (): Invitation {
 it('delivers both queued invitation mails while the invitation is open (W10)', function () use ($queueBothMails, $deliveredMails): void {
     $queueBothMails();
 
-    // --sleep=0: with --stop-when-empty the worker otherwise sleeps 3 seconds once the queue is empty.
-    // --memory=0: the daemon loop stops after the first job once the test process passes 128 MB
-    // (Worker::memoryExceeded), which a long parallel or sequential run reaches.
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+    // One --once run per queued job: the daemon loop (--stop-when-empty alone) installs SIGINT, SIGTERM and SIGQUIT
+    // handlers and an alarm it never restores, which then hold for the rest of this test process.
+    foreach (range(1, 2) as $job) {
+        Artisan::call('queue:work', ['--once' => true, '--sleep' => 0, '--tries' => 1]);
+    }
 
     // inviteMember() invites in the default language; the worker renders each mail in it.
     expect(DB::table('jobs')->count())->toBe(0)
@@ -133,7 +134,10 @@ it('drops a queued invitation mail without a failed job once the invitation is g
         $this->travel(8)->days();
     }
 
-    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+    // One --once run per queued job, never the daemon loop (see above).
+    foreach (range(1, 2) as $job) {
+        Artisan::call('queue:work', ['--once' => true, '--sleep' => 0, '--tries' => 1]);
+    }
 
     // A failed job would warn on the health report and the System page, and queue:retry would only fail it again.
     expect(DB::table('jobs')->count())->toBe(0)

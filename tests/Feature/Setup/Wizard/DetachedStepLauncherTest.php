@@ -76,6 +76,15 @@ it('keeps the child\'s pid, log and exit files private but lets the step create 
         clearstatcache();
     }
 
+    // A child still running after the deadline (a slow runner) would write into a sandbox the teardown removes:
+    // stop the shell whose pid the script recorded first, before the expectations fail the test.
+    $contents = fn (string $file): string => is_file($file) ? trim((string) file_get_contents($file)) : '';
+    $pid = (int) $contents($directory.'/frontend.started');
+
+    if ($contents($directory.'/frontend.exit') === '' && $pid > 1 && function_exists('posix_kill')) {
+        posix_kill($pid, SIGKILL);
+    }
+
     expect($started)->toBeTrue()
         ->and(trim((string) file_get_contents($directory.'/frontend.exit')))->toBe('0')
         ->and(trim((string) file_get_contents($context->path('made-by-step'))))->toBe('late')
