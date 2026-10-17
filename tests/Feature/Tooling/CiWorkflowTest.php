@@ -73,9 +73,28 @@ $position = function (string $job, string $name) use ($steps): int {
     return is_int($index) ? $index : PHP_INT_MAX;
 };
 
+/**
+ * The environment of every git process this file starts (M33): no global or system configuration (a core.fsmonitor
+ * there would start a daemon, an init.templateDir would copy its hooks), and none of git's repository variables. Git
+ * exports GIT_DIR to its hooks, as an absolute path in a linked worktree, so a suite run from a hook would otherwise
+ * commit the fixtures onto the developer's branch. false unsets a variable (Symfony Process). The names are
+ * `git rev-parse --local-env-vars` plus GIT_NAMESPACE.
+ *
+ * @var array<string, string|false> $gitEnvironment
+ */
+$gitEnvironment = [
+    ...array_fill_keys([
+        'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_OBJECT_DIRECTORY',
+        'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE', 'GIT_NO_REPLACE_OBJECTS',
+        'GIT_REPLACE_REF_BASE', 'GIT_PREFIX', 'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE',
+    ], false),
+    'GIT_CONFIG_GLOBAL' => '/dev/null',
+    'GIT_CONFIG_NOSYSTEM' => '1',
+];
+
 /** $script run as GitHub runs a `shell: bash` step (`bash --noprofile --norc -eo pipefail {0}`), in $path. */
 $bash = fn (string $script, string $path, array $env = []): ProcessResult => Process::path($path)
-    ->env([...$env, 'GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1'])
+    ->env([...$env, ...$gitEnvironment])
     ->run(['bash', '--noprofile', '--norc', '-eo', 'pipefail', '-c', $script]);
 
 /** A step's script with every line trimmed, so a block nested in an `if` compares like a top-level one. */
@@ -95,12 +114,12 @@ $package = fn (): string => (string) json_decode((string) file_get_contents(base
  * tree. Without a repository, or before its first commit (GitStep leaves `git init` without one), the working-tree
  * file is what will be committed.
  */
-$committedFile = function (string $repository, string $file): string {
+$committedFile = function (string $repository, string $file) use ($gitEnvironment): string {
     $hasCommit = file_exists($repository.'/.git')
-        && Process::path($repository)->run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'])->successful();
+        && Process::path($repository)->env($gitEnvironment)->run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'])->successful();
 
     return $hasCommit
-        ? Process::path($repository)->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
+        ? Process::path($repository)->env($gitEnvironment)->run(['git', 'show', 'HEAD:'.$file])->throw()->output()
         : (string) file_get_contents($repository.'/'.$file);
 };
 
@@ -111,11 +130,8 @@ $commitsFluxPro = function (string $composerJson): bool {
     return is_array($composer) && data_get($composer, 'extra.skv.flux-pro') === true;
 };
 
-/**
- * git in a throwaway repository, without the developer's global or system configuration (M33): a core.fsmonitor
- * there would start a daemon, and an init.templateDir would copy its hooks into the repository.
- */
-$sandboxGit = fn (string $repository): PendingProcess => Process::path($repository)->env(['GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1']);
+/** git in a throwaway repository, in the isolated $gitEnvironment. */
+$sandboxGit = fn (string $repository): PendingProcess => Process::path($repository)->env($gitEnvironment);
 
 /** A composer.json whose mark is $flag (data_set keeps the kit's namespace in one allowed form, NameLeakTest). */
 $withFluxProMark = function (mixed $flag): string {
@@ -124,6 +140,76 @@ $withFluxProMark = function (mixed $flag): string {
 
     return json_encode($composer, JSON_THROW_ON_ERROR);
 };
+
+it('keeps every git process of this file out of a repository the environment names (GIT_DIR from a hook)', function (array $names) use ($gitEnvironment, $sandboxGit, $bash, $committedFile): void {
+    // A newer git may add a repository variable: the list must still unset every one this git knows.
+    $local = preg_split('/\s+/', trim($sandboxGit(base_path())->run(['git', 'rev-parse', '--local-env-vars'])->throw()->output())) ?: [];
+
+    expect($local)->toContain('GIT_DIR')
+        ->and(array_values(array_diff($local, array_keys(array_filter($gitEnvironment, fn (string|false $value): bool => $value === false)))))->toBe([]);
+
+    $root = storage_path('framework/testing/ci-git-env-'.Str::uuid());
+    $decoy = $root.'/decoy';
+    $repository = $root.'/sandbox';
+    $commit = ['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m'];
+    $decoyHead = fn (): string => trim($sandboxGit($decoy)->run(['git', 'log', '--format=%H %s'])->throw()->output());
+    File::ensureDirectoryExists($decoy);
+    File::ensureDirectoryExists($repository);
+    File::put($decoy.'/README', 'decoy');
+    File::put($repository.'/composer.json', '{"name": "acme/app"}');
+
+    try {
+        $sandboxGit($decoy)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($decoy)->run(['git', 'add', 'README'])->throw();
+        $sandboxGit($decoy)->run([...$commit, 'Decoy'])->throw();
+        $before = $decoyHead();
+
+        $exported = array_intersect_key(['GIT_DIR' => $decoy.'/.git', 'GIT_WORK_TREE' => $decoy, 'GIT_INDEX_FILE' => $decoy.'/.git/index'], array_flip($names));
+        $saved = [];
+
+        foreach ($exported as $name => $value) {
+            $saved[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+            putenv("{$name}={$value}");
+            $_ENV[$name] = $_SERVER[$name] = $value;
+        }
+
+        try {
+            $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
+            $sandboxGit($repository)->run(['git', 'add', 'composer.json'])->throw();
+            $sandboxGit($repository)->run([...$commit, 'Sandbox'])->throw();
+            $bash("git -c user.name=CI -c user.email=ci@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit --quiet --allow-empty -m Bash\n", $repository)->throw();
+            $committed = $committedFile($repository, 'composer.json');
+        } finally {
+            foreach ($saved as $name => [$value, $env, $server]) {
+                putenv($value === false ? $name : "{$name}={$value}");
+
+                if ($env === null) {
+                    unset($_ENV[$name]);
+                } else {
+                    $_ENV[$name] = $env;
+                }
+
+                if ($server === null) {
+                    unset($_SERVER[$name]);
+                } else {
+                    $_SERVER[$name] = $server;
+                }
+            }
+        }
+
+        expect($decoyHead())->toBe($before)
+            ->and(str_ends_with($before, ' Decoy') && substr_count($before, "\n") === 0)->toBeTrue()
+            ->and(trim($sandboxGit($repository)->run(['git', 'log', '--format=%s'])->throw()->output()))->toBe("Bash\nSandbox")
+            ->and($committed)->toBe('{"name": "acme/app"}');
+    } finally {
+        File::deleteDirectory($root);
+    }
+})->with([
+    // Git exports GIT_DIR to every hook, as an absolute path in a linked worktree, and GIT_INDEX_FILE to pre-commit.
+    'a pre-push hook' => [['GIT_DIR']],
+    'a pre-commit hook' => [['GIT_DIR', 'GIT_INDEX_FILE']],
+    'an exported work tree' => [['GIT_DIR', 'GIT_WORK_TREE']],
+]);
 
 it('never references Flux Pro in the committed composer files (committed)', function () use ($committedFile): void {
     expect($committedFile(base_path(), 'composer.json'))->toContain('"name"')->not->toContain('flux-pro')->not->toContain('composer.fluxui.dev')
