@@ -5,5 +5,5 @@
 @section('title', __('Something is wrong with this request'))
 @section('message', __('This page cannot handle the request. Go to the home page and try again.'))
 @section('actions')
-    <a href="{{ url('/') }}">{{ __('Go to the home page') }}</a>
+    <a href="/">{{ __('Go to the home page') }}</a>
 @endsection

@@ -55,11 +55,29 @@ it('words a status without a page of its own in the visitor\'s language (G3-04)'
     'a bad gateway' => ['/_error/502', 502, 'Er ging iets mis'],
 ]);
 
-it('lets "Try again" reload the same address with its query string (G3-05)', function (string $status): void {
+it('lets "Try again" reload the same address with its query string, root-relative (G3-05)', function (string $status): void {
     onApex();
 
-    $this->get('/_error/'.$status.'?page=2')->assertSee('href="'.url('/_error/'.$status.'?page=2').'"', false);
+    // Root-relative, so a Host header that a misconfigured proxy rewrote never reaches the link.
+    $this->get('/_error/'.$status.'?page=2')->assertSee('href="/_error/'.$status.'?page=2"', false);
 })->with(['429', '500', '503']);
+
+it('sends the 404 page\'s and the 4xx fallback\'s home link to the root of the same origin', function (): void {
+    onApex();
+
+    $this->get('/logout')->assertStatus(405)->assertSee('href="/"', false);
+    $this->get('/does-not-exist')->assertNotFound()->assertSee('href="/"', false);
+});
+
+it('sends an expired form post back to its page instead of posting the stale token again (G3-05)', function (): void {
+    onApex();
+
+    // A reload of a POST resubmits the same expired _token and answers 419 again.
+    $this->post('/_error/419', [], ['Referer' => url('/dashboard?page=2')])
+        ->assertStatus(419)
+        ->assertSee('href="/dashboard?page=2"', false)
+        ->assertDontSee('location.reload()', false);
+});
 
 it('never points "Try again" at a POST-only address (G3-05)', function (): void {
     onApex();
