@@ -24,7 +24,8 @@ final readonly class ScheduledTasks
         return array_values(array_map(fn (Event $event): array => [
             'task' => $event->command !== null ? trim(Str::after($event->command, 'artisan'), " '") : (string) $event->description,
             'expression' => $event->expression,
-            'next' => $event->nextRunDate()->toIso8601String(),
+            // The app clock, as the page's diffForHumans() reads it: the default 'now' is cron-expression's own clock.
+            'next' => $event->nextRunDate(now())->toIso8601String(),
             'active' => $event->preventOverlapsUsing($mutex)->filtersPass(app()),
         ], $schedule->events()));
     }
