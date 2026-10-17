@@ -164,6 +164,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Under Herd, `/` on a host the setup refuses asks `herd tld` once instead of twice, so a Herd that does not answer delays it by at most 5 seconds.
 - A Herd step that could not start, or failed, on a site Herd serves with an older PHP now leaves `herd isolate 8.4 --site=<name>` to run instead of ending as skipped, and the Herd stage no longer reports such a site as done.
 - The setup's background steps (frontend build, Claude) no longer create `public/build`, `node_modules`, `vendor` or `.claude` readable by their owner only; only the steps' own log, exit and pid files stay private.
+- Setup creates the `public/storage` link, so the doctor's `storage-link` row no longer warns after a fresh install.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

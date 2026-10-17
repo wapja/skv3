@@ -764,6 +764,7 @@ it('fails the marker row for a marker that is a symlink or cannot be read (F3, L
 })->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');
 
 it('warns without public/storage and runs storage:link with --fix (§5.4)', function (): void {
+    unlink($this->sandbox->path('public/storage'));
     Process::fake(["*'artisan' 'storage:link'*" => Process::result('')]);
     $missing = new StorageLinkCheck()->run($this->context);
     new StorageLinkCheck()->fix($this->context);

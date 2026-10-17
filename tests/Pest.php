@@ -491,17 +491,20 @@ function sameOrigin(string $currentUrl, string $path): string
 }
 
 /**
- * A throwaway project directory for setup steps (RL-2): .env from .env.example, storage and database folders.
- * Removed when the test ends; never the repository itself. A $prefix starts the folder name, e.g. setup_probe_
- * for the Database step's PostgreSQL databases, which take their name from the folder.
+ * A throwaway project directory for setup steps (RL-2): .env from .env.example, storage and database folders, and
+ * public/storage linked to storage/app/public as the environment step leaves it (G6-09), so only a test of the link
+ * removes it. Removed when the test ends; never the repository itself. A $prefix starts the folder name, e.g.
+ * setup_probe_ for the Database step's PostgreSQL databases, which take their name from the folder.
  */
 function setupSandbox(?Detection $detection = null, string $prefix = ''): SetupContext
 {
     $directory = storage_path('framework/testing/setup/'.$prefix.Str::uuid());
 
-    foreach (['storage/app/private', 'database', 'public'] as $folder) {
+    foreach (['storage/app/private', 'storage/app/public', 'database', 'public'] as $folder) {
         File::ensureDirectoryExists($directory.'/'.$folder);
     }
+
+    symlink($directory.'/storage/app/public', $directory.'/public/storage');
 
     File::copy(base_path('.env.example'), $directory.'/.env');
 
