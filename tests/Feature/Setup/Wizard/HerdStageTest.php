@@ -410,7 +410,7 @@ it('never stores the secret in the session, not even as the previous URL (g3-27,
         ->and(json_encode(session()->all(), JSON_THROW_ON_ERROR))->not->toContain($secret);
 })->with(['herd-status', 'finish', 'login']);
 
-it('sends a super admin with a confirmed second factor to the login page, not through a handoff (CD-14, g4-03)', function () use ($afterStepNine): void {
+it('sends a super admin with a confirmed second factor to the login page of their home host, not through a handoff (CD-14, g4-03, CD-7)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
     $secret = $afterStepNine($context, 'super_admin');
     User::factory()->superAdmin()->withTwoFactor()->create(['email' => 'owner@example.com']);
@@ -418,7 +418,7 @@ it('sends a super admin with a confirmed second factor to the login page, not th
     $state->result = StepResult::skipped('Herd is not installed');
     $state->save($context->basePath);
 
-    $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect(Hosts::url(Hosts::apex(), '/login'));
+    $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect(Hosts::url(Hosts::admin(), '/login'));
 
     expect(HandoffToken::query()->count())->toBe(0)
         ->and(is_file($context->path(HerdState::PATH)))->toBeFalse();

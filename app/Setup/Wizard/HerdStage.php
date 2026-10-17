@@ -118,9 +118,10 @@ final readonly class HerdStage
     }
 
     /**
-     * The handoff for the installed super admin, or the login page for a demo or for a super admin with a confirmed
-     * second factor, which a handoff would skip (CD-14); the secret is used up (RL-6). The state is claimed under the
-     * SetupLock, so two logins never both pass and a late Herd step never writes it back.
+     * The handoff for the installed super admin, or a login page: the apex's for a demo, which has no account to send
+     * home, and the super admin's home host (the admin host) for one with a confirmed second factor, which a handoff
+     * would skip (CD-14; CD-7: links that leave the request go to Hosts::homeOf()). The secret is used up (RL-6). The
+     * state is claimed under the SetupLock, so two logins never both pass and a late Herd step never writes it back.
      */
     public function loginUrl(HerdState $state): string
     {
@@ -141,7 +142,7 @@ final readonly class HerdStage
         abort_unless($user instanceof User && $user->isSuperAdmin(), 404);
 
         if ($user->two_factor_confirmed_at !== null) {
-            return Hosts::url(Hosts::apex(), '/login');
+            return Hosts::url(Hosts::homeOf($user), '/login');
         }
 
         return app(IssueHandoff::class)->handle($user, Hosts::admin(), '/');
