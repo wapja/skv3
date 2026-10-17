@@ -26,6 +26,13 @@ it('formats sizes without ext-intl: no Illuminate\Support\Number in app code or 
     expect(filesMatching(kitSourceFiles('app', 'resources/views'), '/Illuminate\\\\Support\\\\Number\b|(?<![\w\\\\$>:])\\\\?Number::/'))->toBe([]);
 });
 
+it('constrains routes by domain only in the Fortify groups (G5-07)', function (): void {
+    // Route::tenant() / Route::central() attach host middleware instead (§6.2). routes/fortify.php and
+    // routes/passkeys.php keep Fortify's own domain + prefix group, so their replacements match the vendor routes
+    // (FU3-3, CD-3). An empty Route::domain() in a comment does not match.
+    expect(filesMatching(kitSourceFiles('routes', 'app'), "/Route::domain\\s*\\(\\s*[^)\\s]|'domain'\\s*=>/"))->toBe(['routes/fortify.php', 'routes/passkeys.php']);
+});
+
 it('starts external commands only through Process: no exec() and friends, no backticks (F19)', function (): void {
     $banned = ['exec', 'shell_exec', 'system', 'passthru', 'proc_open', 'popen', 'pcntl_exec'];
     $offenders = [];
