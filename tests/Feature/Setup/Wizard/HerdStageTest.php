@@ -403,7 +403,7 @@ it('answers 404 to a Herd-stage request from another machine (RL-4, g4-01)', fun
         ->getJson('/welcome-setup/herd-status?secret='.$secret)->assertNotFound();
 });
 
-it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URLs carry the secret (g3-13)', function () use ($afterStepNine): void {
+it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URLs carry the secret, also when it refuses the secret (g3-13, L7b-10)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
     $secret = $afterStepNine($context);
 
@@ -416,6 +416,7 @@ it('sends Referrer-Policy: no-referrer from every Herd-stage endpoint, whose URL
 
     $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
     $this->get('/welcome-setup/login?secret='.$secret)->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
+    $this->get('/welcome-setup/login?secret=wrong')->assertNotFound()->assertHeader('Referrer-Policy', 'no-referrer');
 });
 
 it('never stores the secret in the session, not even as the previous URL (g3-27, M21)', function (string $endpoint) use ($afterStepNine): void {

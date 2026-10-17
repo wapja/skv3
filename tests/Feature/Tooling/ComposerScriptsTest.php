@@ -92,7 +92,13 @@ it('repeats the commands of composer setup in the clone route of scripts/e2e-loc
     /** @var array{scripts: array{setup: list<string>}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
     $normalise = fn (string $command): string => str_replace(' --no-interaction', '', (string) preg_replace('/^@php /', 'php ', $command));
-    $clone = $normalise(Str::between((string) file_get_contents(base_path('scripts/e2e-local.sh')), "        clone)\n", ';;'));
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+    $marker = "        clone)\n";
+
+    // L7b-74: without the arm's marker Str::between() returns the whole script, which holds the commands elsewhere.
+    expect($script)->toContain($marker);
+
+    $clone = $normalise(Str::betweenFirst($script, $marker, ';;'));
     $offset = 0;
 
     foreach (array_slice($composer['scripts']['setup'], 1, 3) as $command) {

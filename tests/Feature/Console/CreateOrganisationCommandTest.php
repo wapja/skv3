@@ -45,7 +45,7 @@ it('reports validation errors without a stack trace', function (): void {
         ->and(Organisation::query()->count())->toBe(0);
 });
 
-it('acts as the super admin --as names, and refuses another address (CD-7)', function (): void {
+it('acts as the super admin --as names, and refuses another address without promoting it (CD-7)', function (): void {
     User::factory()->superAdmin()->create(['email' => 'first@example.com']);
     $chosen = User::factory()->superAdmin()->create(['email' => 'second@example.com']);
     $member = User::factory()->create(['email' => 'member@example.com']);
@@ -59,7 +59,8 @@ it('acts as the super admin --as names, and refuses another address (CD-7)', fun
         ->and(Organisation::query()->where('slug', 'beta')->exists())->toBeFalse()
         ->and($exit)->toBe(0)
         ->and(recordedActivity(ActivityEvent::OrganisationCreated)->sole()->causer_id)->toBe($chosen->id)
-        ->and($member->exists)->toBeTrue();
+        // L-46: the refused --as user is still a plain member.
+        ->and(Tenant::bypass(fn (): ?bool => $member->fresh()?->is_super_admin))->toBeFalse();
 });
 
 it('never acts as a switched-off super admin (CD-7)', function (): void {
@@ -88,7 +89,7 @@ it('invites the first admin in the app\'s default language unless --locale says 
     Artisan::call('skv:create-organisation', ['name' => 'Acme', 'slug' => 'acme', 'admin-email' => 'boss@example.com', '--no-interaction' => true]);
     Artisan::call('skv:create-organisation', ['name' => 'Beta', 'slug' => 'beta', 'admin-email' => 'beta@example.com', '--locale' => 'nl', '--no-interaction' => true]);
 
-    $locale = fn (string $email): ?Locale => Tenant::bypass(fn () => User::query()->where('email', $email)->first()?->locale);
+    $locale = fn (string $email): ?Locale => Tenant::bypass(fn (): ?Locale => User::query()->where('email', $email)->first()?->locale);
 
     expect($locale('boss@example.com'))->toBe(Locale::English)
         ->and($locale('beta@example.com'))->toBe(Locale::Dutch);

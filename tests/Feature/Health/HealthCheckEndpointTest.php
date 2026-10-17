@@ -216,7 +216,8 @@ it('answers /up on the apex, the admin host and an organisation host, without a 
     $host = match ($kind) {
         'apex' => Hosts::apex(),
         'admin host' => Hosts::admin(),
-        default => Hosts::tenant('acme'),
+        'organisation host' => Hosts::tenant('acme'),
+        default => throw new LogicException("Unknown host kind [{$kind}]."),
     };
     $response = $this->get(Hosts::url($host, '/up'));
 

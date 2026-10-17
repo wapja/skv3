@@ -44,13 +44,14 @@ function registerPasskeyFor(User $user, SoftwareAuthenticator $authenticator, st
     Auth::guard('web')->logout();
 }
 
-/** Switch to a test host ('tenant', 'apex' or 'admin') and return its browser origin. */
+/** Switch to a test host ('tenant', 'apex' or 'admin') and return its browser origin; another name is a typo. */
 function passkeyHost(string $host, Organisation $organisation): string
 {
     match ($host) {
         'tenant' => onTenant($organisation),
         'apex' => onApex(),
-        default => onAdminHost(),
+        'admin' => onAdminHost(),
+        default => throw new LogicException("Unknown host kind [{$host}]."),
     };
 
     return Hosts::origin(match ($host) {
@@ -201,7 +202,8 @@ it('refuses a passkey of a user who is no longer active or was deleted', functio
 
     match ($change) {
         'disabled' => DB::table('users')->where('id', $member->id)->update(['status' => 'disabled']),
-        default => $member->delete(),
+        'deleted' => $member->delete(),
+        default => throw new LogicException("Unknown change [{$change}]."),
     };
 
     signInWithPasskey($authenticator, 'http://acme.localhost')->assertUnprocessable();
@@ -299,7 +301,8 @@ it('records a failed passkey sign-in without a user when the passkey names nobod
             $authenticator,
             passkeyHost('admin', $acme),
         ),
-        default => null, // 'an unknown passkey': nothing is registered
+        'an unknown passkey' => null, // nothing is registered
+        default => throw new LogicException("Unknown owner [{$owner}]."),
     };
     onTenant($acme);
 

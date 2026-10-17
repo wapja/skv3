@@ -122,8 +122,10 @@ it('leaves PGSSLMODE alone for a SQLite source and a connection --db-name leaves
 
     new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)->passSslMode($dbName === null ? [] : [$dbName]);
 
+    // L7b-67: all three stores; $_SERVER is the one Symfony's Process hands pg_dump.
     expect(getenv('PGSSLMODE'))->toBeFalse()
-        ->and($_ENV)->not->toHaveKey('PGSSLMODE');
+        ->and($_ENV)->not->toHaveKey('PGSSLMODE')
+        ->and($_SERVER)->not->toHaveKey('PGSSLMODE');
 })->with([
     'a SQLite source' => [['sqlite'], null],
     'a PostgreSQL source --db-name leaves out' => [['pgsql', 'sqlite'], 'sqlite'],
@@ -177,7 +179,8 @@ it('leaves PGSSLMODE to backup:run, which knows its --config, for every command 
     new ConfigurePgDump($this->sandbox->path('no-herd-services'), $this->sandbox->basePath)($starting($command));
 
     expect(getenv('PGSSLMODE'))->toBeFalse()
-        ->and($_ENV)->not->toHaveKey('PGSSLMODE');
+        ->and($_ENV)->not->toHaveKey('PGSSLMODE')
+        ->and($_SERVER)->not->toHaveKey('PGSSLMODE');
 })->with(['backup:run', 'migrate']);
 
 it('still exports the default sources\' sslmode should the package\'s command hold backup:run again (L-05, L7b-68)', function () use ($starting): void {
