@@ -6,6 +6,7 @@ use App\Actions\Audit\RecordActivity;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\ActivityEvent;
+use App\Models\HandoffToken;
 use App\Support\RateLimits\UserActionLimit;
 use App\Support\UserAgent;
 use App\Tenancy\Auth\Impersonation;
@@ -83,9 +84,9 @@ new class extends Component
     /**
      * Logs out every other device (§6.6): the password is rehashed, so AuthenticateSession signs out every other
      * session and "remember me" cookie on its next request, and this device gets a fresh remember cookie
-     * (Auth::logoutOtherDevices()); then the user's other rows are deleted. Every attempt counts against the
+     * (Auth::logoutOtherDevices()); then the user's other rows and their unused handoff links are deleted. Every attempt counts against the
      * user's limit before the password is checked (CD-2), so the form cannot be used to guess it. One transaction
-     * in DEC-34's lock order: users, then sessions, then the activity insert.
+     * in DEC-34's lock order: users, then sessions and handoff tokens, then the activity insert.
      */
     public function logoutOtherDevices(RecordActivity $recordActivity): void
     {
@@ -108,6 +109,9 @@ new class extends Component
                 ->where('user_id', $user->id)
                 ->where('id', '!=', session()->getId())
                 ->delete();
+
+            // A handoff link issued by another session would sign that browser in again with the new hash (§6.4).
+            HandoffToken::query()->where('user_id', $user->id)->whereNull('consumed_at')->delete();
 
             $recordActivity->handle(ActivityEvent::OtherSessionsEnded, $user, ['count' => $ended]);
         });

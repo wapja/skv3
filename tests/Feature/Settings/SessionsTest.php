@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 /** covers §6.6 */
 
+use App\Actions\Auth\IssueHandoff;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Models\HandoffToken;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Auth\Impersonation;
+use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -185,6 +188,25 @@ it('ends only the user\'s other sessions and records how many (§4.8, CD-9)', fu
     $entry = recordedActivity(ActivityEvent::OtherSessionsEnded)->sole();
     expect([$entry->subject_id, $entry->causer_id, $entry->organisation_id])->toBe([$member->id, $member->id, $organisation->id])
         ->and($entry->properties?->all())->toBe(['count' => 2]);
+});
+
+it('refuses a handoff link issued before the other devices were logged out (§6.4, §6.6)', function () use ($newProcess, $signIn, $useBrowser, $errorsOf): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $colleague = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    // Another browser of the member keeps a link in reserve; the colleague's link is not the member's to end.
+    $reserved = app(IssueHandoff::class)->handle($member, Hosts::tenant('acme'));
+    app(IssueHandoff::class)->handle($colleague, Hosts::tenant('acme'));
+    $useBrowser($signIn($member));
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.sessions');
+
+    expect($errorsOf(callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password'])))->toBe([]);
+
+    $newProcess();
+    call('GET', $reserved)->assertRedirect(route('login'));
+    $this->assertGuest();
+    expect(HandoffToken::query()->where('user_id', $colleague->id)->whereNull('consumed_at')->count())->toBe(1);
 });
 
 it('refuses a wrong password on the password field and ends nothing (CD-2)', function () use ($signIn, $useBrowser, $errorsOf, $rowsOf): void {
