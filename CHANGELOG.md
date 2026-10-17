@@ -75,7 +75,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Without Herd, the wizard refuses an IP address as the host, and setup keeps `APP_URL`'s port. On a host the wizard cannot use, `/` hands out no token: it redirects to the address to use (`http://localhost:<port>/` without Herd, `http://<folder>.<tld>/` under Herd), or answers 409 with a page that names the problem when the folder name is not a valid host name or `herd tld` does not answer.
 - The quick login follows the same rule: behind a proxy or tunnel it lists no accounts and `POST /quick-login` answers 404.
 - After setup, a super admin who confirmed two-factor sign-in is sent to the login page of the admin host instead of signed in with the single-use link.
-- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
+- When the Herd step cannot start, the Herd stage shows the command to run yourself; that command is `herd link <name>`, `herd isolate 8.4 --site=<name>` or `herd secure <name>`, whichever the site still needs, and every printed command quotes a name that needs it (also one that ends in a newline or starts with `=`).
 - The wizard no longer adds the demo data by default when a super admin already exists, as `skv:install` already refused.
 - `skv:create-super-admin --password-stdin` refuses to read a password from a terminal, where it would echo; pipe it in.
 - A `HEALTH_CHECK_KEY` shorter than 32 characters counts as no key: `/health-check` answers 403, the doctor's `health-check-key` row fails, and `skv:doctor --fix` replaces it with a random 40-character key; setup and the production `skv:bootstrap` replace it too.
@@ -162,6 +162,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - On a central address, the dashboard's recent activity also lists the entries of archived organisations, as the audit log does.
 - Without Flux Pro, a Pro branch that holds `@auth`, `@can`, `@isset`, `@error` or another block with its own `@else` no longer breaks the page; the Flux Pro check reads the views the same way, including tags over several lines, a bound or single-quoted `variant`, Blade comments and a `pro-only` marker that is not right before its `@if`.
 - Under Herd, `/` on a host the setup refuses asks `herd tld` once instead of twice, so a Herd that does not answer delays it by at most 5 seconds.
+- A Herd step that could not start, or failed, on a site Herd serves with an older PHP now leaves `herd isolate 8.4 --site=<name>` to run instead of ending as skipped, and the Herd stage no longer reports such a site as done.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

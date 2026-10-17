@@ -62,15 +62,18 @@ $afterStepNine = function (SetupContext $context, string $startWith = 'demo', st
 $herdDetection = fn (string $host = 'localhost'): Detection => new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: false, host: $host, scheme: 'http');
 
 /**
- * Herd's read-only listings: the project parked (served) or not, and `herd secured` printing $secured.
+ * Herd's read-only listings: the project parked (served) or not, `herd secured` printing $secured, and the site on
+ * PHP $php (no isolation, Herd's global PHP).
  *
  * @return array<string, mixed>
  */
-$herdListings = fn (SetupContext $context, bool $served, string $secured = ''): array => [
+$herdListings = fn (SetupContext $context, bool $served, string $secured = '', string $php = '8.4.13'): array => [
     "*herd' 'services:list'*" => Process::result(''),
     "*herd' 'links'*" => Process::result(''),
     "*herd' 'paths'*" => Process::result(json_encode([$served ? dirname($context->basePath) : '/somewhere/else'], JSON_THROW_ON_ERROR)),
     "*herd' 'secured'*" => Process::result($secured),
+    "*herd' 'isolated'*" => Process::result(''),
+    "*php' '-r'*" => Process::result($php),
 ];
 
 /** A herd stub in a home inside the sandbox (removed with it), so the wizard sees Herd; every herd command stays faked. */
@@ -147,6 +150,25 @@ it('offers herd link, not herd secure, while Herd does not serve the site (RL-7,
     'HTTPS chosen' => [true, 'Herd did not confirm HTTPS in time.'],
     'no HTTPS' => [false, 'Herd did not confirm the site in time.'],
 ]);
+
+it('offers herd isolate when the Herd step cannot start for a site Herd serves on an older PHP, never settling it as skipped (L7b-16)', function () use ($withHerd, $herdDetection, $herdListings): void {
+    // Arrange: steps 1–8 are done under Herd, which serves the site on PHP 8.3; no HTTPS, so only the isolation is left.
+    $context = useSetupWizard();
+    $withHerd($context);
+    Process::fake($herdListings($context, served: true, php: '8.3.12'));
+    $answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => false], $herdDetection(), $context->folderName());
+    new WizardState('localhost', $answers, $herdDetection(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    /** @var InlineStepLauncher $launcher */
+    $launcher = app(StepLauncher::class);
+    $launcher->refuses = true;
+
+    $secret = app(WizardRunner::class)->finish();
+
+    expect(HerdState::load($context->basePath)?->result)->toBeNull();
+    $this->get('/welcome-setup/finish?secret='.$secret)->assertOk()
+        ->assertSee('data-test="setup-manual-herd"', false)
+        ->assertSee('herd isolate 8.4 --site='.$context->folderName());
+});
 
 it('shows no command on the manual page without Herd (RL-7)', function () use ($afterStepNine): void {
     $context = useSetupWizard();
@@ -244,6 +266,8 @@ it('settles a site secured by hand once herd secured lists it, when the manual p
         // Not secured when the poll timed out; listed after the user ran `herd secure` by hand.
         "*herd' 'secured'*" => Process::sequence()->push(Process::result(''))
             ->whenEmpty(Process::result("| Site | Expires |\n| {$context->folderName()}.test | 2027-01-01 00:00:00 GMT |\n")),
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
     ]);
     $this->travel(HerdState::POLL_SECONDS + 1)->seconds();
 
