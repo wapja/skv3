@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Authorization\Permission;
+use App\Http\Middleware\EnsureSecondFactor;
 use App\Http\Middleware\SetReferrerPolicy;
 use Illuminate\Support\Facades\Route;
 
@@ -12,7 +13,8 @@ use Illuminate\Support\Facades\Route;
 | Route::tenant() / Route::central(), never Route::domain().
 */
 
-Route::middleware(['auth'])->group(function (): void {
+// §6.6, CD-4: EnsureSecondFactor runs before every can: check.
+Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void {
     // Any host: on central hosts only super admins pass; the page reads users through HostScope (RL-8).
     Route::livewire('users', 'pages::users.index')->can(Permission::UsersView)->name('users.index');
 

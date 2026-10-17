@@ -4,6 +4,11 @@
     <flux:heading level="2" class="sr-only">{{ __('Security settings') }}</flux:heading>
 
     <x-pages::settings.layout :heading="__('Update password')" :subheading="__('Ensure your account is using a long, random password to stay secure')">
+        {{-- §6.6, CD-4: why EnsureSecondFactor sent the user here; gone once a factor is set up. --}}
+        @if ($this->secondFactorNotice !== null)
+            <flux:callout variant="warning" icon="shield-exclamation" :heading="$this->secondFactorNotice" class="mt-6" data-test="second-factor-required" />
+        @endif
+
         <form method="POST" wire:submit="updatePassword" class="mt-6 space-y-6">
             <flux:input
                 wire:model="current_password"

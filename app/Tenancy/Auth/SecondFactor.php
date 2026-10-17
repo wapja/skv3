@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tenancy\Auth;
 
+use App\Models\Organisation;
 use App\Models\User;
 use App\Support\Skv;
 
 /**
- * The second factor (§6.6, §6.8): a confirmed TOTP secret, or, only while the passkeys module is on, at least
- * one passkey. With the module off a passkey no longer signs anyone in, so it no longer counts either.
+ * The second factor (§6.6, §6.8, CD-4). Who has one: a confirmed TOTP secret, or, only while the passkeys module
+ * is on, at least one passkey (with the module off a passkey signs nobody in, so it no longer counts either). Who
+ * must have one: a super admin when config('skv.second_factor.super_admins') says so, whatever their
+ * organisation_id; anyone else when their own organisation's require_second_factor is on. Both hold on every host.
+ * EnsureSecondFactor enforces it; the security page and UpdateOrganisation read it.
  */
 final class SecondFactor
 {
@@ -20,5 +24,45 @@ final class SecondFactor
         }
 
         return Skv::passkeysEnabled() && $user->passkeys()->exists();
+    }
+
+    public static function requiredFor(User $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return config('skv.second_factor.super_admins') === true;
+        }
+
+        if ($user->organisation_id === null) {
+            return false;
+        }
+
+        // The organisations table is central: no tenant scope, so this reads the same row on every host. An archived
+        // organisation (soft-deleted) has no members who can sign in, and is read as no rule.
+        return Organisation::query()->whereKey($user->organisation_id)->value('require_second_factor') === true;
+    }
+
+    /** The rule applies to $user and they have not met it yet. */
+    public static function missingFor(User $user): bool
+    {
+        return self::requiredFor($user) && ! self::satisfiedBy($user);
+    }
+
+    /**
+     * What the user must do, for the redirect's flash and the security page's callout. With the passkeys module
+     * off only two-factor authentication is offered (§6.8).
+     */
+    public static function explanation(User $user): string
+    {
+        $passkeys = Skv::passkeysEnabled();
+
+        if ($user->isSuperAdmin()) {
+            return $passkeys
+                ? __('Super admins need a second factor. Set up two-factor authentication or a passkey to continue.')
+                : __('Super admins need a second factor. Set up two-factor authentication to continue.');
+        }
+
+        return $passkeys
+            ? __('Your organisation requires a second factor. Set up two-factor authentication or a passkey to continue.')
+            : __('Your organisation requires a second factor. Set up two-factor authentication to continue.');
     }
 }
