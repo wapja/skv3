@@ -15,6 +15,7 @@
             "Bash(composer fix)",
             "Bash(composer test:pgsql)",
             "Bash(composer test:browser)",
+            "Bash(composer doctor)",
             "Bash(composer install:*)",
             "Bash(composer show:*)",
             "Bash(vendor/bin/pest:*)",
@@ -22,6 +23,7 @@
             "Bash(vendor/bin/rector:*)",
             "Bash(vendor/bin/phpstan:*)",
             "Bash(npm run build)",
+            "Bash(npm run build:setup)",
             "Bash(npm ci)",
             "Bash(git status)",
             "Bash(git diff:*)",
@@ -45,6 +47,10 @@
             "Read(./.env.local)"
         ]
     },
+    "enabledMcpjsonServers": [
+        "laravel-boost",
+        "herd"
+    ],
     "enabledPlugins": {
         "superpowers@superpowers-marketplace": true
     },

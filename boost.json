@@ -15,6 +15,10 @@
         "testing-best-practices",
         "fluxui-development",
         "livewire-development",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "add-permission",
+        "add-settings-page",
+        "add-tenant-resource",
+        "write-tenant-test"
     ]
 }

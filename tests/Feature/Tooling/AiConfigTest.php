@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 /** covers §9 */
+
+use Laravel\Boost\Install\Skill;
+use Laravel\Boost\Install\SkillComposer;
+
 it('imports the Boost guidelines from CLAUDE.md', function (): void {
     expect(file_get_contents(base_path('CLAUDE.md')))->toContain('@AGENTS.md');
 });
@@ -54,4 +58,51 @@ it('does not list allow rules that can never match colon subcommands', function 
 
     expect($settings['permissions']['allow'])->not->toContain('Bash(php artisan make:*)')
         ->and($settings['permissions']['allow'])->not->toContain('Bash(php artisan livewire:*)');
+});
+
+it('publishes the four kit skills of §9 through Boost (CD-5)', function (): void {
+    $skills = app(SkillComposer::class)->skills();
+
+    foreach (['add-tenant-resource', 'add-permission', 'add-settings-page', 'write-tenant-test'] as $name) {
+        $skill = $skills->get($name);
+
+        expect($skill)->toBeInstanceOf(Skill::class, "Boost does not discover the {$name} skill")
+            ->and($skill?->path)->toBe(base_path('.ai/skills/'.$name))
+            ->and($skill?->custom)->toBeTrue()
+            ->and(mb_strlen((string) $skill?->description))->toBeGreaterThan(80);
+    }
+});
+
+it('names only files, classes and methods that exist in the kit skills (CD-5)', function (): void {
+    $missing = [];
+
+    foreach (glob(base_path('.ai/skills/*/SKILL.md')) ?: [] as $file) {
+        preg_match_all('/`([^`\s]+)`/', (string) file_get_contents($file), $matches);
+
+        foreach ($matches[1] as $token) {
+            $exists = match (true) {
+                preg_match('#^(?:app|config|database|lang|resources|routes|scripts|tests)/[\w./-]+$#', $token) === 1 => file_exists(base_path($token)),
+                preg_match('/^(App\\\\[\w\\\\]+)(?:::(\w+)(?:\(\))?)?$/', $token, $parts) === 1 => match (true) {
+                    ! class_exists($parts[1]) && ! trait_exists($parts[1]) && ! enum_exists($parts[1]) && ! interface_exists($parts[1]) => false,
+                    ! isset($parts[2]) => true,
+                    default => method_exists($parts[1], $parts[2]) || defined($parts[1].'::'.$parts[2]),
+                },
+                default => true,
+            };
+
+            if (! $exists) {
+                $missing[] = basename(dirname($file)).': '.$token;
+            }
+        }
+    }
+
+    expect($missing)->toBe([]);
+});
+
+it('allows the doctor and the setup stylesheet build and enables the Boost and Herd MCP servers (§9)', function (): void {
+    /** @var array{permissions: array{allow: list<string>}, enabledMcpjsonServers: list<string>} $settings */
+    $settings = json_decode((string) file_get_contents(base_path('.claude/settings.json')), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($settings['permissions']['allow'])->toContain('Bash(composer doctor)', 'Bash(npm run build:setup)')
+        ->and($settings['enabledMcpjsonServers'])->toBe(['laravel-boost', 'herd']);
 });

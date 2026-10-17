@@ -66,6 +66,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Livewire's temporary uploads take one file of at most 2 MB per request, only from signed-in users, at most 10 a minute and 60 an hour per user.
 - An hourly clean-up (`livewire-tmp-cleanup`, at :45, on every server) removes Livewire's temporary uploads older than 24 hours, so a photo with its metadata or a list of addresses left on an abandoned page no longer waits for the next upload; on an S3 temporary-upload disk it does nothing (`php artisan livewire:configure-s3-upload-cleanup` sets the bucket's lifecycle rule instead), and neither does it while Livewire's own clean-up is switched off (`livewire.temporary_file_upload.cleanup`).
 - The doctor's `gd` row warns when GD has no WebP support, which profile photos need.
+- Four Claude Code skills for working on the kit, published by Boost: `add-tenant-resource`, `add-permission`, `add-settings-page` and `write-tenant-test`. The project settings now approve the Boost and Herd MCP servers and allow `composer doctor` and `npm run build:setup`.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.
