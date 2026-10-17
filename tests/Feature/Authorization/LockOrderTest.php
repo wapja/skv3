@@ -223,7 +223,7 @@ it('takes its row locks in the one order of CD-5', function (Closure $arrange, a
         $superAdmin = asSuperAdmin();
         onAdminHost();
 
-        return fn () => app(UpdateOrganisation::class)->handle($superAdmin, $organisation, 'Renamed', $organisation->slug, null);
+        return fn () => app(UpdateOrganisation::class)->handle($superAdmin, $organisation, 'Renamed', $organisation->slug, null, false);
     }, ['organisations']],
     'CreateRole' => [function (): Closure {
         $organisation = Organisation::factory()->create();

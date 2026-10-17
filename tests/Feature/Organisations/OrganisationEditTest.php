@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2, §6.4 */
+/** covers §4.3, §6.2, §6.4, §6.6 */
 
 use App\Models\HandoffToken;
 use App\Models\Organisation;
@@ -110,21 +110,103 @@ it('shows the slug read-only to organisation admins', function (): void {
         ->and(HandoffToken::query()->count())->toBe(0);
 });
 
-it('has no second-factor setting yet (RL-17)', function (): void {
+it('offers the second-factor rule to organisation admins and super admins, set as stored (§6.6, RL-17, CD-3)', function (string $actor): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => true]);
+
+    if ($actor === 'a super admin') {
+        asSuperAdmin();
+        onAdminHost();
+    } else {
+        // A second factor of their own: the rule is on, and this page is behind it.
+        asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    }
+
+    $page = route('organisations.edit', $acme->id);
+
+    $this->get($page)
+        ->assertOk()
+        ->assertSee('wire:model="requireSecondFactor"', escape: false)
+        ->assertSee(__('Require a second factor'));
+    expect(pageSnapshot($page, 'pages::organisations.edit')['data']['requireSecondFactor'] ?? null)->toBeTrue();
+})->with(['an organisation admin', 'a super admin']);
+
+it('names a passkey in the rule\'s description only while the passkeys module is on (§6.8, CD-3)', function (bool $passkeys): void {
+    usePasskeysModule($passkeys);
     $acme = Organisation::factory()->create(['slug' => 'acme']);
-    asSuperAdmin();
-    onAdminHost();
+    asOrgAdmin($acme);
+
+    $withPasskey = __('Members must set up two-factor authentication or a passkey before they can continue. Changing this asks for your password.');
+    $totpOnly = __('Members must set up two-factor authentication before they can continue. Changing this asks for your password.');
 
     $this->get(route('organisations.edit', $acme->id))
         ->assertOk()
-        ->assertDontSee('second_factor', escape: false)
-        ->assertDontSee('secondFactor', escape: false);
+        ->assertSee($passkeys ? $withPasskey : $totpOnly)
+        ->assertDontSee($passkeys ? $totpOnly : $withPasskey);
+})->with(['passkeys on' => true, 'passkeys off' => false]);
 
-    $component = Livewire::test('pages::organisations.edit', ['organisation' => $acme->id])->instance();
+it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page (CD-3)', function (bool $before): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $before]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $page = route('organisations.edit', $acme->id);
+    $snapshot = pageSnapshot($page, 'pages::organisations.edit');
 
-    expect(property_exists($component, 'requireSecondFactor'))->toBeFalse()
-        ->and(property_exists($component, 'require_second_factor'))->toBeFalse();
+    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $before])
+        ->assertOk()
+        ->assertJsonPath('components.0.effects.redirect', route('password.confirm'));
+
+    expect($acme->fresh()?->require_second_factor)->toBe($before);
+
+    $this->post(route('password.confirm.store'), ['password' => 'password'])->assertRedirect($page);
+    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $before])
+        ->assertOk()
+        ->assertJsonMissingPath('components.0.effects.redirect');
+
+    expect($acme->fresh()?->require_second_factor)->toBe(! $before);
+})->with(['turning it on' => false, 'turning it off' => true]);
+
+it('tells an organisation admin without a second factor to set one up before asking for the password (CD-3)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    asOrgAdmin($acme);
+
+    Livewire::test('pages::organisations.edit', ['organisation' => $acme->id])
+        ->set('requireSecondFactor', true)
+        ->call('save')
+        ->assertHasErrors(['requireSecondFactor' => __('Set up a second factor for your own account first.')])
+        ->assertSee(__('Set up a second factor for your own account first.'))
+        ->assertNoRedirect();
+
+    expect($acme->fresh()?->require_second_factor)->toBeFalse();
 });
+
+it('keeps a rule another admin changed meanwhile when a page loaded before only renames (CD-3, plan review K0)', function (bool $shown): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $shown]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('organisations.edit', $acme->id), 'pages::organisations.edit');
+
+    $acme->forceFill(['require_second_factor' => ! $shown])->save();
+
+    callPageAction($snapshot, 'save', updates: ['name' => 'Acme Renamed'])->assertOk();
+
+    expect($acme->fresh()?->require_second_factor)->toBe(! $shown)
+        ->and($acme->fresh()?->name)->toBe('Acme Renamed');
+})->with(['shown off, turned on meanwhile' => false, 'shown on, turned off meanwhile' => true]);
+
+it('asks for no password when the switch is moved to the rule another admin stored meanwhile (CD-3, plan review K0)', function (bool $shown): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $shown]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $snapshot = pageSnapshot(route('organisations.edit', $acme->id), 'pages::organisations.edit');
+
+    $acme->forceFill(['require_second_factor' => ! $shown])->save();
+
+    // No confirmed password in the session: the stored rule already matches the switch, so nothing changes it.
+    callPageAction($snapshot, 'save', updates: ['requireSecondFactor' => ! $shown, 'name' => 'Acme Renamed'])
+        ->assertOk()
+        ->assertJsonMissingPath('components.0.effects.redirect');
+
+    expect($acme->fresh()?->require_second_factor)->toBe(! $shown)
+        ->and($acme->fresh()?->name)->toBe('Acme Renamed');
+})->with(['shown off, turned on meanwhile' => false, 'shown on, turned off meanwhile' => true]);
 
 it('shows the archived-organisation error on the edit page (FU4-1)', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);

@@ -26,6 +26,15 @@
 
         <flux:textarea wire:model="description" :label="__('Description')" rows="3" />
 
+        <flux:switch
+            wire:model="requireSecondFactor"
+            :label="__('Require a second factor')"
+            :description="Skv::passkeysEnabled()
+                ? __('Members must set up two-factor authentication or a passkey before they can continue. Changing this asks for your password.')
+                : __('Members must set up two-factor authentication before they can continue. Changing this asks for your password.')"
+            data-test="organisation-require-second-factor"
+        />
+
         <flux:error name="organisation" />
 
         <div class="flex justify-end gap-2">

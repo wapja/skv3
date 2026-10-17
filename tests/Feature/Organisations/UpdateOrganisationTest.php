@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.8 */
+/** covers §4.3, §4.8, §6.6 */
 
 use App\Actions\Organisations\UpdateOrganisation;
 use App\Authorization\Permission;
@@ -17,7 +17,7 @@ it('updates name and description of the own organisation for its admin', functio
     $organisation = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme', 'description' => null]);
     $admin = asOrgAdmin($organisation);
 
-    $updated = app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', 'Anvils too');
+    $updated = app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', 'Anvils too', false);
 
     expect($updated->only(['name', 'slug', 'description']))->toBe(['name' => 'Acme Rockets', 'slug' => 'acme', 'description' => 'Anvils too'])
         ->and($organisation->fresh()?->name)->toBe('Acme Rockets');
@@ -28,7 +28,7 @@ it('refuses another organisation', function (): void {
     $other = Organisation::factory()->create(['name' => 'Beta']);
     $admin = asOrgAdmin($own);
 
-    expect(fn () => app(UpdateOrganisation::class)->handle($admin, $other, 'Taken over', $other->slug, null))
+    expect(fn () => app(UpdateOrganisation::class)->handle($admin, $other, 'Taken over', $other->slug, null, false))
         ->toThrow(AuthorizationException::class);
     expect($other->fresh()?->name)->toBe('Beta');
 });
@@ -44,7 +44,7 @@ it('refuses a user of the organisation without organisations.update', function (
         $actor->unsetRelation('roles');
     }
 
-    expect(fn () => app(UpdateOrganisation::class)->handle($actor, $organisation, 'Renamed', $organisation->slug, null))
+    expect(fn () => app(UpdateOrganisation::class)->handle($actor, $organisation, 'Renamed', $organisation->slug, null, false))
         ->toThrow(AuthorizationException::class);
     expect($organisation->fresh()?->name)->toBe('Acme');
 })->with([
@@ -57,7 +57,7 @@ it('refuses Markdown link syntax and control characters in the name', function (
     $admin = asOrgAdmin($organisation);
 
     try {
-        app(UpdateOrganisation::class)->handle($admin, $organisation, $name, $organisation->slug, null);
+        app(UpdateOrganisation::class)->handle($admin, $organisation, $name, $organisation->slug, null, false);
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe([
@@ -77,7 +77,7 @@ it('accepts ordinary punctuation in the name', function (string $name): void {
     $organisation = Organisation::factory()->create(['name' => 'Acme']);
     $admin = asOrgAdmin($organisation);
 
-    app(UpdateOrganisation::class)->handle($admin, $organisation, $name, $organisation->slug, null);
+    app(UpdateOrganisation::class)->handle($admin, $organisation, $name, $organisation->slug, null, false);
 
     expect($organisation->fresh()?->name)->toBe($name);
 })->with([
@@ -94,7 +94,7 @@ it('refuses an archived organisation (RK-I11)', function (): void {
     // A try/catch instead of toThrow(Closure): Pest reads the closure's parameter type as the exception
     // class, and an interface such as Throwable is taken for an expected message instead.
     try {
-        app(UpdateOrganisation::class)->handle($superAdmin, $archived, 'Back again', $archived->slug, null);
+        app(UpdateOrganisation::class)->handle($superAdmin, $archived, 'Back again', $archived->slug, null, false);
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe([
@@ -110,7 +110,7 @@ it('gives an organisation admin the generic message for an archived organisation
     $admin = asOrgAdmin($organisation);
 
     try {
-        app(UpdateOrganisation::class)->handle($admin, $organisation, 'Old Name', $organisation->slug, null);
+        app(UpdateOrganisation::class)->handle($admin, $organisation, 'Old Name', $organisation->slug, null, false);
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe([
@@ -124,7 +124,7 @@ it('lets only super admins change the slug', function (): void {
     $admin = asOrgAdmin($organisation);
 
     try {
-        app(UpdateOrganisation::class)->handle($admin, $organisation, $organisation->name, 'acme-new', $organisation->description);
+        app(UpdateOrganisation::class)->handle($admin, $organisation, $organisation->name, 'acme-new', $organisation->description, false);
         $this->fail('Expected a ValidationException.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe([
@@ -136,7 +136,7 @@ it('lets only super admins change the slug', function (): void {
     $superAdmin = asSuperAdmin();
     onAdminHost();
 
-    app(UpdateOrganisation::class)->handle($superAdmin, $organisation, $organisation->name, 'acme-new', $organisation->description);
+    app(UpdateOrganisation::class)->handle($superAdmin, $organisation, $organisation->name, 'acme-new', $organisation->description, false);
 
     expect($organisation->fresh()?->slug)->toBe('acme-new');
 });
@@ -145,7 +145,7 @@ it('records organisation.updated with the changes', function (): void {
     $organisation = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme', 'description' => null]);
     $admin = asOrgAdmin($organisation);
 
-    app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', null);
+    app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', null, false);
     $entry = recordedActivity(ActivityEvent::OrganisationUpdated)->sole();
 
     expect($entry->organisation_id)->toBe($organisation->id)
@@ -154,7 +154,66 @@ it('records organisation.updated with the changes', function (): void {
         ->and($entry->attribute_changes?->get('attributes'))->toBe(['name' => 'Acme Rockets']);
 
     // A save without changes records nothing.
-    app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', null);
+    app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', null, false);
 
     expect(recordedActivity(ActivityEvent::OrganisationUpdated))->toHaveCount(1);
 });
+
+it('records the second-factor rule in organisation.updated\'s changes (§6.6, CD-3)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+
+    app(UpdateOrganisation::class)->handle($superAdmin, $organisation, $organisation->name, 'acme', $organisation->description, true);
+
+    $entry = recordedActivity(ActivityEvent::OrganisationUpdated)->sole();
+    expect($organisation->fresh()?->require_second_factor)->toBeTrue()
+        ->and($entry->attribute_changes?->get('old'))->toBe(['require_second_factor' => false])
+        ->and($entry->attribute_changes?->get('attributes'))->toBe(['require_second_factor' => true]);
+
+    app(UpdateOrganisation::class)->handle($superAdmin, $organisation, $organisation->name, 'acme', $organisation->description, false);
+
+    expect($organisation->fresh()?->require_second_factor)->toBeFalse()
+        ->and(recordedActivity(ActivityEvent::OrganisationUpdated)->last()?->attribute_changes?->get('attributes'))->toBe(['require_second_factor' => false]);
+});
+
+it('refuses an organisation admin without a second factor of their own turning the rule on (CD-3)', function (): void {
+    $organisation = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+
+    try {
+        app(UpdateOrganisation::class)->handle($admin, $organisation, 'Acme Rockets', 'acme', $organisation->description, true);
+        $this->fail('Expected a ValidationException.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toBe([
+            'requireSecondFactor' => [__('Set up a second factor for your own account first.')],
+        ]);
+    }
+
+    expect($organisation->fresh()?->only(['name', 'require_second_factor']))->toBe(['name' => 'Acme', 'require_second_factor' => false])
+        ->and(recordedActivity(ActivityEvent::OrganisationUpdated))->toBeEmpty();
+});
+
+it('asks for an own second factor only when an organisation admin turns the rule on (CD-3)', function (string $actor, bool $before, bool $after): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $before]);
+
+    $user = match ($actor) {
+        'an organisation admin with a confirmed TOTP secret' => tap(asOrgAdmin($organisation), function (User $admin): void {
+            $admin->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+        }),
+        // Super admins are not members: the rule never applies to them through an organisation (CD-3, CD-4).
+        'a super admin without a second factor' => tap(asSuperAdmin(), function (): void {
+            onAdminHost();
+        }),
+        default => asOrgAdmin($organisation), // 'an organisation admin without a second factor'
+    };
+
+    app(UpdateOrganisation::class)->handle($user, $organisation, 'Acme Rockets', 'acme', $organisation->description, $after);
+
+    expect($organisation->fresh()?->only(['name', 'require_second_factor']))->toBe(['name' => 'Acme Rockets', 'require_second_factor' => $after]);
+})->with([
+    'an organisation admin with a second factor turns it on' => ['an organisation admin with a confirmed TOTP secret', false, true],
+    'a super admin without one turns it on' => ['a super admin without a second factor', false, true],
+    'an organisation admin without one turns it off' => ['an organisation admin without a second factor', true, false],
+    'an organisation admin without one keeps it on while renaming' => ['an organisation admin without a second factor', true, true],
+]);
