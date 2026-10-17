@@ -8,12 +8,20 @@ use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Sleep;
 use Illuminate\Testing\TestResponse;
+
+// M7c T2 #4: TrustProxies sets Symfony's trusted proxies statically, so the proxy case would leave 127.0.0.1 trusted
+// for every later request built outside the middleware. Trust none again, with TrustProxies' own header set.
+afterEach(function (): void {
+    Request::setTrustedProxies([], Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_HOST | Request::HEADER_X_FORWARDED_PORT
+        | Request::HEADER_X_FORWARDED_PROTO | Request::HEADER_X_FORWARDED_PREFIX | Request::HEADER_X_FORWARDED_AWS_ELB);
+});
 
 it('sends a member the reset link for their own host, wherever it was requested (R1)', function (string $host): void {
     Notification::fake();
@@ -43,9 +51,16 @@ it('builds the reset link with APP_URL\'s scheme and port, whatever the request 
     if ($case === 'a port in the Host header') {
         $this->post('http://acme.localhost:6666/forgot-password', ['email' => $member->email])->assertSessionHasNoErrors();
     } else {
+        // M7c T2 #1: the request must really see the proxy's scheme and port, or APP_URL beats nothing.
+        $seen = null;
+        Event::listen(RequestHandled::class, function (RequestHandled $event) use (&$seen): void {
+            $seen = ['port' => $event->request->getPort(), 'secure' => $event->request->isSecure()];
+        });
         config(['trustedproxy.proxies' => '127.0.0.1']);
         $this->post(route('password.email'), ['email' => $member->email], ['X-Forwarded-Proto' => 'http', 'X-Forwarded-Port' => '8080'])
             ->assertSessionHasNoErrors();
+
+        expect($seen)->toBe(['port' => 8080, 'secure' => false]);
     }
 
     Notification::assertSentTo($member, ResetPassword::class, fn (ResetPassword $notification): bool => str_starts_with(

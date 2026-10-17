@@ -26,6 +26,20 @@ it('signs a session out once the password changed elsewhere', function (): void 
     $this->assertGuest();
 });
 
+it('signs a session out on its next Livewire update once the password changed elsewhere (DEC-27 (6))', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password']);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+
+    DB::table('users')->where('id', $member->id)->update(['password' => Hash::make('changed-elsewhere')]);
+    Auth::guard('web')->forgetUser();
+
+    callPageAction($snapshot, '$refresh')->assertUnauthorized();
+    $this->assertGuest();
+});
+
 it('keeps the current device signed in after logging out other devices', function (): void {
     Route::middleware(['web', 'auth'])->post('/_logout-other-devices', function (): string {
         Auth::logoutOtherDevices('password');

@@ -63,7 +63,7 @@ $directPermissionHolder = function (Organisation $organisation, Permission $perm
     return $user;
 };
 
-it('decides who may impersonate whom on a tenant host (IMP-4, IMP-5, IMP-13, W3, W6, X6, RK-I6)', function (string $case, bool $allowed) use ($promoted, $organisationAdmin, $customRoleHolder, $directPermissionHolder): void {
+it('decides who may impersonate whom on a tenant host (IMP-4, IMP-5, IMP-13, W3, W6, X6, RK-I6, DEC-28 (20))', function (string $case, bool $allowed) use ($promoted, $organisationAdmin, $customRoleHolder, $directPermissionHolder): void {
     $organisation = Organisation::factory()->create();
     $other = Organisation::factory()->create();
     $superAdmin = fn (): User => User::factory()->superAdmin()->create();
@@ -84,6 +84,7 @@ it('decides who may impersonate whom on a tenant host (IMP-4, IMP-5, IMP-13, W3,
         'organisation admin → promoted super admin of this organisation' => [$organisationAdmin($organisation), $promoted($organisation)],
         'super admin → member of another organisation' => [$superAdmin(), $member($other)],
         'organisation admin → member' => [$organisationAdmin($organisation), $member($organisation)],
+        'organisation admin → member with two-factor authentication' => [$organisationAdmin($organisation), User::factory()->for($organisation)->withTwoFactor()->create()],
         'organisation admin → another organisation admin' => [$organisationAdmin($organisation), $organisationAdmin($organisation)],
         'organisation admin → member of another organisation' => [$organisationAdmin($organisation), $member($other)],
         'member without users.impersonate → member' => [$member($organisation), $member($organisation)],
@@ -118,6 +119,8 @@ it('decides who may impersonate whom on a tenant host (IMP-4, IMP-5, IMP-13, W3,
     ['organisation admin → promoted super admin of this organisation', false],
     ['super admin → member of another organisation', false],
     ['organisation admin → member', true],
+    // DEC-28 (20): a second factor never keeps an administrator from impersonating its holder.
+    ['organisation admin → member with two-factor authentication', true],
     ['organisation admin → another organisation admin', false],
     ['organisation admin → member of another organisation', false],
     ['member without users.impersonate → member', false],

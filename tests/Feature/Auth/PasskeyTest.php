@@ -182,6 +182,55 @@ it('refuses a passkey sign-in on a host the user does not belong to', function (
     $this->assertGuest();
 });
 
+it('refuses a passkey on the host of another organisation, with that host\'s own origin (§4.2, P2)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $beta = Organisation::factory()->create(['slug' => 'beta']);
+    $member = User::factory()->for($acme)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $acme));
+
+    // beta's origin is the one its host allows, so only the host rule can refuse.
+    signInWithPasskey($authenticator, passkeyHost('tenant', $beta))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('credential');
+    $this->assertGuest();
+
+    signInWithPasskey($authenticator, passkeyHost('tenant', $acme))->assertOk();
+    $this->assertAuthenticatedAs($member);
+});
+
+it('does not count successful passkey sign-ins against the passkeys limit (FU3-16)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $organisation));
+    $this->freezeTime();
+
+    // Eleven sign-ins, 22 requests from one IP: past the failure limit's ten a minute, under the backstop's 30.
+    foreach (range(1, 11) as $signIn) {
+        signInWithPasskey($authenticator, 'http://acme.localhost')->assertOk();
+        $this->assertAuthenticatedAs($member);
+        Auth::guard('web')->logout();
+    }
+});
+
+it('does not count successful passkey confirmations against the passkeys limit (FU3-16)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $organisation));
+    $this->freezeTime();
+    actingAs($member);
+
+    // Eleven confirmations, 22 requests by one user: past the failure limit's ten a minute, under the backstop's 30.
+    foreach (range(1, 11) as $confirmation) {
+        /** @var array<string, mixed> $options */
+        $options = getJson(route('passkey.confirm-options'))->assertOk()->json('options');
+
+        postJson(route('passkey.confirm'), ['credential' => $authenticator->assert($options, 'http://acme.localhost')])->assertSuccessful();
+    }
+});
+
 it('signs a super admin in with a passkey on central and tenant hosts (P2)', function (string $host): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $superAdmin = User::factory()->superAdmin()->create();

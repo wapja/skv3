@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.2 */
 
+use App\Authorization\SetSuperAdmin;
 use App\Models\Organisation;
 use App\Models\User;
 use Carbon\CarbonInterval;
@@ -155,6 +156,25 @@ it('refuses a two-factor challenge for a user who may no longer sign in here', f
         ->assertRedirect(route('two-factor.login'));
 
     $this->assertGuest();
+});
+
+it('refuses a two-factor challenge for a super admin demoted before the code, on the admin host (§4.2, DEC-28)', function (): void {
+    // A promoted member of acme: the demotion keeps them active and in acme, so only the host rule refuses the code.
+    $organisation = Organisation::factory()->create();
+    User::factory()->superAdmin()->create();
+    $superAdmin = User::factory()->for($organisation)->withTwoFactor()->create();
+    app(SetSuperAdmin::class)->handle($superAdmin, true);
+    onAdminHost();
+    $this->post(route('login.store'), ['email' => $superAdmin->email, 'password' => 'password'])
+        ->assertRedirect(route('two-factor.login'));
+
+    app(SetSuperAdmin::class)->handle($superAdmin, false);
+
+    $this->post(route('two-factor.login.store'), ['recovery_code' => 'recovery-code-1'])
+        ->assertRedirect(route('two-factor.login'));
+
+    $this->assertGuest();
+    expect($superAdmin->fresh()?->isActive())->toBeTrue();
 });
 
 it('completes the two-factor challenge on the member own host', function (): void {
