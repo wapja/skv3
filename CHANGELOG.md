@@ -196,6 +196,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Removing a profile photo when there is none no longer says *Profile photo removed.*
 - Setup no longer reports the Herd step as already done for a site Herd serves with a PHP older than 8.4: a re-run isolates it with `herd isolate 8.4 --site=<name>`.
 - Setup and the doctor accept `public/storage` only as a link to `storage/app/public`: a link elsewhere (one to the project root would serve `.env` under `/storage`), a dangling link or a directory in its place makes the doctor's `storage-link` row fail; setup and `skv:doctor --fix` replace a wrong link with `storage:link --force` and never remove a directory.
+- When the Herd stage cannot start after step 9 and recording that fails too, the wizard shows why the Herd stage failed instead of the second error, which goes to the log.
+- A background setup step whose pid file holds anything but a plain process id (such as `4294967295`, which `posix_kill()` turned into "every process") no longer reads as running, so *Re-check* is not refused for up to four hours.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
