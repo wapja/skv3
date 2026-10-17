@@ -36,7 +36,13 @@ it('answers 404 behind a proxy or tunnel (§7.2, DEC-24)', function (string $hea
     $token = (string) new SetupToken($context->basePath)->value();
 
     $this->get('/welcome-setup?token='.$token, [$header => 'x'])->assertNotFound();
-})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-Port', 'X-Forwarded-Prefix', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain', 'Via', 'X-Real-IP', 'True-Client-IP', 'CF-Connecting-IP', 'CF-Ray']);
+})->with([
+    'X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Forwarded-Port', 'X-Forwarded-Prefix', 'X-Original-Host', 'Forwarded',
+    'X-Expose-Subdomain', 'Via', 'X-Real-IP', 'True-Client-IP', 'CF-Connecting-IP', 'CF-Ray',
+    // M7c T10 #5: what other proxies, CDNs and tunnels add.
+    'X-Client-IP', 'Client-IP', 'X-Cluster-Client-IP', 'Fastly-Client-IP', 'X-Host', 'X-Original-URL', 'X-Forwarded', 'Forwarded-For',
+    'Tailscale-User-Login',
+]);
 
 it('keeps the token in the session and drops it from the address (RL-2)', function (): void {
     $context = useSetupWizard();
@@ -84,7 +90,14 @@ it('answers 404 to a request from another machine and never hands it the token (
 
     expect($home)->not->toContain('token=');
     $this->get('/welcome-setup?token='.$token)->assertNotFound();
-})->with(['LAN' => '192.168.1.20', 'public' => '203.0.113.7', 'IPv6' => '2001:db8::1']);
+})->with([
+    'LAN' => '192.168.1.20',
+    'public' => '203.0.113.7',
+    'IPv6' => '2001:db8::1',
+    // L7b-15: IpUtils matches an IPv4-mapped address against IPv6 ranges only, so even the mapped loopback is refused.
+    'IPv4-mapped loopback' => '::ffff:127.0.0.1',
+    'IPv4-mapped LAN' => '::ffff:192.168.1.20',
+]);
 
 it('lets every loopback address through (RL-4)', function (string $address): void {
     $context = useSetupWizard();
@@ -133,9 +146,10 @@ it('never stores the token in the session, not even as the previous URL (g3-27)'
         ->and(json_encode(session()->all(), JSON_THROW_ON_ERROR))->not->toContain($token);
 });
 
-it('sends no referrer from the wizard, whose first URL carries the token (g3-13)', function (): void {
+it('sends no referrer from the wizard, whose first URL carries the token, also when it refuses the token (g3-13, L7b-10)', function (): void {
     $context = useSetupWizard();
 
+    $this->get('/welcome-setup?token=wrong')->assertNotFound()->assertHeader('Referrer-Policy', 'no-referrer');
     $this->get('/welcome-setup?token='.new SetupToken($context->basePath)->value())->assertRedirect()->assertHeader('Referrer-Policy', 'no-referrer');
     $this->get('/welcome-setup')->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
 });
@@ -161,7 +175,8 @@ it('opens on the apex, the admin host and a tenant host until the marker exists 
     $host = match ($kind) {
         'apex' => Hosts::apex(),
         'admin' => Hosts::admin(),
-        default => Hosts::tenant('acme'),
+        'tenant' => Hosts::tenant('acme'),
+        default => throw new LogicException("Unknown host kind [{$kind}]."),
     };
     $token = (string) new SetupToken($context->basePath)->value();
 
