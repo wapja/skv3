@@ -84,8 +84,29 @@ $adminOf = function (Organisation $organisation): User {
 
 it('takes its row locks in the one order of CD-5', function (Closure $arrange, array $expected) use ($lockedTables): void {
     $act = $arrange();
+    $statements = lockStatements($act);
 
-    expect($lockedTables(lockStatements($act)))->toBe($expected);
+    expect($lockedTables($statements))->toBe($expected);
+
+    // A write takes an implicit row lock: none may come before the organisation lock (an invitation updated before
+    // lockForWrite() ran would put invitations ahead of organisations). Inserts of new rows take no lock another
+    // transaction waits on, so CreateOrganisation's own organisation row is not counted.
+    $cd5Tables = ['organisations', 'roles', 'users', 'model_has_roles', 'invitations', 'sessions', 'password_reset_tokens'];
+    $first = array_values(array_filter($statements, fn (array $entry): bool => in_array($entry['table'], $cd5Tables, true) && $entry['statement'] !== 'insert'))[0] ?? null;
+
+    if (($expected[0] ?? null) === 'organisations') {
+        expect([$first['statement'] ?? null, $first['table'] ?? null])->toBe(['for update', 'organisations']);
+    }
+
+    // Every users lock of more than one row takes the rows in id order, so two batches never wait on each other in
+    // opposite orders; a lock of one row by its id needs no order.
+    foreach ($statements as $entry) {
+        $oneRowById = str_ends_with($entry['sql'], ' limit 1 for update') && preg_match('/"id" = \?/', $entry['sql']) === 1;
+
+        if ($entry['statement'] === 'for update' && $entry['table'] === 'users' && ! $oneRowById) {
+            expect($entry['sql'])->toContain('order by "id" asc');
+        }
+    }
 })->with([
     'UpdateUserStatus, disabling a member (cycle 3)' => [function (): Closure {
         $organisation = Organisation::factory()->create();
