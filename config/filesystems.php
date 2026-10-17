@@ -49,10 +49,12 @@ return [
             'report' => false,
         ],
 
-        // §4.9, CD-6: the backups module's archives; point it at S3 or another remote disk in production.
+        // §4.9, CD-6: the backups module's archives; point it at S3 or another remote disk in production. Private
+        // (G6-10): archives 0600 and folders 0700 on the local disk, never the umask's 0644.
         'backups' => [
             'driver' => 'local',
             'root' => storage_path('app/backups'),
+            'visibility' => 'private',
             'serve' => false,
             'throw' => false,
             'report' => false,

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\Commands\BackupCommand;
 use Spatie\Backup\Config\Config;
 use Spatie\Backup\Exceptions\BackupFailed;
+use Tests\Fixtures\PgSslModeSnapshot;
 
 beforeEach(function (): void {
     useBackupsModule(true);
@@ -28,6 +29,12 @@ beforeEach(function (): void {
     // The package's command takes its Config at construction, from an instance RefreshDatabase's migrate run already
     // built: rebuild it from the configuration above, as BackupRunTest does. Without this, a run backs up :memory:.
     Config::rebind();
+    // L7b-68: handle() exports PGSSLMODE; start without one and put the original back afterwards.
+    $this->pgSslMode = PgSslModeSnapshot::takeAndClear();
+});
+
+afterEach(function (): void {
+    $this->pgSslMode->restore();
 });
 
 it('owns the backup:run name over the package\'s command (CD-7, O1)', function (): void {
@@ -66,6 +73,33 @@ it('judges the configuration that --config names, not the default one (CD-7)', f
         ->and($output)->not->toContain('Starting backup');
     expect(Storage::disk('backups')->allFiles())->toBe([]);
 });
+
+it('hands pg_dump the sslmode of the sources --config and --db-name choose, not the default ones (L7b-68)', function (array $options, string $expected): void {
+    // The default configuration dumps pgsql (prefer); backup_reports dumps pgsql_reports (require), then pgsql_audit (verify-full).
+    config([
+        'backup.backup.source.databases' => ['pgsql'],
+        'database.connections.pgsql.sslmode' => 'prefer',
+        'database.connections.pgsql_reports' => [...config('database.connections.pgsql'), 'sslmode' => 'require'],
+        'database.connections.pgsql_audit' => [...config('database.connections.pgsql'), 'sslmode' => 'verify-full'],
+    ]);
+    /** @var array<string, mixed> $backup */
+    $backup = config('backup');
+    config(['backup_reports' => array_replace_recursive($backup, ['backup' => ['source' => ['databases' => ['pgsql_reports', 'pgsql_audit']]]])]);
+    // A shared sticky temporary directory stops the run after the export, before pg_dump starts (M22).
+    File::ensureDirectoryExists($this->sandbox->path('backup-temp'));
+    chmod($this->sandbox->path('backup-temp'), 01777);
+
+    $exit = Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true, ...$options]);
+
+    expect($exit)->toBe(1)
+        ->and(getenv('PGSSLMODE'))->toBe($expected)
+        ->and($_SERVER['PGSSLMODE'] ?? null)->toBe($expected)
+        ->and($_ENV['PGSSLMODE'] ?? null)->toBe($expected);
+})->with([
+    'the default configuration' => [[], 'prefer'],
+    '--config' => [['--config' => 'backup_reports'], 'require'],
+    '--config and --db-name' => [['--config' => 'backup_reports', '--db-name' => ['pgsql_audit']], 'verify-full'],
+]);
 
 it('hands an encrypted backup to the package (CD-7)', function (): void {
     Exceptions::fake();

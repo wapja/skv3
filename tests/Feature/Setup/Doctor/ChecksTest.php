@@ -56,6 +56,7 @@ use App\Setup\Steps\DoctorStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
 use App\Support\Health\HealthCheckKey;
+use App\Support\ProcessAccount;
 use App\Support\Skv;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Support\Facades\DB;
@@ -593,6 +594,19 @@ it('looks for pg_dump only while the backups module is on (§5.4, RL-11)', funct
         ->and($missing->fix)->toBe('PG_DUMP_BINARY_PATH=/path/to/postgresql/bin')
         ->and(new PgDumpCheck($herdServices)->run($this->context)->status)->toBe(CheckStatus::Pass);
 })->skip(fn (): bool => new Toolchain(storage_path('framework/testing/setup/no-home'))->which('pg_dump') !== null, 'pg_dump is on the system PATH.');
+
+it('fails the pg_dump row without ext-posix, because backup:run then refuses to start (CD-9, L7b-51)', function () use ($stub): void {
+    config(['skv.modules.backups' => true]);
+    $stub($this->sandbox->path('pg/bin/pg_dump'));
+    new EnvFile($this->sandbox->path('.env'))->set(['PG_DUMP_BINARY_PATH' => $this->sandbox->path('pg/bin')]);
+    app()->instance(ProcessAccount::class, new ProcessAccount(fn (): ?int => null));
+
+    $result = new PgDumpCheck($this->sandbox->path('herd-services'))->run($this->context);
+
+    expect($result->status)->toBe(CheckStatus::Fail)
+        ->and($result->message)->toBe(__('PHP has no posix extension, so backup:run cannot tell this account\'s directories and refuses to start'))
+        ->and($result->fix)->toBe(__('Install the posix extension'));
+});
 
 it('honours PG_DUMP_BINARY_PATH (§5.4)', function () use ($stub): void {
     config(['skv.modules.backups' => true]);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Setup\Doctor;
 
+use App\Support\ProcessAccount;
+
 /**
  * Finds a PostgreSQL client binary for the `pg-dump` and `schema-tools` checks and for backup:run (§5.4, CD-6):
  * PG_DUMP_BINARY_PATH from `.env` first. Then, while the pgsql connection points at this machine (127.0.0.1,
@@ -13,6 +15,7 @@ namespace App\Setup\Doctor;
  * in the world-writable /Users/Shared) is no symlink, belongs to this user or root and is neither group- nor
  * world-writable, so no other account can plant or later swap the pg_dump that backup:run executes; it is returned
  * resolved, so no link above the root can swap it either. No version probe: the System page starts no process.
+ * Without ext-posix this user is unknown (ProcessAccount, CD-9), so only root-owned Herd candidates count.
  */
 final readonly class PostgresBinaries
 {
@@ -23,7 +26,8 @@ final readonly class PostgresBinaries
 
     /**
      * @param  string  $herdServices  where Herd keeps its PostgreSQL versions, two levels below Herd's root; tests pass a sandbox
-     * @param  int|null  $userId  the account a Herd candidate may belong to besides root; null is the running process's (tests pass another)
+     * @param  int|null  $userId  the account a Herd candidate may belong to besides root; null is the running process's
+     *                            (ProcessAccount, none without ext-posix); tests pass another
      */
     public function __construct(
         private string $herdServices = self::HERD_SERVICES,
@@ -82,7 +86,8 @@ final readonly class PostgresBinaries
             return false;
         }
 
-        $owners = [0, $this->userId ?? $this->processUserId()];
+        $user = $this->userId ?? app(ProcessAccount::class)->uid();
+        $owners = $user === null ? [0] : [0, $user];
         $path = $candidate;
 
         while (true) {
@@ -107,16 +112,5 @@ final readonly class PostgresBinaries
 
             $path = dirname($path);
         }
-    }
-
-    private function processUserId(): int
-    {
-        if (function_exists('posix_geteuid')) {
-            return posix_geteuid();
-        }
-
-        $owner = getmyuid();
-
-        return $owner === false ? -1 : $owner;
     }
 }

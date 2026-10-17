@@ -8,9 +8,13 @@ use App\Setup\Doctor\Check;
 use App\Setup\Doctor\CheckResult;
 use App\Setup\Doctor\DoctorContext;
 use App\Setup\Doctor\PostgresBinaries;
+use App\Support\ProcessAccount;
 use App\Support\Skv;
 
-/** §5.4, RL-11: the backups module (M7) needs pg_dump; skipped while the module is off. */
+/**
+ * §5.4, RL-11: the backups module (M7) needs pg_dump; skipped while the module is off. Fails without ext-posix (CD-9):
+ * backup:run then cannot tell this account's directories and refuses to start, whichever pg_dump it would find.
+ */
 final readonly class PgDumpCheck implements Check
 {
     private PostgresBinaries $binaries;
@@ -34,6 +38,10 @@ final readonly class PgDumpCheck implements Check
     {
         if (! Skv::moduleEnabled('backups')) {
             return CheckResult::skipped(__('The backups module is off'));
+        }
+
+        if (app(ProcessAccount::class)->uid() === null) {
+            return CheckResult::fail(__('PHP has no posix extension, so backup:run cannot tell this account\'s directories and refuses to start'), __('Install the posix extension'));
         }
 
         $path = $this->binaries->find($context, 'pg_dump');

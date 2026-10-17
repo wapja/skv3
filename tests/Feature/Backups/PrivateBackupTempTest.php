@@ -5,6 +5,7 @@ declare(strict_types=1);
 /** covers §4.9 */
 
 use App\Support\Backups\PrivateBackupTemp;
+use App\Support\ProcessAccount;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -228,3 +229,30 @@ it('leaves the refusal to the app\'s backup:run, which prints it as one line (CD
 
     $listener($starting('backup:run'));
 })->throwsNoExceptions();
+
+it('counts no directory as this account\'s without ext-posix, so it changes and empties nothing (CD-9, L7b-51)', function () use ($mode): void {
+    // getmyuid() is the entry script's owner, not the process: without posix_geteuid() the account is unknown.
+    app()->instance(ProcessAccount::class, new ProcessAccount(fn (): ?int => null));
+    File::ensureDirectoryExists($this->temp.'/temp');
+    chmod($this->temp, 0755);
+    File::put($this->temp.'/temp/database.sql', 'plaintext');
+    touch($this->temp.'/temp/database.sql', now()->subHours(7)->getTimestamp());
+    $temp = new PrivateBackupTemp(systemTemp: $this->sandbox->path('system-temp'));
+
+    expect($temp->secure())->toBeFalse()
+        ->and($temp->removeStale())->toBe(0)
+        ->and($mode($this->temp))->toBe(0755)
+        ->and(is_file($this->temp.'/temp/database.sql'))->toBeTrue();
+});
+
+it('as root, counts only a directory inside storage/ as its own, never a root-owned system directory (L7b-69)', function () use ($mode): void {
+    // The process stands in for root; /usr belongs to root, so without the rule secure() would chmod it to 0700.
+    app()->instance(ProcessAccount::class, new ProcessAccount(fn (): int => 0));
+    config(['backup.backup.temporary_directory' => '/usr']);
+    $before = $mode('/usr');
+    $temp = new PrivateBackupTemp(systemTemp: $this->sandbox->path('system-temp'));
+
+    expect($temp->secure())->toBeFalse()
+        ->and($temp->removeStale())->toBe(0)
+        ->and($mode('/usr'))->toBe($before);
+})->skip(fn (): bool => posix_geteuid() === 0, 'a real root could chmod /usr should the rule regress');

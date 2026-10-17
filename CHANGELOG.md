@@ -93,6 +93,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - The language switch in the user menu reloads the page you are on, query string and filters included.
 - `config/app.php` defaults `APP_LOCALE` to `nl`, the same default as the kit's own language setting.
 - `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`, also when Composer's install hook (`post-root-package-install`, `composer setup`) creates `.env`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.
+- `/health-check` keeps its per-key counter under an HMAC of the key with `APP_KEY` instead of a plain SHA-256, and while the ops store is broken it logs one warning line instead of an exception with a stack trace on every request.
+- The last-backup health check names why backups would not be encrypted (no `BACKUP_ARCHIVE_PASSWORD`, encryption switched off in `config/backup.php`, or a PHP zip without AES-256), each with its own fix.
+- Without the PHP posix extension the backups trust no directory as this account's: `backup:run` refuses to start, Herd's `pg_dump` counts only when root owns it, and the doctor's `pg-dump` row says why. Running as root, `backup:run` accepts only a temporary directory inside `storage/`.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -166,6 +169,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - A Herd step that could not start, or failed, on a site Herd serves with an older PHP now leaves `herd isolate 8.4 --site=<name>` to run instead of ending as skipped, and the Herd stage no longer reports such a site as done.
 - The setup's background steps (frontend build, Claude) no longer create `public/build`, `node_modules`, `vendor` or `.claude` readable by their owner only; only the steps' own log, exit and pid files stay private.
 - Setup creates the `public/storage` link, so the doctor's `storage-link` row no longer warns after a fresh install.
+- Backup archives on the local `backups` disk are readable by this account only (0600, folders 0700).
+- `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

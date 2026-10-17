@@ -9,6 +9,7 @@ use App\Setup\Doctor\DoctorContext;
 use App\Setup\Doctor\PostgresBinaries;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
+use App\Support\ProcessAccount;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -136,3 +137,13 @@ it('returns the resolved path of a Herd binary, so no link above Herd\'s root ca
 
     expect($found)->toBe(realpath($real));
 });
+
+it('trusts only root-owned Herd candidates without ext-posix, where this account is unknown (CD-9, L7b-51)', function () use ($stub): void {
+    app()->instance(ProcessAccount::class, new ProcessAccount(fn (): ?int => null));
+    $stub($this->services.'/18/bin/pg_dump');
+
+    $found = new PostgresBinaries($this->services)->find($this->context, 'pg_dump');
+
+    // The sandbox belongs to this account, not root: a PATH pg_dump may still be found, never the Herd one.
+    expect(str_starts_with((string) $found, $this->root.'/'))->toBeFalse();
+})->skip(fn (): bool => posix_geteuid() === 0, 'Running as root: root owns every candidate.');

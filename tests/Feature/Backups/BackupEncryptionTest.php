@@ -27,3 +27,17 @@ it('never counts a missing password or no encryption as encrypted, whatever the 
     'encryption none' => [['backup.backup.encryption' => 'none']],
     'unknown encryption' => [['backup.backup.encryption' => 'aes-256']],
 ]);
+
+it('names why an archive would not be encrypted, the password first (G6-05)', function (array $config, ?bool $zipHasAes256, ?string $problem): void {
+    config(['backup.backup.password' => 'correct-horse-battery', 'backup.backup.encryption' => 'default', ...$config]);
+
+    expect(BackupEncryption::problem($zipHasAes256))->toBe($problem);
+})->with([
+    'encrypted' => [[], true, null],
+    'blank password' => [['backup.backup.password' => ''], true, BackupEncryption::NO_PASSWORD],
+    'blank password and encryption none' => [['backup.backup.password' => '', 'backup.backup.encryption' => 'none'], true, BackupEncryption::NO_PASSWORD],
+    'encryption none' => [['backup.backup.encryption' => 'none'], true, BackupEncryption::ENCRYPTION_OFF],
+    'unknown encryption' => [['backup.backup.encryption' => 'aes-256'], true, BackupEncryption::ENCRYPTION_OFF],
+    'no AES-256 for default' => [[], false, BackupEncryption::NO_AES256],
+    'no AES-256 for aes256' => [['backup.backup.encryption' => 'aes256'], false, BackupEncryption::NO_AES256],
+]);
