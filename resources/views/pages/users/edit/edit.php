@@ -13,6 +13,7 @@ use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\HostScope;
 use Flux\Flux;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -77,6 +78,9 @@ new #[Title('Edit user')] class extends Component
     /**
      * Save name, address and status (USR-12), all or nothing (G4-08). Your own and a pending user's address are
      * read-only and never sent (E1); another user's new address needs a fresh password confirmation first (RL-18).
+     * A new address mails the old one, so it is limited per administrator (FM-19): the slot is reserved after the
+     * confirmation and before anything is saved, so a refusal saves nothing, and given back when the save throws
+     * (UserActionLimit::around()). A save that keeps the address counts nothing.
      */
     public function saveAccount(UpdateUser $updateUser, UpdateUserStatus $updateUserStatus): void
     {
@@ -102,19 +106,29 @@ new #[Title('Edit user')] class extends Component
             $this->authorize('updateStatus', $target);
         }
 
-        if ($email !== $target->email && $this->confirmationParked($target)) {
+        $changesEmail = $email !== $target->email;
+
+        if ($changesEmail && $this->confirmationParked($target)) {
             return;
         }
 
         // One transaction (G4-08): a refused status change keeps the old name and address too. The status goes
         // first, so its organisation and users locks come before UpdateUser writes the target row (CD-5).
-        DB::transaction(function () use ($updateUser, $updateUserStatus, $actor, $target, $email, $status, $statusChanges): void {
-            if ($statusChanges) {
-                $updateUserStatus->handle($actor, $target, $status);
-            }
+        $save = function () use ($updateUser, $updateUserStatus, $actor, $target, $email, $status, $statusChanges): void {
+            DB::transaction(function () use ($updateUser, $updateUserStatus, $actor, $target, $email, $status, $statusChanges): void {
+                if ($statusChanges) {
+                    $updateUserStatus->handle($actor, $target, $status);
+                }
 
-            $updateUser->handle($actor, $target, $this->name, $email);
-        });
+                $updateUser->handle($actor, $target, $this->name, $email);
+            });
+        };
+
+        if ($changesEmail) {
+            UserActionLimit::addressChange()->around($actor, 'email', $save);
+        } else {
+            $save();
+        }
 
         $this->resolvedTarget = null;
         $this->fillAccount($this->target());

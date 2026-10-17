@@ -8,6 +8,7 @@ use App\Concerns\ResolvesCurrentUser;
 use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Rules\AvailableEmail;
+use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Hosts;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -97,14 +98,17 @@ new #[Title('New organisation')] class extends Component
         ]);
 
         try {
-            $organisation = $createOrganisation->handle(
+            // FM-19: the first admin's invitation counts under the invite page's limit, here and not in the action.
+            // The slot is reserved before anything is created and given back when the creation throws; a refusal
+            // lands on adminEmail and creates nothing.
+            $organisation = UserActionLimit::invite()->around($actor, 'adminEmail', fn (): Organisation => $createOrganisation->handle(
                 $actor,
                 $this->name,
                 $this->slug,
                 $this->description,
                 $this->adminEmail,
                 Locale::from($this->adminLocale),
-            );
+            ));
         } catch (ValidationException $exception) {
             // The invitation step reports the address as "email"; this form calls it "adminEmail".
             throw ValidationException::withMessages(collect($exception->errors())
