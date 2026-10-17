@@ -42,7 +42,7 @@ it('runs skv:bootstrap from the Composer and installer hooks (§5.2, RL-13)', fu
     /** @var array{scripts: array<string, list<string>>, extra: array{laravel: array{installer: array{post-create-project: list<string>}}}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
 
-    expect($composer['scripts']['post-root-package-install'])->toBe(["@php -r \"file_exists('.env') || copy('.env.example', '.env');\""])
+    expect($composer['scripts']['post-root-package-install'])->toBe(["@php -r \"file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));\""])
         ->and($composer['scripts']['post-create-project-cmd'])->toBe(['@php artisan skv:bootstrap --no-interaction --ansi'])
         ->and($composer['extra']['laravel']['installer']['post-create-project'])->toBe(['@php artisan skv:bootstrap --no-interaction']);
 });
@@ -54,7 +54,7 @@ it('sets up through skv:bootstrap and skv:install (§5.3.3)', function (): void 
     expect($composer['scripts']['setup'])->toBe([
         'Composer\\Config::disableProcessTimeout',
         'composer install',
-        "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+        "@php -r \"file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));\"",
         '@php artisan skv:bootstrap --no-interaction',
         '@php artisan skv:install',
     ]);
@@ -83,7 +83,7 @@ it('ends composer setup with the CLI after the commands the clone route repeats 
 
     expect(array_slice($setup, 1, 3))->toBe([
         'composer install',
-        "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+        "@php -r \"file_exists('.env') || (copy('.env.example', '.env') && chmod('.env', 0600));\"",
         '@php artisan skv:bootstrap --no-interaction',
     ])->and(end($setup))->toBe('@php artisan skv:install');
 });

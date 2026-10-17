@@ -28,14 +28,31 @@ final readonly class EnvFile
         return $values[$key] ?? null;
     }
 
-    /** @return array<string, string> every value as Dotenv reads it; none when the file is missing */
+    /**
+     * @return array<string, string> every value as Dotenv reads it; none when the file is missing
+     *
+     * @throws RuntimeException when the file exists but cannot be read (L7b-03)
+     */
     public function all(): array
     {
         if (! $this->exists()) {
             return [];
         }
 
-        return array_map(strval(...), Dotenv::parse((string) file_get_contents($this->path)));
+        return array_map(strval(...), Dotenv::parse($this->contents()));
+    }
+
+    /**
+     * The file's text. A file that cannot be read stops the caller with "Could not read :file." instead of reading as
+     * empty, so a copy of it is never written blank (L7b-03, CD-8).
+     *
+     * @throws RuntimeException when the file is missing or cannot be read
+     */
+    public function contents(): string
+    {
+        $contents = is_file($this->path) && is_readable($this->path) ? @file_get_contents($this->path) : false;
+
+        return is_string($contents) ? $contents : throw new RuntimeException(__('Could not read :file.', ['file' => basename($this->path)]));
     }
 
     /**
@@ -68,7 +85,7 @@ final readonly class EnvFile
             }
         }
 
-        $original = (string) file_get_contents($this->path);
+        $original = $this->contents();
         $temporary = $this->path.'.'.bin2hex(random_bytes(4)).'.tmp';
 
         try {

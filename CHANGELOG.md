@@ -92,6 +92,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - While you impersonate someone, a language or appearance you pick lasts until the impersonation ends and never changes their account.
 - The language switch in the user menu reloads the page you are on, query string and filters included.
 - `config/app.php` defaults `APP_LOCALE` to `nl`, the same default as the kit's own language setting.
+- `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`, also when Composer's install hook (`post-root-package-install`, `composer setup`) creates `.env`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.

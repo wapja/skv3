@@ -329,8 +329,9 @@ final class DatabaseStep implements SetupStep
                 : ['DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => self::SQLITE_DATABASE]);
         }
 
-        // Atomically with .env's mode: .env.testing never sits at the umask's mode, and a symlink is replaced (RL-1).
-        StateFile::write($testing, (string) file_get_contents($env), fileperms($env) & 0777);
+        // Atomically and 0600, whatever .env's mode, because it holds the same secrets (CD-8); a symlink is replaced
+        // (RL-1), and a .env that cannot be read stops the step instead of leaving an empty .env.testing (L7b-03).
+        StateFile::write($testing, new EnvFile($env)->contents(), 0600);
 
         new EnvFile($testing)->set([
             'APP_ENV' => 'testing',

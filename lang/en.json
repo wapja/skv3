@@ -140,6 +140,7 @@
     "Copying failed; select the codes and copy them yourself.": "Copying failed; select the codes and copy them yourself.",
     "Could not create :directory.": "Could not create :directory.",
     "Could not create a temporary copy of [:path].": "Could not create a temporary copy of [:path].",
+    "Could not read :file.": "Could not read :file.",
     "Could not write :file.": "Could not write :file.",
     "Create a super admin first: php artisan skv:create-super-admin": "Create a super admin first: php artisan skv:create-super-admin",
     "Create an organisation": "Create an organisation",

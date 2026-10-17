@@ -165,9 +165,10 @@ it('creates the one-time setup token (§5.2 point 5, RL-10)', function (): void 
         ->and(new SetupToken($context->basePath)->value())->toMatch('/^[0-9a-f]{64}$/');
 });
 
-it('copies .env.example atomically with its mode, replacing a symlinked .env (RL-1, g2-08)', function (): void {
+it('copies .env.example atomically as 0600 whatever the example\'s mode, replacing a symlinked .env (RL-1, g2-08, CD-8)', function (): void {
     Process::fake(["*'artisan' 'migrate' '--graceful' '--force'*" => Process::result('Migrated')]);
-    chmod($this->context->path('.env.example'), 0640);
+    // A umask-002 checkout: group members could rewrite the example, and a copy of its mode.
+    chmod($this->context->path('.env.example'), 0664);
     // Dangling: Bootstrap sees no .env and copies the example.
     symlink($this->context->path('elsewhere.env'), $this->context->path('.env'));
 
@@ -175,6 +176,14 @@ it('copies .env.example atomically with its mode, replacing a symlinked .env (RL
 
     expect($this->context->path('elsewhere.env'))->not->toBeFile()
         ->and(is_link($this->context->path('.env')))->toBeFalse()
-        ->and(fileperms($this->context->path('.env')) & 0777)->toBe(0640)
+        ->and(fileperms($this->context->path('.env')) & 0777)->toBe(0600)
         ->and(new EnvFile($this->context->path('.env'))->get('APP_KEY'))->toStartWith('base64:');
 });
+
+it('stops with a message instead of writing an empty .env when .env.example cannot be read (L7b-03, CD-8)', function (): void {
+    chmod($this->context->path('.env.example'), 0000);
+
+    expect(fn (): array => new Bootstrap($this->context->basePath, $this->toolchain)->run())
+        ->toThrow(RuntimeException::class, __('Could not read :file.', ['file' => '.env.example']))
+        ->and($this->context->path('.env'))->not->toBeFile();
+})->skip(fn (): bool => posix_geteuid() === 0, 'root reads every file');

@@ -140,6 +140,7 @@
     "Copying failed; select the codes and copy them yourself.": "Kopiëren is mislukt; selecteer de codes en kopieer ze zelf.",
     "Could not create :directory.": "Kon :directory niet aanmaken.",
     "Could not create a temporary copy of [:path].": "Kon geen tijdelijke kopie van [:path] maken.",
+    "Could not read :file.": "Kon :file niet lezen.",
     "Could not write :file.": "Kon :file niet schrijven.",
     "Create a super admin first: php artisan skv:create-super-admin": "Maak eerst een superbeheerder aan: php artisan skv:create-super-admin",
     "Create an organisation": "Maak een organisatie aan",

@@ -618,7 +618,7 @@ cd mijnapp</code></pre>
     <li><div>
       <p><strong>Bereid de app voor.</strong> Dit zijn de eerste commando&rsquo;s van <code>composer setup</code>. <code>php artisan skv:bootstrap</code> maakt een <code>APP_KEY</code> (alleen als die leeg is), zet <code>APP_URL</code> op het Herd-adres (<code>http://mijnapp.test</code>), migreert <code>database/database.sqlite</code> en maakt, zolang de app niet ge&iuml;nstalleerd is, het eenmalige installatietoken. Daarna zegt hij: <span class="ui">Open http://mijnapp.test om de installatie in de browser af te ronden, of draai php artisan skv:install.</span></p>
 <pre><code>composer install
-php -r "file_exists('.env') || copy('.env.example', '.env');"
+php -r "file_exists('.env') || (copy('.env.example', '.env') &amp;&amp; chmod('.env', 0600));"
 php artisan skv:bootstrap</code></pre>
     </div></li>
     <li><div>
