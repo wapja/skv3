@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 /** covers §8 */
 
+use App\Setup\Support\Toolchain;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Symfony\Component\Yaml\Yaml;
+use Tests\Fixtures\RequiredPostgres;
 
 it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
     $ci = file_get_contents(base_path('.github/workflows/tests.yml'));
@@ -19,6 +23,72 @@ it('keeps CI in tests.yml with matrix PHP versions only', function (): void {
         ->and($ci)->toContain('composer check')
         ->and(file_exists(base_path('.github/workflows/ci.yml')))->toBeFalse();
 });
+
+/**
+ * tests.yml, parsed (F35): the workflow's structure is checked on what GitHub reads, not on its text. Symfony's parser
+ * keeps `on` a string key, as GitHub does; a file it cannot parse fails every test that reads it.
+ *
+ * @return array<string, mixed>
+ */
+$workflow = function (): array {
+    $parsed = Yaml::parseFile(base_path('.github/workflows/tests.yml'));
+
+    expect($parsed)->toBeArray();
+
+    /** @var array<string, mixed> $parsed */
+    return $parsed;
+};
+
+/**
+ * The steps of $job, in order.
+ *
+ * @return list<array<string, mixed>>
+ */
+$steps = function (string $job) use ($workflow): array {
+    $steps = $workflow()['jobs'][$job]['steps'] ?? null;
+
+    expect($steps)->toBeArray()->not->toBeEmpty();
+
+    /** @var list<array<string, mixed>> $steps */
+    return $steps;
+};
+
+/**
+ * The one step of $job named $name.
+ *
+ * @return array<string, mixed>
+ */
+$step = function (string $job, string $name) use ($steps): array {
+    $found = array_values(array_filter($steps($job), fn (array $step): bool => ($step['name'] ?? null) === $name));
+
+    expect($found)->toHaveCount(1, "{$job} has no single step named [{$name}]");
+
+    return $found[0];
+};
+
+/** Where the step named $name sits in $job (a missing step sorts last). */
+$position = function (string $job, string $name) use ($steps): int {
+    $index = array_search($name, array_column($steps($job), 'name'), true);
+
+    return is_int($index) ? $index : PHP_INT_MAX;
+};
+
+/** $script run as GitHub runs a `shell: bash` step (`bash --noprofile --norc -eo pipefail {0}`), in $path. */
+$bash = fn (string $script, string $path, array $env = []): ProcessResult => Process::path($path)
+    ->env([...$env, 'GIT_CONFIG_GLOBAL' => '/dev/null', 'GIT_CONFIG_NOSYSTEM' => '1'])
+    ->run(['bash', '--noprofile', '--norc', '-eo', 'pipefail', '-c', $script]);
+
+/** A step's script with every line trimmed, so a block nested in an `if` compares like a top-level one. */
+$trimmed = fn (mixed $script): string => implode("\n", array_map(trim(...), explode("\n", is_string($script) ? $script : '')));
+
+/** The lines each step that needs the Flux credentials runs to hand them to Composer (CD-9), trimmed. */
+$composerAuth = <<<'SH'
+    COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
+    export COMPOSER_AUTH
+    SH;
+
+/** The kit's package name, read from composer.json: NameLeakTest scans tests/, so this file holds no kit name literal. */
+$package = fn (): string => (string) json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR)['name'];
 
 /**
  * The committed version of $file in $repository (§6.7): a CI job that ran skv:flux-pro has flux-pro in its working
@@ -93,6 +163,48 @@ it('reads the working-tree composer files in a repository without a commit yet (
     }
 });
 
+it('refuses a committed Flux Pro in the kit\'s own repository only (CD-11, M7b M1)', function (string $composerJson, string $composerLock, ?string $workingTree, bool $passes) use ($step, $position, $bash, $package, $sandboxGit): void {
+    $guard = $step('check', 'Kit commits no Flux Pro');
+    $repository = storage_path('framework/testing/ci-kit-guard-'.Str::uuid());
+    File::ensureDirectoryExists($repository);
+    File::put($repository.'/composer.json', $composerJson);
+    File::put($repository.'/composer.lock', $composerLock);
+
+    try {
+        $sandboxGit($repository)->run(['git', 'init', '--quiet'])->throw();
+        $sandboxGit($repository)->run(['git', 'add', 'composer.json', 'composer.lock'])->throw();
+        $sandboxGit($repository)->run(['git', '-c', 'user.name=CI', '-c', 'user.email=ci@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'Composer files'])->throw();
+
+        if ($workingTree !== null) {
+            // What the Flux Pro step leaves in the working tree never counts: the guard reads the commit.
+            File::put($repository.'/composer.json', $workingTree);
+        }
+
+        $result = $bash((string) $guard['run'], $repository);
+
+        // Generated apps may commit the mark on purpose (CD-13 of M7b): the step runs in the kit's repository alone.
+        expect($guard['if'])->toBe("github.repository == '{$package()}'")
+            ->and($position('check', 'Kit commits no Flux Pro'))->toBeGreaterThan($position('check', 'Setup PHP'))
+            ->and($result->successful())->toBe($passes, $result->output().$result->errorOutput());
+    } finally {
+        File::deleteDirectory($repository);
+    }
+})->with(function () use ($withFluxProMark): array {
+    $clean = (string) json_encode(['name' => 'acme/app', 'require' => ['livewire/flux' => '^2.13']]);
+    $cleanLock = (string) json_encode(['packages' => [['name' => 'livewire/flux']]]);
+    $otherMark = ['name' => 'acme/app'];
+    data_set($otherMark, 'extra.skv', ['note' => true]);
+
+    return [
+        'clean files' => [$clean, $cleanLock, null, true],
+        'a clean commit under a working tree with Flux Pro' => [$clean, $cleanLock, $withFluxProMark(true), true],
+        'the mark and flux-pro in composer.json' => [$withFluxProMark(true), $cleanLock, null, false],
+        'flux-pro in the lock only' => [$clean, (string) json_encode(['packages' => [['name' => 'livewire/flux-pro']]]), null, false],
+        'the fluxui repository' => [(string) json_encode(['name' => 'acme/app', 'repositories' => ['pro' => ['type' => 'composer', 'url' => 'https://composer.fluxui.dev']]]), $cleanLock, null, false],
+        'an extra namespace of the kit without flux-pro' => [(string) json_encode($otherMark), $cleanLock, null, false],
+    ];
+});
+
 it('reports abandoned packages in composer audit instead of failing', function (): void {
     /** @var array{config: array{audit?: array{abandoned?: string}}} $composer */
     $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
@@ -120,6 +232,35 @@ it('keeps Dependabot on actions, composer and npm', function (): void {
     }
 });
 
+it('pins every action by commit, keeps checkout credentials out of the workspace and bounds every job (§8 Hardening, F35)', function () use ($workflow): void {
+    $text = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+    $parsed = $workflow();
+    preg_match_all('/^\s*(?:- )?uses: (.+)$/m', $text, $uses);
+    $checkouts = 0;
+
+    expect($uses[1])->not->toBeEmpty()
+        // A tag or a branch can be moved to other code; a full commit SHA cannot. The comment names the release.
+        ->each->toMatch('/^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40} # v?\d+(\.\d+)*$/')
+        ->and($parsed['permissions'])->toBe(['contents' => 'read'])
+        ->and($parsed['concurrency']['cancel-in-progress'] ?? null)->toBeTrue()
+        ->and($parsed['jobs'])->toBeArray()->toHaveKeys(['check', 'browser', 'phase1', 'e2e']);
+
+    foreach ($parsed['jobs'] as $id => $job) {
+        expect($job['timeout-minutes'] ?? null)->toBeInt("{$id} has no timeout-minutes")->toBeGreaterThan(0)->toBeLessThanOrEqual(60)
+            ->and($job)->not->toHaveKey('permissions');
+
+        foreach ($job['steps'] as $jobStep) {
+            if (str_starts_with((string) ($jobStep['uses'] ?? ''), 'actions/checkout@')) {
+                $checkouts++;
+
+                expect($jobStep['with']['persist-credentials'] ?? null)->toBeFalse("a checkout in {$id} keeps the token in .git/config");
+            }
+        }
+    }
+
+    expect($checkouts)->toBe(count($parsed['jobs']));
+});
+
 it('runs the sqlite-free job with the impersonation module off (IMP-12)', function (): void {
     $ci = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
 
@@ -129,11 +270,20 @@ it('runs the sqlite-free job with the impersonation module off (IMP-12)', functi
         ->and($ci)->toContain('MODULE_IMPERSONATION: ${{ matrix.impersonation }}');
 });
 
-it('runs the free job with the passkeys module off (§6.8)', function (): void {
-    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+it('runs the free job with the passkeys module off and every other row with it on (§6.8, A80)', function () use ($workflow): void {
+    $parsed = $workflow();
+    $modules = [];
 
-    expect($workflow)->toContain('MODULE_PASSKEYS: ${{ matrix.passkeys }}')
-        ->and(preg_match("/name: sqlite-free.*?passkeys: 'false'/s", $workflow))->toBe(1);
+    foreach ($parsed['jobs']['check']['strategy']['matrix']['include'] as $row) {
+        $modules[Str::before((string) $row['name'], ' ')] = ['passkeys' => $row['passkeys'], 'impersonation' => $row['impersonation']];
+    }
+
+    expect($parsed['jobs']['check']['env']['MODULE_PASSKEYS'])->toBe('${{ matrix.passkeys }}')
+        ->and($modules)->toBe([
+            'main' => ['passkeys' => 'true', 'impersonation' => 'true'],
+            'sqlite-free' => ['passkeys' => 'false', 'impersonation' => 'false'],
+            'php85' => ['passkeys' => 'true', 'impersonation' => 'true'],
+        ]);
 });
 
 it('lets the environment turn the module off in tests and pins the test hosts (IMP-12, FU2-9, FU3-17)', function (): void {
@@ -147,6 +297,50 @@ it('lets the environment turn the module off in tests and pins the test hosts (I
         ->toContain('<env name="TENANCY_STRICT" value="true" force="true"/>')
         ->toContain('<env name="PASSKEYS_RELYING_PARTY_ID" value=""/>')
         ->toContain('<env name="TRUSTED_PROXIES" value=""/>');
+});
+
+it('runs the PostgreSQL tests in CI as Herd\'s root user and fails instead of skipping them (CD-10, F16, g3-39)', function () use ($workflow, $step): void {
+    $jobs = $workflow()['jobs'];
+
+    // Detector::postgresReachable() and the wizard expect Herd's credentials: user root without a password (RL-4).
+    expect($jobs['check']['services']['postgres']['image'])->toBe('postgres:18')
+        ->and($jobs['check']['services']['postgres']['env'])->toBe(['POSTGRES_USER' => 'root', 'POSTGRES_HOST_AUTH_METHOD' => 'trust', 'POSTGRES_DB' => 'app_test'])
+        ->and($jobs['check']['services']['postgres']['options'])->toContain('pg_isready -U root')
+        ->and($step('check', 'Check (PostgreSQL)')['env'])->toBe([
+            'DB_CONNECTION' => 'pgsql',
+            'DB_HOST' => '127.0.0.1',
+            'DB_PORT' => 5432,
+            'DB_DATABASE' => 'app_test',
+            'DB_USERNAME' => 'root',
+            'DB_PASSWORD' => '',
+            RequiredPostgres::FLAG => 'true',
+        ])
+        ->and($jobs['browser']['services']['postgres']['image'])->toBe('postgres:18')
+        ->and($jobs['browser']['services']['postgres']['env'])->toBe(['POSTGRES_USER' => 'root', 'POSTGRES_HOST_AUTH_METHOD' => 'trust'])
+        ->and($jobs['browser']['services']['postgres']['options'])->toContain('pg_isready -U root')
+        ->and($step('browser', 'Setup PHP')['with']['extensions'])->toContain('pdo_pgsql')
+        ->and($step('browser', 'Browser tests')['env'] ?? null)->toBe([RequiredPostgres::FLAG => 'true'])
+        // The SQLite rows have no server to require.
+        ->and($step('check', 'Check (SQLite)'))->not->toHaveKey('env')
+        ->and($jobs['check']['env'])->not->toHaveKey(RequiredPostgres::FLAG);
+});
+
+it('installs a PostgreSQL 18 pg_dump where the toolchain looks first, before the PostgreSQL check (L-06, F17)', function () use ($step, $position): void {
+    $client = $step('check', 'PostgreSQL 18 client');
+    $path = explode(':', new Toolchain(storage_path('framework/testing/home'))->environment()['PATH']);
+    $local = array_search('/usr/local/bin', $path, true);
+    $system = array_search('/usr/bin', $path, true);
+
+    expect($client['if'])->toBe("matrix.db == 'pgsql'")
+        ->and($client['run'])->toContain('sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y')
+        ->toContain('postgresql-client-18')
+        ->toContain('sudo ln -sf /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump')
+        ->toContain("/usr/local/bin/pg_dump --version | grep -q '(PostgreSQL) 18\\.'")
+        ->and($position('check', 'PostgreSQL 18 client'))->toBeLessThan($position('check', 'Check (PostgreSQL)'))
+        // BackupRunTest finds pg_dump on this PATH: /usr/local/bin comes before the runner's /usr/bin/pg_dump wrapper.
+        ->and($local)->toBeInt()
+        ->and($system)->toBeInt()
+        ->and(is_int($local) && is_int($system) && $local < $system)->toBeTrue();
 });
 
 it('runs the browser suite in its own CI job (§8)', function (): void {
@@ -173,37 +367,75 @@ it('caches Composer and the Playwright browsers in the browser job and keeps fai
         ->and(preg_match_all('/uses: actions\/cache@[0-9a-f]{40}/', $browser))->toBe(2);
 });
 
-it('enables Flux Pro in CI only when the secrets exist, before any view compiles (§6.7, §8)', function (): void {
-    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+it('enables Flux Pro in CI only when the secrets exist, after the audit and before any view compiles (§6.7, §8, CD-9)', function () use ($workflow, $step, $position, $trimmed, $composerAuth): void {
+    $pro = $step('check', 'Enable Flux Pro');
 
-    $check = Str::before(Str::after($workflow, "\n  check:\n"), "\n  browser:\n");
-    $jobEnv = Str::before(Str::after($check, "\n    env:\n"), "\n    services:\n");
-    $step = Str::before(Str::after($check, '- name: Enable Flux Pro'), '- name: ');
-
-    expect($jobEnv)
-        // The job maps only whether the secrets exist; the key itself never reaches install scripts or the test run.
-        ->toContain('FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != \'\' && secrets.FLUX_LICENSE_KEY != \'\' }}')
-        ->not->toContain('secrets.FLUX_USERNAME }}')
-        ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
-        ->and(substr_count($check, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
-        // Workflow-wide: one Flux Pro step in check and one in e2e, so no workflow-level env or browser step maps them.
-        ->and(substr_count($workflow, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(2)
-        ->and(substr_count($workflow, 'secrets.FLUX_USERNAME }}'))->toBe(2)
-        ->and($step)
-        ->toContain("if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'")
-        ->toContain('FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}')
-        ->toContain('FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}')
-        // The Pro dist zip must never land in the cached Composer files directory, which pull requests can restore.
-        ->toContain('COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-flux-pro')
-        ->toContain('composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"')
-        ->toContain('php artisan skv:flux-pro --no-interaction')
-        ->and(Str::before($workflow, 'composer check'))->toContain('skv:flux-pro');
+    // The job maps only whether the secrets exist; the key itself never reaches install scripts or the test run.
+    expect($workflow()['jobs']['check']['env']['FLUX_PRO_SECRETS'])->toBe("\${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}")
+        ->and($pro['if'])->toBe("env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'")
+        ->and($pro['env'])->toBe([
+            'FLUX_USERNAME' => '${{ secrets.FLUX_USERNAME }}',
+            'FLUX_LICENSE_KEY' => '${{ secrets.FLUX_LICENSE_KEY }}',
+            // The Pro dist zip must never land in the cached Composer files directory, which pull requests can restore.
+            'COMPOSER_CACHE_DIR' => '${{ runner.temp }}/composer-flux-pro',
+        ])
+        ->and($trimmed($pro['run']))->toBe($composerAuth."\nphp artisan skv:flux-pro --no-interaction\n")
+        // The audit reads the committed lock, which never holds flux-pro, so it runs before Composer gets the key.
+        ->and($position('check', 'Audit dependencies'))->toBeLessThan($position('check', 'Enable Flux Pro'))
+        ->and($position('check', 'Enable Flux Pro'))->toBeLessThan($position('check', 'Check (SQLite)'))
+        ->and($position('check', 'Enable Flux Pro'))->toBeLessThan($position('check', 'Check (PostgreSQL)'));
 });
 
-it('runs the installer end to end in an e2e job (§8)', function (): void {
+it('hands the Flux credentials to Composer only in the steps that need them, never through a global auth.json (CD-9, g2-01)', function () use ($workflow, $step, $trimmed, $composerAuth): void {
+    $text = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
+    $secretSteps = [];
+    $secretJobEnv = [];
+
+    foreach ($workflow()['jobs'] as $id => $job) {
+        foreach ($job['env'] ?? [] as $key => $value) {
+            if (str_contains((string) $value, 'secrets.')) {
+                $secretJobEnv[] = "{$id}: {$key}";
+            }
+        }
+
+        foreach ($job['steps'] as $jobStep) {
+            foreach ($jobStep['env'] ?? [] as $key => $value) {
+                if (str_contains((string) $value, 'secrets.')) {
+                    $secretSteps["{$id}: {$jobStep['name']}"][] = $key;
+                }
+            }
+
+            expect((string) ($jobStep['run'] ?? ''))->not->toContain('secrets.');
+        }
+    }
+
+    expect($secretJobEnv)->toBe(['check: FLUX_PRO_SECRETS', 'e2e: FLUX_PRO_SECRETS'])
+        ->and($secretSteps)->toBe([
+            'check: Enable Flux Pro' => ['FLUX_USERNAME', 'FLUX_LICENSE_KEY'],
+            'e2e: Enable Flux Pro' => ['FLUX_USERNAME', 'FLUX_LICENSE_KEY'],
+            'e2e: skv:install' => ['FLUX_USERNAME', 'FLUX_LICENSE_KEY'],
+            'e2e: skv:doctor' => ['FLUX_USERNAME', 'FLUX_LICENSE_KEY'],
+        ])
+        // B33: `composer config --global` wrote the key into COMPOSER_HOME/auth.json for every later step to read.
+        ->and(preg_match('/composer config (?:-g|--global)\b[^\n]*http-basic/', $text))->toBe(0);
+
+    foreach (array_keys($secretSteps) as $key) {
+        [$job, $name] = explode(': ', $key, 2);
+
+        expect($trimmed($step($job, $name)['run']))->toContain($composerAuth);
+    }
+});
+
+it('builds COMPOSER_AUTH from the step\'s environment, so the licence key never reaches a command line (CD-9)', function () use ($bash, $composerAuth): void {
+    $result = $bash($composerAuth."\nprintenv COMPOSER_AUTH", base_path(), ['FLUX_USERNAME' => 'dev@example.com', 'FLUX_LICENSE_KEY' => 'k"e\\y-1']);
+
+    expect(json_decode($result->throw()->output(), true))->toBe(['http-basic' => ['composer.fluxui.dev' => ['username' => 'dev@example.com', 'password' => 'k"e\\y-1']]])
+        // PHP reads the variables itself: the shell never expands the key into php's arguments.
+        ->and($composerAuth)->not->toContain('$FLUX_');
+});
+
+it('runs the installer end to end in an e2e job (§8)', function () use ($package): void {
     $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
-    // Derived from composer.json: NameLeakTest scans tests/, so this file holds no kit name literal.
-    $package = (string) json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR)['name'];
 
     expect($workflow)
         ->toContain('workflow_dispatch:')
@@ -211,8 +443,8 @@ it('runs the installer end to end in an e2e job (§8)', function (): void {
         ->toContain('  e2e:')
         ->toContain('fetch-depth: 0')
         ->toContain('git switch -C ci')
-        ->toContain('composer config -g repositories.'.Str::after($package, '/').' vcs "$GITHUB_WORKSPACE"')
-        ->toContain("--using={$package}:dev-ci")
+        ->toContain('composer config -g repositories.'.Str::after($package(), '/').' vcs "$GITHUB_WORKSPACE"')
+        ->toContain("--using={$package()}:dev-ci")
         ->toContain('--no-interaction --no-ansi --database=sqlite --npm')
         ->toContain('skv:install --no-interaction --answers=')
         ->toContain('--answers=@"$RUNNER_TEMP/e2e-answers.json"')
@@ -221,21 +453,93 @@ it('runs the installer end to end in an e2e job (§8)', function (): void {
         ->toContain("flags: '--phpunit --git --no-boost'");
 });
 
-it('maps the Flux Pro credentials of the e2e job in its Flux Pro step alone (§6.7, §8)', function (): void {
-    $workflow = (string) file_get_contents(base_path('.github/workflows/tests.yml'));
-    $e2e = Str::after($workflow, "\n  e2e:\n");
-    $jobEnv = Str::before(Str::after($e2e, "\n    env:\n"), "\n    services:\n");
-    $step = Str::before(Str::after($e2e, '- name: Enable Flux Pro'), '- name: ');
+it('maps the e2e job\'s Flux credentials only on the postgres-pro row (§6.7, §8, CD-9)', function () use ($workflow, $step, $position): void {
+    $pro = $step('e2e', 'Enable Flux Pro');
 
-    expect($workflow)->toContain("\n  e2e:\n")
-        ->and($jobEnv)
-        ->toContain('FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != \'\' && secrets.FLUX_LICENSE_KEY != \'\' }}')
-        ->not->toContain('secrets.FLUX_LICENSE_KEY }}')
-        ->and(substr_count($e2e, 'secrets.FLUX_LICENSE_KEY }}'))->toBe(1)
-        ->and($step)
-        ->toContain("env.FLUX_PRO_SECRETS == 'true'")
-        ->toContain('FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}')
-        ->toContain('php artisan skv:flux-pro --no-interaction');
+    expect($workflow()['jobs']['e2e']['env']['FLUX_PRO_SECRETS'])->toBe("\${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}")
+        ->and($pro['if'])->toBe("steps.changes.outputs.run == 'true' && env.FLUX_PRO_SECRETS == 'true' && matrix.name == 'postgres-pro'")
+        ->and($pro['env']['FLUX_LICENSE_KEY'])->toBe('${{ secrets.FLUX_LICENSE_KEY }}')
+        ->and($pro['run'])->toContain('php artisan skv:flux-pro --no-interaction')
+        ->and($position('e2e', 'Enable Flux Pro'))->toBeLessThan($position('e2e', 'skv:install'));
+
+    // skv:install's composer require and skv:doctor's credentials check talk to the fluxui repository; the default
+    // rows prove the credential-free path, so they get empty values (§8), and so does a run without both secrets,
+    // where Enable Flux Pro never ran and nothing needs the key (plan review K8).
+    foreach (['skv:install', 'skv:doctor'] as $name) {
+        $credentialed = $step('e2e', $name);
+
+        expect($credentialed['env'] ?? null)->toBe([
+            'FLUX_USERNAME' => "\${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}",
+            'FLUX_LICENSE_KEY' => "\${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}",
+        ])->and($credentialed['run'])->toStartWith('if [ -n "$FLUX_LICENSE_KEY" ]; then');
+    }
+});
+
+it('checks tests/ and tests/Pest.php after laravel new on every e2e row (g1-24, F23)', function () use ($step): void {
+    $assertions = $step('e2e', 'Phase 1 assertions');
+
+    // DEC-22: --phpunit leaves tests/ and the workflows exactly as shipped, so the phpunit-no-boost row checks them too.
+    expect($assertions['run'])->toContain("\ndiff \"\$GITHUB_WORKSPACE/tests/Pest.php\" tmp/tests/Pest.php ")
+        ->toContain("\ndiff -r \"\$GITHUB_WORKSPACE/tests\" tmp/tests ")
+        ->not->toContain('FLAGS')
+        ->and($assertions)->not->toHaveKey('env');
+});
+
+it('counts boost:update again after skv:install: exactly one with Boost, at most one without (F23)', function (string $flags, int $lines, bool $passes) use ($step, $position, $bash): void {
+    $count = $step('e2e', 'boost:update after skv:install');
+    $app = storage_path('framework/testing/ci-boost-'.Str::uuid());
+    File::ensureDirectoryExists($app);
+    File::put($app.'/composer.json', json_encode(['scripts' => ['post-update-cmd' => [
+        '@php artisan vendor:publish --tag=laravel-assets --ansi --force',
+        ...array_fill(0, $lines, '@php artisan boost:update --ansi'),
+    ]]], JSON_THROW_ON_ERROR));
+
+    try {
+        $result = $bash((string) $count['run'], $app, ['FLAGS' => $flags]);
+
+        expect($count['env'])->toBe(['FLAGS' => '${{ matrix.flags }}'])
+            ->and($position('e2e', 'skv:install'))->toBeLessThan($position('e2e', 'boost:update after skv:install'))
+            ->and($position('e2e', 'boost:update after skv:install'))->toBeLessThan($position('e2e', 'composer check'))
+            ->and($result->successful())->toBe($passes, $result->output().$result->errorOutput());
+    } finally {
+        File::deleteDirectory($app);
+    }
+})->with([
+    'Boost, none' => ['--pest --git --boost', 0, false],
+    'Boost, one' => ['--pest --git --boost', 1, true],
+    'Boost, two' => ['--pest --git --boost', 2, false],
+    'no Boost, none' => ['--phpunit --git --no-boost', 0, true],
+    'no Boost, one' => ['--phpunit --git --no-boost', 1, true],
+    'no Boost, two' => ['--phpunit --git --no-boost', 2, false],
+]);
+
+it('runs phase1 and e2e on pull requests that touch what they install (DEC-31, F25)', function () use ($step): void {
+    $filters = array_map(function (string $job) use ($step): string {
+        preg_match("/grep -qE '([^']+)' <<< \"\\\$changed\"/", (string) $step($job, 'Changes')['run'], $match);
+
+        return $match[1] ?? '';
+    }, ['phase1', 'e2e']);
+    // grep -E and PCRE read this alternation of anchored paths alike.
+    $touches = fn (string $path): bool => preg_match('#'.$filters[0].'#', $path) === 1;
+    $first = fn (string $directory): string => Str::after(collect(File::allFiles(base_path($directory)))->first()?->getPathname() ?? '', base_path().'/');
+    $installed = [
+        'composer.json', 'composer.lock', 'package.json', 'package-lock.json', '.env.example',
+        'app/Setup/SetupRunner.php', 'app/Console/Commands/InstallCommand.php', 'bootstrap/app.php', 'config/app.php',
+        $first('database/migrations'), $first('database/seeders'), 'routes/setup.php', 'resources/setup/setup.css',
+        $first('resources/views/pages/setup'), 'resources/views/layouts/setup.blade.php', $first('resources/views/setup'),
+        'scripts/e2e-local.sh', 'tests/Fixtures/e2e-answers.json', '.github/workflows/tests.yml',
+    ];
+    $unrelated = [
+        'app/Models/User.php', 'README.md', 'docs/decisions.md', 'lang/nl.json', 'routes/web.php',
+        'resources/views/layouts/app.blade.php', 'tests/Feature/Tooling/CiWorkflowTest.php', '.github/dependabot.yml',
+        'composer.json.orig', 'scripts/e2e-local.sh.bak',
+    ];
+
+    expect($filters[0])->not->toBe('')
+        ->and($filters[1])->toBe($filters[0])
+        ->and(array_filter($installed, fn (string $path): bool => ! is_file(base_path($path))))->toBe([])
+        ->and(array_values(array_filter($installed, fn (string $path): bool => ! $touches($path))))->toBe([])
+        ->and(array_values(array_filter($unrelated, $touches)))->toBe([]);
 });
 
 it('ships a local e2e script that never touches global Composer config (OD-3)', function (): void {
@@ -248,6 +552,48 @@ it('ships a local e2e script that never touches global Composer config (OD-3)', 
         ->and($script)->not->toContain('composer config --global --list');
 });
 
+it('installs the e2e job\'s variants with the local script, and refuses any other (F56)', function () use ($workflow, $step): void {
+    $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
+    // Every refusal names an existing directory: should a check ever be skipped, the script stops at "it already
+    // exists" instead of installing anything.
+    $existing = storage_path('framework/testing/e2e-local-'.Str::uuid());
+    File::ensureDirectoryExists($existing);
+    $refusals = [
+        [['--flags=--pest --bogus'], 'Unknown installer flag: --bogus'],
+        [['--flags=--pest --pest'], 'Installer flag given twice: --pest'],
+        [['--flags=--pest --phpunit'], 'Pick one of --pest and --phpunit'],
+        [['--flags=--boost --no-boost'], 'Pick one of --pest and --phpunit'],
+        [['--flags='], '--flags needs at least one installer flag.'],
+        [['--db=mysql'], 'Unknown database: mysql'],
+        [['--entry=terminal', '--flags=--pest'], '--flags and --db apply to the herd entry only.'],
+        [['--entry=composer', '--db=pgsql'], '--flags and --db apply to the herd entry only.'],
+    ];
+
+    try {
+        foreach ($refusals as [$arguments, $message]) {
+            $result = Process::run(['bash', base_path('scripts/e2e-local.sh'), $existing, ...$arguments]);
+
+            expect($result->exitCode())->toBe(2, implode(' ', $arguments).': '.$result->errorOutput())
+                ->and($result->errorOutput())->toContain($message);
+        }
+    } finally {
+        File::deleteDirectory($existing);
+    }
+
+    $rows = array_column($workflow()['jobs']['e2e']['strategy']['matrix']['include'], 'flags', 'name');
+    preg_match('/\.modules=(\[[^\]]*\])/', (string) $step('e2e', 'Answers')['run'], $ciModules);
+    preg_match('/\$a\["modules"\] = (\[[^\]]*\]);/', $script, $localModules);
+
+    // The default is Herd's flag set, the e2e job's default row; --db=pgsql answers as the postgres-pro row does.
+    expect($script)->toContain('FLAGS="'.$rows['default'].'"')
+        ->toContain('--database=sqlite --npm "${INSTALLER_FLAGS[@]}"')
+        ->toContain('if ($argv[4] === "pgsql") { $a["database"] = "pgsql";')
+        ->toContain('check "post-update-cmd holds exactly one boost:update after skv:install" boost_updates_after_install')
+        ->and($rows['phpunit-no-boost'])->toBe('--phpunit --git --no-boost')
+        ->and(json_decode($localModules[1] ?? 'null', true))->toBe(json_decode($ciModules[1] ?? 'null', true))
+        ->and(json_decode($ciModules[1] ?? 'null', true))->toBe(['passkeys', 'backups', 'impersonation']);
+});
+
 it('quotes the names in the cleanup commands the local e2e script prints (RL-6, g2-05)', function (): void {
     $script = (string) file_get_contents(base_path('scripts/e2e-local.sh'));
     $cleanup = Str::after($script, 'Clean up when you are done');
@@ -256,6 +602,8 @@ it('quotes the names in the cleanup commands the local e2e script prints (RL-6, 
         ->toContain("printf '  herd unisolate %q\\n' \"--site=\$NAME\"")
         ->toContain("printf '  herd unlink %q\\n' \"\$NAME\"")
         ->toContain("printf '  rm -rf %q\\n' \"\$TARGET\"")
+        // --db=pgsql leaves the two databases skv:install created; the cleanup names them too (plan review K9).
+        ->toContain("printf '  dropdb -h 127.0.0.1 -U root --if-exists %q\\n'")
         // An echo would print the name as it is, so a folder with a space or a quote gives a broken command.
         ->and(preg_match('/echo "  (herd|rm) /', $cleanup))->toBe(0);
 });

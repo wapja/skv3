@@ -47,20 +47,23 @@ jobs:
       MODULE_IMPERSONATION: ${{ matrix.impersonation }}
       MODULE_PASSKEYS: ${{ matrix.passkeys }}
       # §6.7: an `if:` cannot read secrets, so the job maps only whether they exist (fork PRs get none). The credentials
-      # themselves are mapped in the Flux Pro step alone, so no install script or test process sees the licence key.
+      # themselves are mapped in the Flux Pro step alone and reach Composer through that step's COMPOSER_AUTH, never a
+      # file, so no install script, no later step and no test process sees the licence key (CD-9).
       FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}
 
+    # Herd's credentials (RL-4, CD-10): user root without a password, which the wizard's PostgreSQL probe expects. Only
+    # the main row uses the server.
     services:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: root
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: app_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U root"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -78,6 +81,19 @@ jobs:
           extensions: pdo_pgsql, pdo_sqlite, gd, zip
           tools: composer:v2
           coverage: none
+
+      # CD-11 (M7b M1): the kit itself never commits Flux Pro or skv:flux-pro's mark, while a generated app may commit
+      # both on purpose (CD-13 of M7b), so this runs in the kit's own repository only. It reads the committed files,
+      # which the Flux Pro step below never changes.
+      - name: Kit commits no Flux Pro
+        if: github.repository == 'frankcornet/skv3'
+        run: |
+          committed="$(git show HEAD:composer.json HEAD:composer.lock)"
+          if grep -nE 'flux-pro|composer\.fluxui\.dev' <<< "$committed"; then
+            echo "FAIL: the committed composer.json or composer.lock names Flux Pro"
+            exit 1
+          fi
+          git show HEAD:composer.json | php -r '$c = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR); exit(isset($c["extra"]["skv"]) ? 1 : 0);' || { echo "FAIL: the committed composer.json carries extra.skv"; exit 1; }
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -110,10 +126,15 @@ jobs:
       - name: Check the setup stylesheet is current
         run: npm run build:setup && git diff --exit-code resources/setup/setup.css
 
+      # Before Flux Pro: the audit reads the committed lock, which never holds flux-pro, and needs no credentials (CD-9).
+      - name: Audit dependencies
+        run: composer audit
+
       # §6.7, §8: only the main (PostgreSQL) row enables Pro, before any view compiles; without the secrets the step is
-      # skipped and the job runs on free Flux. --global writes COMPOSER_HOME/auth.json, never a file in the checkout.
-      # The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull requests
-      # (forks included) can restore; skv:flux-pro's composer inherits COMPOSER_CACHE_DIR.
+      # skipped and the job runs on free Flux. CD-9: the credentials reach Composer through COMPOSER_AUTH in this step's
+      # environment alone, built by PHP from the variables (never argv); nothing writes an auth.json, so no later step
+      # finds them. The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull
+      # requests (forks included) can restore; skv:flux-pro's composer inherits COMPOSER_CACHE_DIR and COMPOSER_AUTH.
       - name: Enable Flux Pro
         if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'
         env:
@@ -121,16 +142,29 @@ jobs:
           FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
           COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-flux-pro
         run: |
-          composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"
+          COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
+          export COMPOSER_AUTH
           php artisan skv:flux-pro --no-interaction
-
-      - name: Audit dependencies
-        run: composer audit
 
       - name: Check (SQLite)
         if: matrix.db == 'sqlite'
         run: composer check
 
+      # L-06, F17: BackupRunTest runs a real pg_dump, which refuses a server newer than itself. The runner's
+      # /usr/bin/pg_dump is Debian's pg_wrapper, which picks the runner's own older cluster, so PGDG's version-18 client
+      # is linked into /usr/local/bin, the first directory of Toolchain::environment()'s PATH that exists on Linux.
+      - name: PostgreSQL 18 client
+        if: matrix.db == 'pgsql'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq --no-install-recommends postgresql-client-18
+          sudo ln -sf /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump
+          /usr/local/bin/pg_dump --version | grep -q '(PostgreSQL) 18\.' || { echo "FAIL: /usr/local/bin/pg_dump is not version 18"; exit 1; }
+
+      # CD-10: REQUIRE_POSTGRES turns the skips of the PostgreSQL wizard test and the real backup into failures, so a
+      # broken service or client fails the row instead of hiding the tests (Tests\Fixtures\RequiredPostgres).
       - name: Check (PostgreSQL)
         if: matrix.db == 'pgsql'
         env:
@@ -138,8 +172,9 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
           DB_DATABASE: app_test
-          DB_USERNAME: postgres
-          DB_PASSWORD: postgres
+          DB_USERNAME: root
+          DB_PASSWORD: ''
+          REQUIRE_POSTGRES: 'true'
         run: composer check
 
   browser:
@@ -149,6 +184,21 @@ jobs:
     strategy:
       matrix:
         php: ['8.4']
+
+    # g3-39, F16: the wizard's PostgreSQL browser test needs Herd's credentials (RL-4): user root without a password.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: root
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U root"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -160,7 +210,7 @@ jobs:
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo_sqlite, gd, sockets, zip
+          extensions: pdo_pgsql, pdo_sqlite, gd, sockets, zip
           tools: composer:v2
           coverage: none
 
@@ -210,7 +260,10 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      # CD-10: the PostgreSQL wizard test fails instead of skipping when the service does not answer.
       - name: Browser tests
+        env:
+          REQUIRE_POSTGRES: 'true'
         run: composer test:browser
 
       - name: Upload screenshots and traces
@@ -249,7 +302,8 @@ jobs:
           persist-credentials: false
 
       # Every later step runs only when this says so, so a pull request that does not touch the setup skips the job
-      # without failing it.
+      # without failing it. The filter (DEC-31, F25) names everything the install depends on: the setup code and its
+      # views, the dependencies, bootstrap, config, migrations and seeders, the answers, the script and this file.
       - name: Changes
         id: changes
         env:
@@ -261,7 +315,7 @@ jobs:
             run=true
           elif [ "$EVENT_NAME" = pull_request ]; then
             changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
-            if grep -qE '^(composer\.json$|\.env\.example$|app/Setup/|app/Console/Commands/)' <<< "$changed"; then
+            if grep -qE '^(composer\.(json|lock)$|package(-lock)?\.json$|\.env\.example$|app/Setup/|app/Console/Commands/|bootstrap/|config/|database/(seeders|migrations)/|routes/setup\.php$|resources/setup/|resources/views/(pages/setup/|layouts/setup\.blade\.php$|setup/)|scripts/e2e-local\.sh$|tests/Fixtures/e2e-answers\.json$|\.github/workflows/tests\.yml$)' <<< "$changed"; then
               run=true
             fi
           fi
@@ -329,8 +383,10 @@ jobs:
         shell: bash
 
     env:
-      # §6.7: like the check job, the job maps only whether the Flux Pro secrets exist; the Flux Pro step maps the
-      # credentials themselves, so the installer, skv:install and composer check never see the licence key.
+      # §6.7, CD-9: like the check job, the job maps only whether the Flux Pro secrets exist. On the postgres-pro row,
+      # the three steps that run Composer against the fluxui repository (Enable Flux Pro, skv:install with its
+      # composer require, and skv:doctor with its credentials check) map the credentials and pass them as
+      # COMPOSER_AUTH; the installer, the other rows and composer check never see the licence key.
       FLUX_PRO_SECRETS: ${{ secrets.FLUX_USERNAME != '' && secrets.FLUX_LICENSE_KEY != '' }}
 
     # Herd's credentials (RL-4): user root with an empty password. Only the postgres-pro row uses the server.
@@ -356,7 +412,8 @@ jobs:
           persist-credentials: false
 
       # Every later step runs only when this says so, so a pull request that does not touch the setup skips the job
-      # without failing it.
+      # without failing it. The filter (DEC-31, F25) names everything the install depends on: the setup code and its
+      # views, the dependencies, bootstrap, config, migrations and seeders, the answers, the script and this file.
       - name: Changes
         id: changes
         env:
@@ -368,7 +425,7 @@ jobs:
             run=true
           elif [ "$EVENT_NAME" = pull_request ]; then
             changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
-            if grep -qE '^(composer\.json$|\.env\.example$|app/Setup/|app/Console/Commands/)' <<< "$changed"; then
+            if grep -qE '^(composer\.(json|lock)$|package(-lock)?\.json$|\.env\.example$|app/Setup/|app/Console/Commands/|bootstrap/|config/|database/(seeders|migrations)/|routes/setup\.php$|resources/setup/|resources/views/(pages/setup/|layouts/setup\.blade\.php$|setup/)|scripts/e2e-local\.sh$|tests/Fixtures/e2e-answers\.json$|\.github/workflows/tests\.yml$)' <<< "$changed"; then
               run=true
             fi
           fi
@@ -411,13 +468,11 @@ jobs:
           cd "$RUNNER_TEMP" && laravel new tmp --using=frankcornet/skv3:dev-ci --no-interaction --no-ansi --database=sqlite --npm ${{ matrix.flags }} 2>&1 | tee install.log
 
       # §5.2, §7.2, §8: bootstrap ran once (it prints the skv:install hint), the SQLite file is migrated, the build
-      # exists, the installer left tests.yml, tests/Pest.php and tests/ alone, and post-update-cmd holds at most one
-      # boost:update.
+      # exists, the installer left tests.yml, tests/Pest.php and tests/ alone on every row (g1-24: DEC-22's --phpunit
+      # leaves them as shipped too), and post-update-cmd holds at most one boost:update.
       - name: Phase 1 assertions
         if: steps.changes.outputs.run == 'true'
         working-directory: ${{ runner.temp }}
-        env:
-          FLAGS: ${{ matrix.flags }}
         run: |
           bootstraps="$(grep -c 'skv:install' install.log || true)"
           [ "$bootstraps" = 1 ] || { echo "FAIL: skv:bootstrap ran $bootstraps times, expected once"; exit 1; }
@@ -426,10 +481,8 @@ jobs:
           if grep -q 'Pending' <<< "$status"; then echo "FAIL: pending migrations"; echo "$status"; exit 1; fi
           test -f tmp/public/build/manifest.json || { echo "FAIL: public/build/manifest.json is missing"; exit 1; }
           diff "$GITHUB_WORKSPACE/.github/workflows/tests.yml" tmp/.github/workflows/tests.yml || { echo "FAIL: tests.yml changed"; exit 1; }
-          if [[ "$FLAGS" == *--pest* ]]; then
-            diff "$GITHUB_WORKSPACE/tests/Pest.php" tmp/tests/Pest.php || { echo "FAIL: tests/Pest.php changed"; exit 1; }
-            diff -r "$GITHUB_WORKSPACE/tests" tmp/tests || { echo "FAIL: tests/ changed"; exit 1; }
-          fi
+          diff "$GITHUB_WORKSPACE/tests/Pest.php" tmp/tests/Pest.php || { echo "FAIL: tests/Pest.php changed"; exit 1; }
+          diff -r "$GITHUB_WORKSPACE/tests" tmp/tests || { echo "FAIL: tests/ changed"; exit 1; }
           php -r '$c = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); exit(count(array_filter($c["scripts"]["post-update-cmd"] ?? [], fn ($line) => str_contains($line, "boost:update"))) <= 1 ? 0 : 1);' tmp/composer.json || { echo "FAIL: post-update-cmd holds more than one boost:update"; exit 1; }
 
       # No Herd in CI, so RL-7 turns passkeys off again after asking for them.
@@ -444,7 +497,7 @@ jobs:
             cp "$GITHUB_WORKSPACE/tests/Fixtures/e2e-answers.json" "$RUNNER_TEMP/e2e-answers.json"
           fi
 
-      # The same lines as the check job (§6.7), inside the new app and only on the postgres-pro row.
+      # The same lines as the check job (§6.7, CD-9), inside the new app and only on the postgres-pro row.
       - name: Enable Flux Pro
         if: steps.changes.outputs.run == 'true' && env.FLUX_PRO_SECRETS == 'true' && matrix.name == 'postgres-pro'
         working-directory: ${{ runner.temp }}/tmp
@@ -452,13 +505,24 @@ jobs:
           FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}
           FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
         run: |
-          composer config --global http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"
+          COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
+          export COMPOSER_AUTH
           php artisan skv:flux-pro --no-interaction
 
+      # CD-9: with Flux Pro the app lists the fluxui repository, so the Claude step's composer require needs the
+      # credentials too; the other rows, and a run without both secrets (Flux Pro was never enabled), map empty values
+      # and run without them.
       - name: skv:install
         if: steps.changes.outputs.run == 'true'
         working-directory: ${{ runner.temp }}/tmp
+        env:
+          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}
+          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}
         run: |
+          if [ -n "$FLUX_LICENSE_KEY" ]; then
+            COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
+            export COMPOSER_AUTH
+          fi
           sed -i 's#^APP_URL=.*#APP_URL=http://localhost#' .env
           php artisan skv:install --no-interaction --answers=@"$RUNNER_TEMP/e2e-answers.json"
 
@@ -469,11 +533,35 @@ jobs:
         run: |
           php -r '$c = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); exit(($c["require-dev"]["laravel/boost"] ?? null) === "^2.10" ? 0 : 1);' || { echo "FAIL: require-dev laravel/boost is not ^2.10"; exit 1; }
 
-      # RL-11: exits non-zero on any fail. An apex under localhost passes the subdomains check (RFC 6761).
+      # F23: the installer's --boost adds one boost:update and skv:install's Claude step adds one only when there is
+      # none, so the app ends with exactly one; without Boost at most one.
+      - name: boost:update after skv:install
+        if: steps.changes.outputs.run == 'true'
+        working-directory: ${{ runner.temp }}/tmp
+        env:
+          FLAGS: ${{ matrix.flags }}
+        run: |
+          lines="$(php -r '$c = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); echo count(array_filter($c["scripts"]["post-update-cmd"] ?? [], fn ($line) => str_contains($line, "boost:update")));')"
+          if [[ "$FLAGS" == *--no-boost* ]]; then
+            [ "$lines" -le 1 ] || { echo "FAIL: post-update-cmd holds $lines boost:update lines, expected at most one"; exit 1; }
+          else
+            [ "$lines" = 1 ] || { echo "FAIL: post-update-cmd holds $lines boost:update lines, expected exactly one"; exit 1; }
+          fi
+
+      # RL-11: exits non-zero on any fail. An apex under localhost passes the subdomains check (RFC 6761). CD-9: with
+      # Flux Pro the flux-pro-credentials check asks Composer for the credentials.
       - name: skv:doctor
         if: steps.changes.outputs.run == 'true'
         working-directory: ${{ runner.temp }}/tmp
-        run: php artisan skv:doctor --json
+        env:
+          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}
+          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}
+        run: |
+          if [ -n "$FLUX_LICENSE_KEY" ]; then
+            COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
+            export COMPOSER_AUTH
+          fi
+          php artisan skv:doctor --json
 
       - name: composer check
         if: steps.changes.outputs.run == 'true'

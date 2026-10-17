@@ -6,12 +6,18 @@
 # never runs a Herd command that changes a site; it prints the cleanup commands instead.
 #
 # Usage: scripts/e2e-local.sh [<target-dir>] [--https] [--entry=herd|terminal|terminal-nodb|composer|clone] [--phase1-only]
+#                               [--flags='<installer flags>'] [--db=sqlite|pgsql]
 #   <target-dir>   where the new app goes; it must not exist yet (default for herd: $HOME/Herd/m6b-e2e)
 #   --https        answer https=true, so the Herd step secures the site (herd entry, phase 2)
 #   --entry=       herd (default): Herd's laravel new, then phase 2; terminal: laravel new --database=sqlite;
 #                  terminal-nodb: laravel new without --database; composer: composer create-project;
 #                  clone: git clone plus the commands of composer setup before skv:install (RL-11)
 #   --phase1-only  stop after phase 1, leaving the site as phase 1 left it (token present, no marker)
+#   --flags=       the herd entry's installer flags after --npm, as the e2e job's rows pass them (F56): Herd's
+#                  '--pest --git --boost' by default, or '--phpunit --git --no-boost'; each of --pest, --phpunit,
+#                  --git, --boost and --no-boost at most once
+#   --db=          the herd entry's phase-2 database answer: sqlite (default) or pgsql, which also turns on every
+#                  module, as the e2e job's postgres-pro row does
 #
 # Every entry but herd serves the app with php artisan serve on a free port of 127.0.0.1 for the wizard check, and
 # reaches it under the host the wizard pins (RL-5): {name}.{tld} where Herd is installed, else localhost. Each entry
@@ -25,12 +31,18 @@ TARGET=""
 HTTPS=false
 ENTRY=herd
 PHASE1_ONLY=false
+# Herd's exact flags, the e2e job's default row (§8).
+FLAGS="--pest --git --boost"
+DB=sqlite
+VARIANT=false
 
 for argument in "$@"; do
     case "$argument" in
         --https) HTTPS=true ;;
         --entry=*) ENTRY="${argument#--entry=}" ;;
         --phase1-only) PHASE1_ONLY=true ;;
+        --flags=*) FLAGS="${argument#--flags=}"; VARIANT=true ;;
+        --db=*) DB="${argument#--db=}"; VARIANT=true ;;
         -*) echo "Unknown option: $argument" >&2; exit 2 ;;
         *) [ -z "$TARGET" ] || { echo "Only one target directory is allowed" >&2; exit 2; }; TARGET="$argument" ;;
     esac
@@ -41,6 +53,33 @@ case "$ENTRY" in
     *) echo "Unknown entry: $ENTRY (use herd, terminal, terminal-nodb, composer or clone)" >&2; exit 2 ;;
 esac
 
+case "$DB" in
+    sqlite | pgsql) ;;
+    *) echo "Unknown database: $DB (use sqlite or pgsql)" >&2; exit 2 ;;
+esac
+
+read -r -a INSTALLER_FLAGS <<< "$FLAGS"
+if [ "${#INSTALLER_FLAGS[@]}" = 0 ]; then
+    echo "--flags needs at least one installer flag." >&2
+    exit 2
+fi
+SEEN=" "
+for flag in "${INSTALLER_FLAGS[@]}"; do
+    case "$flag" in
+        --pest | --phpunit | --git | --boost | --no-boost) ;;
+        *) echo "Unknown installer flag: $flag (use --pest, --phpunit, --git, --boost or --no-boost)" >&2; exit 2 ;;
+    esac
+    [[ "$SEEN" != *" $flag "* ]] || { echo "Installer flag given twice: $flag" >&2; exit 2; }
+    SEEN="$SEEN$flag "
+done
+if [[ "$SEEN" == *" --pest "* && "$SEEN" == *" --phpunit "* ]] || [[ "$SEEN" == *" --boost "* && "$SEEN" == *" --no-boost "* ]]; then
+    echo "Pick one of --pest and --phpunit, and one of --boost and --no-boost." >&2
+    exit 2
+fi
+# What the installer's --boost leaves (DEC-22 rule 5) is checked only when the flags ask for Boost.
+WITH_BOOST=true
+if [[ "$SEEN" == *" --no-boost "* ]]; then WITH_BOOST=false; fi
+
 if [ "$ENTRY" = herd ]; then
     TARGET="${TARGET:-$HOME/Herd/m6b-e2e}"
 elif [ -z "$TARGET" ]; then
@@ -48,6 +87,9 @@ elif [ -z "$TARGET" ]; then
     exit 2
 elif [ "$HTTPS" = true ]; then
     echo "--https applies to the herd entry's phase 2 only." >&2
+    exit 2
+elif [ "$VARIANT" = true ]; then
+    echo "--flags and --db apply to the herd entry only." >&2
     exit 2
 fi
 
@@ -113,7 +155,7 @@ FAILED=0
 
 install_app() {
     case "$ENTRY" in
-        herd) (cd "$TARGET_PARENT" && env "${UNSET[@]}" laravel new "$NAME" --using="$PACKAGE:dev-$BRANCH" --no-interaction --no-ansi --database=sqlite --npm --pest --git --boost) ;;
+        herd) (cd "$TARGET_PARENT" && env "${UNSET[@]}" laravel new "$NAME" --using="$PACKAGE:dev-$BRANCH" --no-interaction --no-ansi --database=sqlite --npm "${INSTALLER_FLAGS[@]}") ;;
         terminal) (cd "$TARGET_PARENT" && env "${UNSET[@]}" laravel new "$NAME" --using="$PACKAGE:dev-$BRANCH" --no-interaction --no-ansi --database=sqlite) ;;
         terminal-nodb) (cd "$TARGET_PARENT" && env "${UNSET[@]}" laravel new "$NAME" --using="$PACKAGE:dev-$BRANCH" --no-interaction --no-ansi) ;;
         composer) composer create-project "$PACKAGE:dev-$BRANCH" "$TARGET" --stability=dev --no-interaction ;;
@@ -129,6 +171,7 @@ install_app() {
 }
 
 echo "Installing $PACKAGE:dev-$BRANCH into $TARGET through the $ENTRY entry (log: $LOG)"
+if [ "$ENTRY" = herd ]; then echo "Installer flags: ${INSTALLER_FLAGS[*]}; database answer: $DB"; fi
 if ! install_app 2>&1 | tee "$LOG"; then
     echo "FAIL: the $ENTRY install exited with an error"
     FAILED=1
@@ -149,8 +192,15 @@ check() {
 
 bootstrapped_once() { [ "$(grep -c 'skv:install' "$LOG" || true)" = 1 ]; }
 migrated() { local status; status="$(cd "$TARGET" && php artisan migrate:status --no-ansi)" && ! grep -q 'Pending' <<< "$status"; }
-one_boost_update() {
-    php -r '$c = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); exit(count(array_filter($c["scripts"]["post-update-cmd"] ?? [], fn ($line) => str_contains($line, "boost:update"))) <= 1 ? 0 : 1);' "$TARGET/composer.json"
+boost_update_lines() {
+    php -r '$c = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo count(array_filter($c["scripts"]["post-update-cmd"] ?? [], fn ($line) => str_contains($line, "boost:update")));' "$TARGET/composer.json"
+}
+one_boost_update() { local lines; lines="$(boost_update_lines)" && [ "$lines" -le 1 ]; }
+# F23: after skv:install exactly one with Boost (the Claude step adds one only when there is none), at most one without.
+boost_updates_after_install() {
+    local lines
+    lines="$(boost_update_lines)" || return 1
+    if [ "$WITH_BOOST" = true ]; then [ "$lines" = 1 ]; else [ "$lines" -le 1 ]; fi
 }
 boost_restored() {
     php -r '$c = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); exit(($c["require-dev"]["laravel/boost"] ?? null) === "^2.10" ? 0 : 1);' "$TARGET/composer.json"
@@ -261,14 +311,20 @@ if [ "$ENTRY" != herd ]; then
 fi
 
 if [ "$ENTRY" = herd ] && [ "$PHASE1_ONLY" = false ]; then
-    php -r '$a = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); $a["https"] = $argv[3] === "true"; file_put_contents($argv[2], json_encode($a, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));' "$REPO/tests/Fixtures/e2e-answers.json" "$ANSWERS" "$HTTPS"
+    # --db=pgsql answers as the e2e job's postgres-pro row does: PostgreSQL with every module.
+    php -r '$a = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); $a["https"] = $argv[3] === "true"; if ($argv[4] === "pgsql") { $a["database"] = "pgsql"; $a["modules"] = ["passkeys", "backups", "impersonation"]; } file_put_contents($argv[2], json_encode($a, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));' "$REPO/tests/Fixtures/e2e-answers.json" "$ANSWERS" "$HTTPS" "$DB"
 
     echo
-    echo "Phase 2: skv:install (https=$HTTPS)"
+    echo "Phase 2: skv:install (database=$DB, https=$HTTPS)"
     INSTALLED=true
     (cd "$TARGET" && php artisan skv:install --no-interaction --answers=@"$ANSWERS") || INSTALLED=false
     check "skv:install finished" "$INSTALLED"
-    check "require-dev laravel/boost is ^2.10 (DEC-22 rule 5)" boost_restored
+    if [ "$WITH_BOOST" = true ]; then
+        check "require-dev laravel/boost is ^2.10 (DEC-22 rule 5)" boost_restored
+        check "post-update-cmd holds exactly one boost:update after skv:install" boost_updates_after_install
+    else
+        check "post-update-cmd holds at most one boost:update after skv:install" boost_updates_after_install
+    fi
 
     echo
     echo "skv:doctor --json"
@@ -290,5 +346,14 @@ if [ "$ENTRY" = herd ]; then
 fi
 printf '  rm -rf %q\n' "$TARGET"
 printf '  rm -rf %q\n' "$WORK"
+# --db=pgsql: skv:install's DatabaseStep created <name> and <name>_test on this machine's PostgreSQL. Read before the
+# printed rm -rf runs (this script deletes nothing, so $TARGET/.env is still there).
+if [ "$ENTRY" = herd ] && [ "$DB" = pgsql ] && [ "$PHASE1_ONLY" = false ]; then
+    DB_NAME="$(grep -E '^DB_DATABASE=' "$TARGET/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    if [ -n "$DB_NAME" ]; then
+        echo '  # skv:install created these PostgreSQL databases (dropdb is in the Herd PostgreSQL service bin directory):'
+        printf '  dropdb -h 127.0.0.1 -U root --if-exists %q\n' "$DB_NAME" "${DB_NAME}_test"
+    fi
+fi
 
 exit "$FAILED"
