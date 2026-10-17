@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>M7d</span><span>M0–M7d in main</span><span>bijgewerkt 17-10-2026</span></div>
+    <div class="eyebrow"><span>M8a</span><span>M0–M8a in main</span><span>bijgewerkt 18-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M7d.</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M8a: klaar voor de release van v1.0.0.</p>
   </header>
 
   <div class="page">
@@ -541,7 +541,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
   <h2><span class="num">1</span>Introductie</h2>
   <p>skv3 is een multi-tenant Laravel starter kit en de opvolger van skv2. Elke organisatie krijgt een eigen subdomein. De kit levert uitnodigingen, rollen en rechten, &lsquo;inloggen als&rsquo;, een activiteitenlog en een Flux UI. Alles draait op één database: de organisatie volgt uit het subdomein van het verzoek.</p>
   <p>De basis is de officiële Laravel Livewire starter kit: PHP 8.4, Laravel 13, Livewire 4, Flux 2 (de gratis versie), Fortify voor inloggen, en de Spatie-pakketten voor rechten en het activiteitenlog. Tests schrijf je met Pest 5.</p>
-  <p class="src">README.md:3; CHANGELOG.md:8; composer.json:12-20; spec:94</p>
+  <p class="src">README.md; CHANGELOG.md; composer.json; spec §4.1</p>
 
   <h3 id="hosttypes">Drie soorten hosts</h3>
   <p>Elke host is een adres onder het <em>apex-domein</em>. Dat apex is <code>TENANCY_APEX_DOMAIN</code>, of als die leeg is de host uit <code>APP_URL</code>. In alle voorbeelden in deze handleiding staat de app in de map <code>mijnapp</code>, is het apex <code>mijnapp.test</code> en heet de organisatie <code>acme</code>.</p>
@@ -583,13 +583,13 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
     <li>Iedere gebruiker hoort bij precies één organisatie. Superbeheerders hebben meestal geen organisatie.</li>
     <li>Sessies gelden per host. Wie op <code>acme.mijnapp.test</code> is ingelogd, is dat niet automatisch op <code>admin.mijnapp.test</code>.</li>
   </ul>
-  <p class="src">.env.example:11-14; config/tenancy.php:17-19,39-42; app/Tenancy/Hosts.php:17-18,35-54; app/Tenancy/Resolvers/SubdomainResolver.php:31-37; app/Tenancy/Auth/HostLoginRule.php:9-18; DEC-13</p>
+  <p class="src">.env.example; config/tenancy.php; app/Tenancy/Hosts.php; app/Tenancy/Resolvers/SubdomainResolver.php; app/Tenancy/Auth/HostLoginRule.php; DEC-13</p>
 
   <div class="note">
     <p class="note-title">Taal op het scherm</p>
-    <p>De standaardtaal is Nederlands, met een volledige Engelse versie. Alle schermen, paginatitels, mails, meldingen en foutpagina&rsquo;s zijn vertaald. Je kiest je taal in het gebruikersmenu of in je profiel; gasten krijgen de taal van hun browser en hebben taalknoppen onder het inlogvenster (zie <a href="#instellingen">Instellingen, taal en weergave</a>). Deze handleiding noemt de Nederlandse labels. Waar een melding een naam, adres of getal invult, staat hier een <em>schuingedrukte</em> voorbeeldwaarde, zoals <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p>
+    <p>De standaardtaal is Nederlands, met een volledige Engelse versie. Alle schermen, paginatitels, mails, meldingen en foutpagina&rsquo;s zijn vertaald, op een paar vaste teksten in Flux-onderdelen na (zie <a href="#beperkingen">Bekende beperkingen</a>). Je kiest je taal in het gebruikersmenu of in je profiel; gasten krijgen de taal van hun browser en hebben taalknoppen onder het inlogvenster (zie <a href="#instellingen">Instellingen, taal en weergave</a>). Deze handleiding noemt de Nederlandse labels. Waar een melding een naam, adres of getal invult, staat hier een <em>schuingedrukte</em> voorbeeldwaarde, zoals <span class="ui">Ingelogd als <em>Jan Jansen</em></span>.</p>
   </div>
-  <p class="src">.env.example:9; config/skv.php (locale.default); app/Support/Locales.php; resources/views/components/language-toggle.blade.php; lang/nl.json; docs/decisions.md (DEC-29 (8))</p>
+  <p class="src">.env.example; config/skv.php (locale.default); app/Support/Locales.php; resources/views/components/language-toggle.blade.php; lang/nl.json; docs/decisions.md (DEC-29 (8))</p>
 </section>
 
 <!-- ============================ 2 ============================ -->
@@ -603,17 +603,17 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
     <li>Laravel Herd. Herd Pro is aan te raden voor PostgreSQL en mail.</li>
     <li>Database: SQLite werkt direct. PostgreSQL (18 in Herd en CI) is de standaard waar het beschikbaar is; beide worden in CI getest.</li>
   </ul>
-  <p class="src">README.md:9-10 (noemt Node alleen voor composer dev); composer.json:12,54-65; spec:33,79; .github/workflows/tests.yml:42-43</p>
+  <p class="src">README.md (noemt Node alleen voor composer dev); composer.json; spec §2, §3; .github/workflows/tests.yml</p>
 
   <h3 id="herd">Installeren via Herd (aanbevolen)</h3>
   <p>Herd serveert de site, dus je draait nooit <code>php artisan serve</code>. Herd serveert elke map in <code>~/Herd</code> als <code>&lt;map&gt;.test</code>, inclusief subdomeinen: de map <code>mijnapp</code> antwoordt op <code>mijnapp.test</code>, <code>admin.mijnapp.test</code> en <code>acme.mijnapp.test</code>, zonder extra instellingen (gecontroleerd in de smoke test van M4).</p>
-  <p>Met de Herd-app gaat het zonder terminal: <em>New site</em> &rarr; <em>Custom Starter Kit</em> &rarr; <code>frankcornet/skv3</code> &rarr; <em>Open site</em>. De startpagina van de nieuwe site opent de <a href="#wizard">setupwizard</a>. Die route installeert het pakket via Packagist, dus hij werkt pas als het gepubliceerd is <span class="badge b-plan">M8</span>. Tot die tijd kloon je de code en open je de wizard zo:</p>
+  <p>Met de Herd-app gaat het zonder terminal: <em>New site</em> &rarr; <em>Custom Starter Kit</em> &rarr; <code>frankcornet/skv3</code> &rarr; <em>Open site</em>, of je begint met de deeplink <a href="https://herd.laravel.com/new/frankcornet/skv3"><code>https://herd.laravel.com/new/frankcornet/skv3</code></a>. De startpagina van de nieuwe site opent de <a href="#wizard">setupwizard</a>. Die route installeert het pakket via Packagist. Wil je met de code zelf werken, bijvoorbeeld om aan de kit te bouwen, kloon dan de repository en open de wizard zo:</p>
 
   <ol class="steps">
     <li><div>
       <p><strong>Zet de code in een map die Herd serveert.</strong> De naam van de map wordt het adres.</p>
 <pre><code>cd ~/Herd
-git clone &lt;repository-url&gt; mijnapp
+git clone https://github.com/frankcornet/skv3.git mijnapp
 cd mijnapp</code></pre>
     </div></li>
     <li><div>
@@ -636,7 +636,7 @@ php artisan skv:bootstrap</code></pre>
   <h3 id="wizard">De setupwizard</h3>
   <p>De wizard staat op <code>/welcome-setup</code>, maar dat adres typ je nooit zelf: de startpagina van de site stuurt je erheen, met het token. Hij draait dezelfde stappen als <code>skv:install</code>, &eacute;&eacute;n stap per verzoek.</p>
   <ul>
-    <li><strong>Wanneer hij opent.</strong> Alleen lokaal (<code>APP_ENV=local</code>), zolang de marker <code>storage/app/skv-installed</code> ontbreekt en het installatietoken bestaat, en alleen voor verzoeken van deze computer zelf (een loopbackadres: <code>127.0.0.0/8</code>, zoals <code>127.0.0.1</code>, of <code>::1</code>). Anders antwoordt <code>/welcome-setup</code> met 404, ook vanaf een andere computer en via een proxy of een tunnel zoals <code>herd share</code> (met een header <code>X-Forwarded-*</code>, <code>X-Expose-*</code>, <code>CF-*</code>, <code>Forwarded</code>, <code>Via</code>, <code>X-Original-Host</code>, <code>X-Real-IP</code> of <code>True-Client-IP</code>). De startpagina geeft het token alleen zolang er nog geen superbeheerder is, en alleen op een adres dat de wizard accepteert. Accepteert de wizard het token, dan begint hij een nieuwe sessie: niets van een eerdere sessie gaat mee en het bestand ervan wordt verwijderd. In die sessie bewaart hij een hash van het token, en hij haalt het token uit de adresbalk. Een tunnel of port forward die geen van die headers meestuurt (<code>ssh -R</code>, <code>ngrok tcp</code>, <code>socat</code>, een port forward van je router naar <code>127.0.0.1</code>) komt via loopback binnen en wordt dus toegelaten: stel de site nooit via een tunnel of port forward open zolang de installatie niet klaar is.</li>
+    <li><strong>Wanneer hij opent.</strong> Alleen lokaal (<code>APP_ENV=local</code>), zolang de marker <code>storage/app/skv-installed</code> ontbreekt en het installatietoken bestaat, en alleen voor verzoeken van deze computer zelf (een loopbackadres: <code>127.0.0.0/8</code>, zoals <code>127.0.0.1</code>, of <code>::1</code>; een IPv4-adres in IPv6-vorm, zoals <code>::ffff:127.0.0.1</code>, telt niet). Anders antwoordt <code>/welcome-setup</code> met 404, ook vanaf een andere computer en via een proxy of een tunnel zoals <code>herd share</code> (met een header <code>X-Forwarded-*</code>, <code>X-Expose-*</code>, <code>CF-*</code>, <code>Tailscale-*</code>, <code>Forwarded</code>, <code>X-Forwarded</code>, <code>Forwarded-For</code>, <code>Via</code>, <code>X-Original-Host</code>, <code>X-Original-URL</code>, <code>X-Host</code>, <code>X-Real-IP</code>, <code>True-Client-IP</code>, <code>X-Client-IP</code>, <code>Client-IP</code>, <code>X-Cluster-Client-IP</code> of <code>Fastly-Client-IP</code>). De startpagina geeft het token alleen zolang er nog geen superbeheerder is, en alleen op een adres dat de wizard accepteert. Accepteert de wizard het token, dan begint hij een nieuwe sessie: niets van een eerdere sessie gaat mee en het bestand ervan wordt verwijderd. In die sessie bewaart hij een hash van het token, en hij haalt het token uit de adresbalk. Een tunnel of port forward die geen van die headers meestuurt (<code>ssh -R</code>, <code>ngrok tcp</code>, <code>socat</code>, een port forward van je router naar <code>127.0.0.1</code>) komt via loopback binnen en wordt dus toegelaten: stel de site nooit via een tunnel of port forward open zolang de installatie niet klaar is.</li>
     <li><strong>Het adres.</strong> Open de wizard met Herd op <code>mijnapp.test</code> of <code>admin.mijnapp.test</code>, zonder Herd op <code>localhost</code> of een naam die eindigt op <code>.localhost</code> of <code>.test</code>, met de poort waarop je de site serveert (<code>APP_URL</code> houdt die poort). Op een ander adres geeft de startpagina geen token en stuurt hij je naar het adres dat je moet gebruiken: zonder Herd naar <code>http://localhost:&lt;poort&gt;/</code>, ook vanaf een IP-adres zoals <code>127.0.0.1</code> (het adres dat <code>php artisan serve</code> noemt), en met Herd naar <code>http://mijnapp.test/</code>. Valt er geen adres te noemen, dan antwoordt de startpagina met 409 en een pagina die het probleem noemt: is de mapnaam geen geldige hostnaam (zoals <code>mijn_app</code>), dan vraagt die je de map te hernoemen (<code>mijn-app</code>) en de installatie daarna opnieuw te starten; geeft <code>herd tld</code> geen antwoord, dan vraagt die je de pagina zo te herladen. Met Herd ligt het adres daarna vast op <code>mijnapp.test</code>, en elk verzoek van de wizard en de Herd-stap moet dat adres of zijn <code>admin.</code>-vorm gebruiken.</li>
     <li><strong>De vragen</strong> staan al ingevuld: <span class="ui">Naam van de app</span>, <span class="ui">Database</span>, <span class="ui">Begin met</span> (<span class="ui">Demodata</span> of <span class="ui">Mijn eigen superbeheerder</span>, met e-mailadres en wachtwoord), <span class="ui">Modules</span>, <span class="ui">HTTPS gebruiken</span>, <span class="ui">Playwright installeren</span> en <span class="ui">Claude Code instellen</span>. Het wachtwoord wordt direct gehasht; alleen de hash wordt bewaard. Bestaat er al een superbeheerder, dan voegt de wizard de demodata niet vanzelf toe: hij zegt het, en klik je nogmaals op <span class="ui">Installatie starten</span>, dan voegt hij ze toch toe (of kies <span class="ui">Mijn eigen superbeheerder</span>).</li>
     <li><strong>De stappen</strong> lopen &eacute;&eacute;n voor &eacute;&eacute;n, elk met zijn stand: <span class="ui">klaar</span>, <span class="ui">overgeslagen</span>, <span class="ui">handmatig</span> of <span class="ui">wacht</span>. De lange stappen (de frontend-build en Claude Code) draaien op de achtergrond; de pagina kijkt elke twee seconden hoe ver ze zijn. Herlaad je de pagina, dan gaat de wizard verder waar hij was. Gaat een stap fout, dan zie je <span class="ui">Installatie gestopt</span> met de melding en <span class="ui">Probeer het opnieuw</span>; kan de start zijn status niet schrijven, dan staat de melding bij de vragen. Een foutpagina zie je nooit. Een lange stap waarvan het proces nog loopt, kun je pas opnieuw controleren als hij klaar is; na vier uur vertrouwt de wizard dat proces niet meer en kun je weer opnieuw controleren.</li>
@@ -662,7 +662,7 @@ php artisan skv:bootstrap</code></pre>
 
   <h3 id="cli">Via de terminal</h3>
   <p>Werk je zonder de Herd-app, dan blijven de stappen hetzelfde: <code>git clone</code>, <code>composer setup</code>, <code>composer dev</code>. Zonder Herd moet je zelf zorgen dat het apex, <code>admin.</code> en elke organisatie naar je machine wijzen. <code>php artisan skv:doctor</code> drukt de regels voor <code>/etc/hosts</code> af zodra <code>probe.&lt;apex&gt;</code> niet gevonden wordt; dnsmasq met een wildcard kan ook. Zet <code>TENANCY_APEX_DOMAIN</code> en <code>APP_URL</code> dan op dat apex. Namen onder <code>localhost</code> (bijvoorbeeld <code>mijnapp.localhost</code>) vindt je browser zelf.</p>
-  <p>De varianten <code>laravel new mijnapp --using=frankcornet/skv3</code> en <code>composer create-project frankcornet/skv3 mijnapp</code> werken pas als het pakket gepubliceerd is <span class="badge b-plan">M8</span>. Daarna open je het adres dat ze afdrukken, voor de wizard, of draai je <code>php artisan skv:install</code> in de nieuwe map.</p>
+  <p>Met <code>laravel new mijnapp --using=frankcornet/skv3</code> of <code>composer create-project frankcornet/skv3 mijnapp</code> installeer je het pakket via Packagist. Daarna open je het adres dat ze afdrukken, voor de wizard, of draai je <code>php artisan skv:install</code> in de nieuwe map.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Commando</th><th>Wat het doet</th></tr></thead>
@@ -672,15 +672,16 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>composer doctor</code></td><td>De installatie controleren met <code>php artisan skv:doctor</code></td></tr>
         <tr><td><code>composer check</code></td><td>Pint, Rector, Larastan en Pest op SQLite</td></tr>
         <tr><td><code>composer test:pgsql</code></td><td>Dezelfde Pest-suite op PostgreSQL (Herd Pro)</td></tr>
-        <tr><td><code>composer test:browser</code></td><td>De browsertests in Chromium (<code>tests/Browser</code>). Eerst één keer <code>npx playwright install chromium</code> en <code>npm run build</code></td></tr>
+        <tr><td><code>composer test:browser</code></td><td>De browsertests in Chromium (<code>tests/Browser</code>). Eerst één keer <code>npx playwright install chromium</code> en <code>npm run build</code>. Eén browsertest draai je met <code>php artisan config:clear &amp;&amp; vendor/bin/pest --testsuite=Browser --filter='&lt;naam&gt;'</code>: Composer plakt extra argumenten achter elke regel van het script</td></tr>
         <tr><td><code>composer fix</code></td><td>Rector, daarna Pint</td></tr>
         <tr><td><code>npm run build:setup</code></td><td>De vaste stylesheet van de wizard (<code>resources/setup/setup.css</code>) opnieuw bouwen, na een wijziging aan de setupviews of het thema</td></tr>
         <tr><td><code>php artisan permissions:sync</code></td><td>Rechtencatalogus en systeemrollen bijwerken; toont elke wijziging</td></tr>
         <tr><td><code>php artisan activitylog:clean</code></td><td>Logregels ouder dan <code>ACTIVITYLOG_RETENTION_DAYS</code> verwijderen</td></tr>
+        <tr><td><code>php scripts/traceability.php</code></td><td>De punten van §4 van de spec die geen test noemt; eindigt met exitcode 1 zolang er een is</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">README.md (Quickstart, Commands); composer.json (scripts); spec:209-212,310; app/Console/Commands/SyncPermissionsCommand.php; app/Setup/Doctor/Checks/SubdomainsCheck.php</p>
+  <p class="src">README.md (Quickstart, Commands); composer.json (scripts); spec §5.1, §5.4; app/Console/Commands/SyncPermissionsCommand.php; app/Setup/Doctor/Checks/SubdomainsCheck.php</p>
 
   <h3 id="composer-dev">Wat <code>composer dev</code> start</h3>
   <p><code>composer dev</code> roept <code>php artisan dev</code> aan. De kit voegt altijd de scheduler toe, en laat het <code>serve</code>-proces weg zodra Herd op de machine staat (de map <code>~/Library/Application Support/Herd</code> bestaat).</p>
@@ -696,7 +697,7 @@ php artisan skv:bootstrap</code></pre>
     </table>
   </div>
   <p>Start <code>composer dev</code> één keer per project. Draaien er twee, dan pakken twee workers dezelfde job op. Met SQLite verliest er één met <code>database is locked</code>: de mail gaat wel één keer weg, maar er komt een overbodig record in <code>failed_jobs</code>. Zonder <code>composer dev</code> blijven uitnodigings- en e-mailwijzigingsmails in de tabel <code>jobs</code> staan tot je zelf een worker start, bijvoorbeeld <code>php artisan queue:work</code>. De mail voor wachtwoordherstel gaat niet via de wachtrij.</p>
-  <p class="src">composer.json:66-69; app/Providers/AppServiceProvider.php:67-81; .env.example:64; config/queue.php:42-45; app/Mail/InvitationMail.php:24; app/Mail/InvitationReminderMail.php:22; app/Notifications/*.php; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:24</p>
+  <p class="src">composer.json; app/Providers/AppServiceProvider.php; .env.example; config/queue.php; app/Mail/InvitationMail.php; app/Mail/InvitationReminderMail.php; app/Notifications/*.php; app/Http/Controllers/Auth/SendPasswordResetLinkController.php</p>
 
   <h3 id="installeren">Installeren en controleren</h3>
   <h4><code>skv:install</code></h4>
@@ -705,7 +706,7 @@ php artisan skv:bootstrap</code></pre>
     <table>
       <thead><tr><th>Stap</th><th>Wat er gebeurt</th></tr></thead>
       <tbody>
-        <tr><td><span class="ui">Omgevingsbestand</span></td><td><code>.env</code>: <code>APP_NAME</code>, <code>APP_URL</code> en het apex, een <code>HEALTH_CHECK_KEY</code>, de modules en, met Herd Pro-mail, <code>MAIL_MAILER=smtp</code>; daarna de link <code>public/storage</code></td></tr>
+        <tr><td><span class="ui">Omgevingsbestand</span></td><td><code>.env</code>: <code>APP_NAME</code>, <code>APP_URL</code> en het apex, een <code>HEALTH_CHECK_KEY</code>, de modules en, met Herd Pro-mail, <code>MAIL_MAILER=smtp</code>; daarna de link <code>public/storage</code> (een verkeerde of kapotte link vervangt hij; een map of bestand op die plek laat hij staan en vraagt hij je opzij te zetten)</td></tr>
         <tr><td><span class="ui">Database</span></td><td>Maakt de database en de testdatabase, migreert, zet de rechten klaar en seedt; pas als dat allemaal gelukt is, komt <code>DB_*</code> in <code>.env</code>. Schrijft ook <code>.env.testing</code> (modus 0600)</td></tr>
         <tr><td><code>herd.yml</code></td><td>Naam, PHP 8.4, https en, bij PostgreSQL, de PostgreSQL 18-service</td></tr>
         <tr><td><span class="ui">Huisstijl</span></td><td><code>APP_NAME</code>, <code>BRANDING_ACCENT</code> (een onbekende kleur wordt <code>neutral</code>) en <code>BRANDING_LOGO</code> (een logo dat geen bestand onder <code>public/</code> is, wordt leeggemaakt)</td></tr>
@@ -714,7 +715,7 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><span class="ui">Claude Code</span></td><td>Boost, <code>.mcp.json</code> met de Herd MCP-server als <code>herd</code> en de superpowers-plugin (alleen als je Claude Code kiest)</td></tr>
         <tr><td><span class="ui">Diagnose</span></td><td>Draait <code>skv:doctor</code></td></tr>
         <tr><td><span class="ui">Afronden</span></td><td>Schrijft de marker <code>storage/app/skv-installed</code></td></tr>
-        <tr><td><span class="ui">Herd-site</span></td><td>Koppelt de map aan Herd als die nog niet geserveerd wordt, zet de site op PHP 8.4 als dat nodig is en beveiligt hem met HTTPS als je dat koos</td></tr>
+        <tr><td><span class="ui">Herd-site</span></td><td>Koppelt de map aan Herd als die nog niet geserveerd wordt, zet de site op PHP 8.4 als dat nodig is (ook bij een nieuwe run, als Herd de site intussen met een oudere PHP serveert) en beveiligt hem met HTTPS als je dat koos</td></tr>
         <tr><td><span class="ui">Samenvatting</span></td><td>De adressen, de logins en de commando&rsquo;s die je nog zelf moet draaien</td></tr>
       </tbody>
     </table>
@@ -729,9 +730,11 @@ php artisan skv:bootstrap</code></pre>
   <h4><code>skv:doctor</code></h4>
   <p><code>php artisan skv:doctor</code> (of <code>composer doctor</code>) controleert de installatie: PHP en extensies, <code>APP_KEY</code>, Herd en de site, subdomeinen, de database en migraties, rechten en rollen, sessies, de build, mail, de queue, de git-hooks en de Claude-bestanden. Elke regel is <code>pass</code>, <code>warn</code>, <code>fail</code> of <code>skipped</code>, met het commando dat het oplost. Groen betekent: geen <code>fail</code>.</p>
   <ul>
-    <li><code>--fix</code> doet alleen veilige reparaties: <code>permissions:sync</code>, superbeheerders en rollen die uit de pas lopen, <code>storage:link</code>, de git-hooks, de build, een ontbrekende of te korte <code>HEALTH_CHECK_KEY</code> (korter dan 32 tekens; hij zet er een willekeurige van 40 tekens voor in de plaats), een ontbrekend <code>BACKUP_ARCHIVE_PASSWORD</code> (met de back-upmodule aan) en een installatietoken dat na de installatie is blijven staan (dat gooit hij weg).</li>
+    <li><code>--fix</code> doet alleen veilige reparaties: <code>permissions:sync</code>, superbeheerders en rollen die uit de pas lopen, <code>storage:link</code> (met <code>--force</code> alleen over een verkeerde of kapotte link; een map of bestand op die plek haalt hij nooit weg), de git-hooks, de build, een ontbrekende of te korte <code>HEALTH_CHECK_KEY</code> (korter dan 32 tekens; hij zet er een willekeurige van 40 tekens voor in de plaats), een ontbrekend <code>BACKUP_ARCHIVE_PASSWORD</code> (met de back-upmodule aan) en een installatietoken dat na de installatie is blijven staan (dat gooit hij weg).</li>
     <li>Tijdens de installatie slaat de diagnosestap de Herd-site, HTTPS en het installatietoken over (<span class="ui">Wordt na de Herd-stap gecontroleerd</span>), omdat de marker en de Herd-stap dan nog moeten komen.</li>
     <li>Is de database onbereikbaar, dan faalt <code>database</code> en staan de queue en de mislukte taken op <code>skipped</code>. Een installatiemarkering die geen geldige JSON is, niet te lezen valt of een symbolische link is, laat de regel <code>marker</code> falen.</li>
+    <li>De regel <code>storage-link</code> waarschuwt zolang <code>public/storage</code> ontbreekt, en faalt als het iets anders is dan een link naar <code>storage/app/public</code> (een link elders, een kapotte link, een map of een bestand): <span class="ui">public/storage is geen link naar storage/app/public</span>. Een link naar de hoofdmap van het project zou <code>.env</code> onder <code>/storage</code> serveren. Bij een map of bestand is de oplossing <span class="ui">Zet public/storage opzij en voer daarna php artisan storage:link uit</span>.</li>
+    <li>De regel <code>gd</code> waarschuwt als GD geen WebP kan schrijven: <span class="ui">GD ondersteunt geen WebP: profielfoto's kunnen niet worden opgeslagen</span>, met als oplossing <span class="ui">Installeer GD met WebP (libwebp)</span>.</li>
     <li><code>--json</code> geeft het rapport als JSON en eindigt met exitcode 1 als het niet groen is (voor CI).</li>
   </ul>
 
@@ -753,7 +756,7 @@ php artisan skv:bootstrap</code></pre>
   <p>Na een lokale installatie met demodata toont de inlogpagina onder <span class="ui">Snel inloggen (alleen lokaal)</span> de demo-accounts, bijvoorbeeld <code>superadmin@&lt;apex&gt;</code> en <code>admin@demo1.&lt;apex&gt;</code>. Eén klik logt je in op de eigen host van het account. Het blok verschijnt alleen als <code>APP_ENV=local</code> is, de installatie met demodata begon en het verzoek rechtstreeks van deze computer komt (niet via een proxy of een tunnel zoals <code>herd share</code>), en het toont alleen accounts die bestaan, actief zijn en geen ingestelde tweestapsverificatie hebben. Heb je het wachtwoord van een demo-account veranderd, dan blijft het account in de lijst staan, maar werkt snel inloggen er niet meer voor: je komt terug op de inlogpagina met <span class="ui">Dit demo-account gebruikt het demowachtwoord niet meer.</span> Overal elders antwoordt snel inloggen met 404.</p>
   <p>Begin je met je eigen superbeheerder, dan log je met dat e-mailadres in op <code>http://admin.&lt;apex&gt;/login</code>. Later voeg je er een toe met <code>php artisan skv:create-super-admin</code> (zonder vragen geef je het wachtwoord op standaardinvoer met <code>--password-stdin</code>; op een terminal weigert hij, omdat je wachtwoord dan zichtbaar zou zijn: geef het via een pipe; een wachtwoordhash in plaats van het wachtwoord weigert hij met <span class="ui">Geef het wachtwoord zelf mee, geen hash.</span>), en een organisatie met <code>php artisan skv:create-organisation</code>; dat stuurt de eerste beheerder een uitnodiging, maar drukt de link nooit af.</p>
   <p>Na het inloggen kom je op het <span class="ui">Dashboard</span>, met bovenaan de lijst <span class="ui">Aan de slag</span> (zie <a href="#dashboard">Dashboard</a>). Open als superbeheerder in de zijbalk onder <span class="ui">Beheer</span> de pagina <span class="ui">Organisaties</span>, of open het adres zelf (<code>http://admin.mijnapp.test/</code>): dan stuurt de kit een superbeheerder op een centrale host door naar <span class="ui">Organisaties</span>.</p>
-  <p class="src">app/Console/Commands/{InstallCommand,DoctorCommand,CreateSuperAdminCommand,CreateOrganisationCommand}.php; app/Setup/SetupRunner.php; app/Setup/Steps/*.php; app/Setup/Answers.php; app/Setup/Summary.php; app/Setup/Doctor/Doctor.php; database/seeders/{DatabaseSeeder,DemoSeeder}.php; app/Setup/QuickLogin.php; app/Http/Controllers/Auth/QuickLoginController.php; resources/views/components/quick-login.blade.php; spec §4.12, §5.3, §5.4, §6.5; docs/decisions.md (DEC-30, DEC-31)</p>
+  <p class="src">app/Console/Commands/{InstallCommand,DoctorCommand,CreateSuperAdminCommand,CreateOrganisationCommand}.php; app/Setup/SetupRunner.php; app/Setup/Steps/*.php; app/Setup/Answers.php; app/Setup/Summary.php; app/Setup/Doctor/Doctor.php; app/Setup/Doctor/Checks/{StorageLinkCheck,GdCheck}.php; app/Setup/Support/Bootstrap.php; database/seeders/{DatabaseSeeder,DemoSeeder}.php; app/Setup/QuickLogin.php; app/Http/Controllers/Auth/QuickLoginController.php; resources/views/components/quick-login.blade.php; spec §4.12, §5.3, §5.4, §6.5; docs/decisions.md (DEC-30, DEC-31)</p>
 
   <h4>Je eerste organisatie</h4>
   <ol class="steps">
@@ -761,7 +764,7 @@ php artisan skv:bootstrap</code></pre>
     <li><div><p>De uitnodigingsmail gaat met <code>MAIL_MAILER=log</code> naar het log; met <code>composer dev</code> zie je hem in de Pail-uitvoer. Sneller: open <span class="ui">Openstaande uitnodigingen</span> en kies <span class="ui">Uitnodigingslink kopiëren</span>.</p></div></li>
     <li><div><p>Open de link. Hij werkt alleen op de host van de organisatie, bijvoorbeeld <code>acme.mijnapp.test</code>. Kies een naam en wachtwoord en klik <span class="ui">Account activeren</span>.</p></div></li>
   </ol>
-  <p class="src">resources/views/pages/organisations/create/create.blade.php:6-44; resources/views/pages/invitations/pending/pending.blade.php:67-71; routes/admin.php:59-66; .env.example:76</p>
+  <p class="src">resources/views/pages/organisations/create/create.blade.php; resources/views/pages/invitations/pending/pending.blade.php; routes/admin.php; .env.example</p>
 
   <h3 id="valkuilen">Valkuilen</h3>
   <ul>
@@ -776,8 +779,10 @@ php artisan skv:bootstrap</code></pre>
     <li><strong><code>migrate:fresh</code> en <code>db:wipe</code> wissen je ontwikkeldata.</strong> De tests hebben hun eigen database, dus voor de tests is dat nooit nodig. Moet je een oude ontwikkeldatabase toch opnieuw opbouwen, maak dan eerst een kopie van <code>database/database.sqlite</code> en draai <code>php artisan migrate:fresh --seed</code>; dat zet de demodata terug.</li>
     <li><strong>Werk je met een AI-agent?</strong> <code>CLAUDE.md</code> verbiedt agents <code>migrate:fresh</code> en <code>db:wipe</code> op de ontwikkeldatabase, en laat ze vragen voor <code>tinker</code>, <code>migrate</code> en <code>db:seed</code>. Ze draaien ook nooit <code>herd sites</code> of de Herd MCP-tool <code>get_all_sites</code>: die tonen de <code>.env</code> van al je sites, met geheimen.</li>
     <li><strong>De tests trekken zich niets aan van je <code>.env</code>-hosts.</strong> <code>phpunit.xml</code> zet het apex vast op <code>localhost</code>.</li>
+    <li><strong>De tests raken je ontwikkeldatabase nooit.</strong> Ze weigeren te starten als <code>DB_DATABASE</code> geen <code>:memory:</code> is, geen naam die op <code>_test</code> eindigt, geen bestand onder <code>storage/framework/testing</code> en niet de <code>DB_TEST_DATABASE</code> van <code>composer test:pgsql</code>, en ook als <code>DB_URL</code> gevuld is of de configuratie gecachet is (draai dan eerst <code>php artisan config:clear</code>). Een <code>DB_DATABASE</code> die je in je shell hebt gezet of een gecachete configuratie kan <code>RefreshDatabase</code> zo nooit je eigen database laten wissen.</li>
+    <li><strong>Een server zonder <code>APP_ENV</code> is productie.</strong> Noemen <code>.env</code> en de omgeving van het proces geen <code>APP_ENV</code> (of een lege), dan behandelt <code>skv:bootstrap</code> de app als productie, net als Laravel zelf: hij maakt dan alleen <code>.env</code>, <code>APP_KEY</code> en de gegenereerde geheimen klaar. Een verse kopie van <code>.env.example</code> zegt <code>local</code>, dus een lokale installatie merkt hier niets van.</li>
   </ul>
-  <p class="src">config/tenancy.php:9,17; app/Tenancy/Hosts.php:11-14; CHANGELOG.md:29; docs/decisions.md:132 (37); spec:295; app/Providers/AppServiceProvider.php:56-64; vendor/laravel/framework/src/Illuminate/Validation/Rules/Password.php:166-173; .env.example:64,76-83; app/Support/Scheduler/OpsSchedule.php; CLAUDE.md (Safety); phpunit.xml:25-27</p>
+  <p class="src">config/tenancy.php; app/Tenancy/Hosts.php; CHANGELOG.md; docs/decisions.md (DEC-28 (37)); spec §5.3.4; app/Providers/AppServiceProvider.php; vendor/laravel/framework/src/Illuminate/Validation/Rules/Password.php; .env.example; app/Support/Scheduler/OpsSchedule.php; CLAUDE.md (Safety); phpunit.xml</p>
 </section>
 
 <!-- ============================ 3 ============================ -->
@@ -827,7 +832,7 @@ php artisan skv:bootstrap</code></pre>
       </tbody>
     </table>
   </div>
-  <p class="src">.env.example:1-94; config/branding.php; app/Support/Branding.php (ACCENTS); config/tenancy.php:9-25; config/fortify.php; config/auth.php:117,131; config/activitylog.php:18-19; config/skv.php; config/trustedproxy.php:7-20; app/Providers/AppServiceProvider.php (passkeys module)</p>
+  <p class="src">.env.example; config/branding.php; app/Support/Branding.php (ACCENTS); config/tenancy.php; config/fortify.php; config/auth.php; config/activitylog.php; config/skv.php; config/trustedproxy.php; app/Providers/AppServiceProvider.php (passkeys module)</p>
 
   <h3 id="configkeys">Config-sleutels van de kit</h3>
   <div class="table-wrap">
@@ -853,7 +858,7 @@ php artisan skv:bootstrap</code></pre>
       </tbody>
     </table>
   </div>
-  <p class="src">config/skv.php; config/branding.php; app/Enums/Locale.php; config/tenancy.php:17-42; config/activitylog.php:15-39; app/Tenancy/Hosts.php:47-54</p>
+  <p class="src">config/skv.php; config/branding.php; app/Enums/Locale.php; config/tenancy.php; config/activitylog.php; app/Tenancy/Hosts.php</p>
 
   <h3 id="fluxpro">Flux Pro (optioneel)</h3>
   <p>De kit werkt volledig op de gratis versie van Flux. Is <code>livewire/flux-pro</code> geïnstalleerd, dan schakelen deze varianten vanzelf in. De gegevens en rechten blijven hetzelfde; alleen de bediening verandert.</p>
@@ -882,7 +887,7 @@ php artisan skv:bootstrap</code></pre>
 <section class="chapter" id="auth">
   <h2><span class="num">4</span>Inloggen en beveiliging</h2>
   <p>De kit werkt alleen op uitnodiging. Er is geen registratie, geen e-mailverificatie en je kunt je account niet zelf verwijderen.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php:168-177; CHANGELOG.md:49; tests/Feature/Auth/InviteOnlyTest.php:17-27</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; CHANGELOG.md; tests/Feature/Auth/InviteOnlyTest.php</p></details>
 
   <h3 id="wie-waar">Wie logt waar in</h3>
   <p>Eén regel bepaalt het, voor wachtwoord, tweestapscode, passkey, wachtwoordherstel en overdrachtslinks: <strong>een actieve, niet-verwijderde gebruiker die bij deze host hoort.</strong> Superbeheerders horen bij elke host.</p>
@@ -906,7 +911,7 @@ php artisan skv:bootstrap</code></pre>
     <li><span class="ui">Je account is niet actief. Neem contact op met je beheerder.</span></li>
   </ul>
   <p>Boven het formulier staat het merkteken met een naam: op het adres van een organisatie de naam van die organisatie, op de centrale adressen de naam van het platform. De inlogpagina toont: kop <span class="ui">Log in op je account</span>, velden <span class="ui">E-mailadres</span> en <span class="ui">Wachtwoord</span>, <span class="ui">Onthoud mij</span>, de link <span class="ui">Wachtwoord vergeten?</span>, de knop <span class="ui">Inloggen</span> en, als de passkeymodule aan staat, <span class="ui">Inloggen met een passkey</span>. Onder het venster staan de taalknoppen <span class="ui">Nederlands</span> en <span class="ui">Engels</span>. Uitloggen doe je met <span class="ui">Uitloggen</span> in het gebruikersmenu.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/HostLoginRule.php:9-18; config/fortify.php:78; routes/web.php; tests/Feature/Auth/HostScopedLoginTest.php:47-55; app/Tenancy/Auth/AuthenticateOnThisHost.php:15-58; lang/nl/auth.php:7,9; app/Tenancy/Http/Middleware/VerifyTenantMembership.php:14-41; resources/views/pages/auth/login.blade.php; resources/views/layouts/auth.blade.php; resources/views/components/passkey-verify.blade.php; app/Providers/FortifyServiceProvider.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/HostLoginRule.php; config/fortify.php; routes/web.php; tests/Feature/Auth/HostScopedLoginTest.php; app/Tenancy/Auth/AuthenticateOnThisHost.php; lang/nl/auth.php; app/Tenancy/Http/Middleware/VerifyTenantMembership.php; resources/views/pages/auth/login.blade.php; resources/views/layouts/auth.blade.php; resources/views/components/passkey-verify.blade.php; app/Providers/FortifyServiceProvider.php</p></details>
 
   <h4>Sessies</h4>
   <ul>
@@ -914,11 +919,11 @@ php artisan skv:bootstrap</code></pre>
     <li>Wijzig je je wachtwoord, dan worden je sessies op andere apparaten afgemeld.</li>
     <li>Wordt een account uitgeschakeld of verwijderd, of de organisatie gearchiveerd of verwijderd, dan is die persoon direct overal uitgelogd.</li>
     <li>Op de beveiligingspagina (<span class="ui">Instellingen</span> → <span class="ui">Beveiliging</span>) staat onder <span class="ui">Sessies</span> een overzicht van de apparaten waarop je bent ingelogd: browser en platform (bijvoorbeeld <span class="ui">Firefox op macOS</span>), IP-adres, <span class="ui">Laatst actief</span>, en <span class="ui">Dit apparaat</span> bij het apparaat dat je nu gebruikt. Alleen sessies binnen de sessieduur (<code>SESSION_LIFETIME</code>) staan erin, ook die op je andere hosts.</li>
-    <li>Met <span class="ui">Andere apparaten uitloggen</span> vul je je wachtwoord in. Bij hun volgende verzoek zijn al je andere sessies en &lsquo;onthoud mij&rsquo;-logins afgemeld, op elke host; op dit apparaat blijf je ingelogd. Overdrachtslinks die je nog niet gebruikte, vervallen ook. Je hebt 5 pogingen per minuut, en elke poging telt. In het activiteitenlog staat <span class="ui">Andere apparaten uitgelogd</span>, met het aantal afgemelde sessies.</li>
+    <li>Met <span class="ui">Andere apparaten uitloggen</span> vul je je wachtwoord in. Bij hun volgende verzoek zijn al je andere sessies en &lsquo;onthoud mij&rsquo;-logins afgemeld, op elke host; op dit apparaat blijf je ingelogd. Dit apparaat krijgt daarbij een nieuw sessie-id, zodat een gekopieerde sessiecookie van deze browser ook wordt uitgelogd. Overdrachtslinks die je nog niet gebruikte, vervallen ook. Je hebt 5 pogingen per minuut, en elke poging telt. In het activiteitenlog staat <span class="ui">Andere apparaten uitgelogd</span>, met het aantal afgemelde sessies.</li>
     <li>Tijdens &lsquo;inloggen als&rsquo; is dit onderdeel verborgen.</li>
     <li>Het overzicht heeft <code>SESSION_DRIVER=database</code> nodig (de standaard). Met een andere driver blijft het leeg, maar de knop werkt nog: hij versleutelt je wachtwoord opnieuw, en daardoor vallen de andere sessies bij hun volgende verzoek weg.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127; resources/views/pages/settings/sessions/*; app/Support/UserAgent.php; tests/Feature/Settings/SessionsTest.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php; bootstrap/app.php; app/Tenancy/Auth/Sessions.php; docs/decisions.md (DEC-27 Consequence); resources/views/pages/settings/sessions/*; app/Support/UserAgent.php; tests/Feature/Settings/SessionsTest.php; tests/Feature/Authorization/LockOrderTest.php</p></details>
 
   <h4>Limieten</h4>
   <p>Een paar acties hebben een limiet per gebruiker. Ga je erboven, dan zegt het formulier <span class="ui">Te veel pogingen. Probeer het over <em>42</em> seconden opnieuw.</span></p>
@@ -933,8 +938,10 @@ php artisan skv:bootstrap</code></pre>
     <li>Een profielfoto opslaan: 10 keer per 10 minuten; elke poging telt.</li>
     <li>Een bestand uploaden (een profielfoto of een lijst voor meerdere uitnodigingen): 10 keer per minuut en 60 keer per uur (<code>livewire-upload</code>).</li>
     <li>De routes voor tweestapsbeheer en het verwijderen van een passkey: 10 keer per minuut (<code>account-security</code>).</li>
+    <li>Opzoeken of een e-mailadres gebruikt kan worden: 500 adressen per dag per gebruiker. Elke opzoeking telt, ook een geweigerde: een nieuw adres op je profielpagina of bij <span class="ui">Gebruiker bewerken</span>, het adres bij <span class="ui">Gebruiker uitnodigen</span>, en elke regel van <span class="ui">Lijst controleren</span> bij meerdere uitnodigingen. Een gecontroleerde lijst versturen telt niet. Ben je ingelogd als een andere gebruiker, dan tellen de opzoekingen voor jou, en weigert de profielpagina een nieuw adres voordat er iets wordt opgezocht. Zo kan niemand ongemerkt nagaan welke adressen al een account hebben.</li>
+    <li>Inloggen (per adres en IP-adres, niet per gebruiker): 5 mislukte pogingen per minuut per adres en IP-adres, en 20 per minuut per IP-adres. Log je met succes in, ook met een tweede stap of een passkey, dan tellen de mislukte pogingen van dat adres vanaf dat IP-adres niet meer mee.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/RateLimits/UserActionLimit.php; app/Providers/FortifyServiceProvider.php; config/livewire.php; routes/fortify.php; routes/passkeys.php; app/Actions/Invitations/RemindInvitation.php; tests/Feature/Auth/ActionLimitsTest.php; tests/Feature/Auth/LoginThrottleTest.php; tests/Feature/Auth/AdministratorActionLimitsTest.php; tests/Feature/Settings/TemporaryUploadsTest.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/RateLimits/UserActionLimit.php; app/Providers/FortifyServiceProvider.php; config/livewire.php; routes/fortify.php; routes/passkeys.php; app/Actions/Invitations/RemindInvitation.php; tests/Feature/Auth/ActionLimitsTest.php; tests/Feature/Auth/LoginThrottleTest.php; tests/Feature/Auth/AdministratorActionLimitsTest.php; tests/Feature/Settings/TemporaryUploadsTest.php; app/Rules/AvailableEmail.php; tests/Feature/Invitations/BulkInvitationsTest.php</p></details>
 
   <h3 id="instellingen">Instellingen, taal en weergave</h3>
   <p>Klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven). Het gebruikersmenu toont je naam en e-mailadres, <span class="ui">Instellingen</span>, de keuze <span class="ui">Taal</span> (<span class="ui">Nederlands</span> of <span class="ui">Engels</span>), de keuze <span class="ui">Weergave</span> (<span class="ui">Licht</span>, <span class="ui">Donker</span> of <span class="ui">Systeem</span>) en <span class="ui">Uitloggen</span>.</p>
@@ -956,13 +963,13 @@ php artisan skv:bootstrap</code></pre>
   </ul>
   <h4 id="profielfoto">Profielfoto</h4>
   <ul>
-    <li>Op je profielpagina kies je onder <span class="ui">Profielfoto</span> een <span class="ui">Nieuwe foto</span> en klik je <span class="ui">Foto opslaan</span>: een JPEG, PNG of WebP van maximaal 2 MB en 4096 × 4096 pixels. Met Flux Pro sleep je de foto in een vak. Met <span class="ui">Foto verwijderen</span> haal je hem weg. Het gratis bestandsveld toont zijn eigen tekst (<span class="ui">Choose file</span>) in het Engels.</li>
+    <li>Op je profielpagina kies je onder <span class="ui">Profielfoto</span> een <span class="ui">Nieuwe foto</span> en klik je <span class="ui">Foto opslaan</span>: een JPEG, PNG of WebP van maximaal 2 MB en 4096 × 4096 pixels. Met Flux Pro sleep je de foto in een vak. Met <span class="ui">Foto verwijderen</span> haal je hem weg; alleen als er een foto was, zie je <span class="ui">Profielfoto verwijderd.</span> Het gratis bestandsveld toont zijn eigen tekst (<span class="ui">Choose file</span>) in het Engels.</li>
     <li>De kit zet de foto rechtop, snijdt hem bij tot een vierkant van 512 × 512 pixels en bewaart hem als WebP, zonder de gegevens die in de foto zaten (zoals de plek waar hij gemaakt is). Lukt dat niet, dan zie je <span class="ui">Deze afbeelding kon niet worden verwerkt.</span></li>
     <li>De foto staat op <code>APP_URL/storage/avatars/{organisatie-id of platform}/{gebruikers-id}-{willekeurig}.webp</code>: een openbaar maar onraadbaar adres. Je ziet hem in het gebruikersmenu, in de lijst <span class="ui">Gebruikers</span> en op je profielpagina; zonder foto staan daar je initialen.</li>
     <li>Een nieuwe foto of <span class="ui">Foto verwijderen</span> wist het oude bestand. Een organisatie definitief verwijderen wist de foto&rsquo;s van haar gebruikers; een verwijderde gebruiker houdt zijn foto, zodat herstellen kan. In het activiteitenlog staat <span class="ui">Gebruiker bijgewerkt</span>, zonder het pad van de foto.</li>
     <li>Je slaat hooguit 10 keer per 10 minuten een foto op; elke poging telt, want de server moet elke foto van maximaal 4096 × 4096 pixels uitpakken. De foto die je koos, met de gegevens die erin zaten, verdwijnt uit de tijdelijke uploads van Livewire zodra hij verwerkt is, of als je een andere foto kiest of je foto verwijdert.</li>
     <li>Tijdens &lsquo;inloggen als&rsquo; is dit onderdeel verborgen.</li>
-    <li>Voor beheerders: de foto&rsquo;s hebben de link <code>public/storage</code> nodig (de setup maakt hem; <code>php artisan skv:doctor --fix</code> herstelt hem) en GD met WebP-ondersteuning. Zonder WebP mislukt een upload met een serverfout die in het log komt. De extensie exif is niet verplicht; zonder exif houdt een foto de stand waarin hij is opgeslagen. Een foto van bijna 4096 pixels vraagt ongeveer 270 MB geheugen; de kit verhoogt <code>memory_limit</code> daarvoor alleen voor dat verzoek, en weigert de foto als de server dat verbiedt (<code>php_admin_value</code>).</li>
+    <li>Voor beheerders: de foto&rsquo;s hebben de link <code>public/storage</code> nodig (de setup maakt hem; <code>php artisan skv:doctor --fix</code> herstelt een ontbrekende, verkeerde of kapotte link) en GD met WebP-ondersteuning. Zonder WebP mislukt een upload met een serverfout die in het log komt, en de regel <code>gd</code> van <code>skv:doctor</code> waarschuwt ervoor. Elk ander beeldtype dan JPEG, PNG en WebP weigert de kit in de actie zelf, nog voordat hij de foto uitpakt. De extensie exif is niet verplicht; zonder exif houdt een foto de stand waarin hij is opgeslagen. Een foto van bijna 4096 pixels vraagt ongeveer 270 MB geheugen; de kit verhoogt <code>memory_limit</code> daarvoor alleen voor dat verzoek, en weigert de foto als de server dat verbiedt (<code>php_admin_value</code>).</li>
     <li>Voor beheerders: het uploadadres van Livewire (<code>config/livewire.php</code>) neemt per verzoek één bestand van maximaal 2 MB aan, alleen van wie ingelogd is, hooguit 10 per minuut en 60 per uur per gebruiker (<code>livewire-upload</code>); <code>App\Http\Middleware\LimitTemporaryUploads</code> weigert een verzoek met meer bestanden (422).</li>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/components/user-menu/*; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/profile/*; resources/views/pages/settings/appearance/*; app/Actions/Users/{UpdateAvatar,RemoveAvatar}.php; app/Models/User.php (avatarUrl); tests/Feature/Settings/AvatarTest.php; resources/views/layouts/base.blade.php; app/Support/Locales.php; app/Http/Middleware/SetLocale.php; app/Http/Controllers/LocaleController.php; app/Actions/Settings/{UpdateLocale,UpdateAppearance}.php; resources/views/pages/invitations/accept/accept.php; tests/Browser/AppearanceTest.php; docs/decisions.md (DEC-29 (4), (7), (8), (29))</p></details>
@@ -974,9 +981,9 @@ php artisan skv:bootstrap</code></pre>
     <li><div><p>Vul de 6-cijferige code in en klik <span class="ui">Bevestigen</span> (met <span class="ui">Terug</span> ga je een stap terug). Het venster sluit en de pagina toont nu <span class="ui">Tweestapsverificatie uitschakelen</span> en je herstelcodes.</p></div></li>
     <li><div><p>Bewaar je herstelcodes: <span class="ui">Herstelcodes bekijken</span>, dan <span class="ui">Kopiëren</span> of <span class="ui">Downloaden</span> (een bestand <code>recovery-codes.txt</code> met de opgeslagen codes, één code per regel). Lukt kopiëren niet, dan zie je <span class="ui">Kopiëren is mislukt; selecteer de codes en kopieer ze zelf.</span></p></div></li>
   </ol>
-  <p>Bij het inloggen vraagt de pagina <span class="ui">Tweestapsverificatie</span> om je <span class="ui">Verificatiecode</span>. Kwijt? Kies <span class="ui">inloggen met een herstelcode</span>. Elke herstelcode werkt één keer. Met <span class="ui">Codes opnieuw genereren</span> maak je nieuwe; de vraag <span class="ui">Herstelcodes opnieuw genereren?</span> waarschuwt dat de oude dan niet meer werken. Uitzetten doe je met <span class="ui">Tweestapsverificatie uitschakelen</span>. Is <code>APP_KEY</code> gewisseld zonder de oude sleutel in <code>APP_PREVIOUS_KEYS</code>, dan zie je <span class="ui">De herstelcodes konden niet worden geladen</span>; <span class="ui">Codes opnieuw genereren</span> blijft beschikbaar, en daarmee los je het op.</p>
+  <p>Bij het inloggen vraagt de pagina <span class="ui">Tweestapsverificatie</span> om je <span class="ui">Verificatiecode</span>. Kwijt? Kies <span class="ui">inloggen met een herstelcode</span>. Elke herstelcode werkt één keer. Met <span class="ui">Codes opnieuw genereren</span> maak je nieuwe; de vraag <span class="ui">Herstelcodes opnieuw genereren?</span> waarschuwt dat de oude dan niet meer werken. Uitzetten doe je met <span class="ui">Tweestapsverificatie uitschakelen</span>. Is <code>APP_KEY</code> gewisseld zonder de oude sleutel in <code>APP_PREVIOUS_KEYS</code>, of staan de codes in een vorm die Fortify nooit schrijft, dan zie je <span class="ui">De herstelcodes konden niet worden geladen</span>; <span class="ui">Codes opnieuw genereren</span> blijft beschikbaar, en daarmee los je het op.</p>
   <p>Ook je wachtwoord wijzig je hier: onder <span class="ui">Wachtwoord wijzigen</span> vul je <span class="ui">Huidige wachtwoord</span>, <span class="ui">Nieuw wachtwoord</span> en <span class="ui">Wachtwoord bevestigen</span> in, en klik je <span class="ui">Opslaan</span>.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; routes/settings.php; resources/views/components/user-menu/user-menu.blade.php; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/security/security.blade.php:6-37; resources/views/pages/settings/two-factor-setup-modal/two-factor-setup-modal.php:60-147; lang/nl.json:38,57,212; resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php; resources/views/pages/auth/two-factor-challenge.blade.php; config/auth.php:117</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; routes/settings.php; resources/views/components/user-menu/user-menu.blade.php; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/security/security.blade.php; resources/views/pages/settings/two-factor-setup-modal/two-factor-setup-modal.php; lang/nl.json; resources/views/pages/settings/two-factor/recovery-codes/recovery-codes.blade.php; resources/views/pages/auth/two-factor-challenge.blade.php; config/auth.php</p></details>
 
   <h3 id="passkeys">Passkeys</h3>
   <p>Met een passkey log je in zonder wachtwoord. Het relying party id is altijd het apex, dus één passkey werkt op het apex, de admin-host en elke organisatiehost, en blijft werken als het webadres van je organisatie verandert.</p>
@@ -988,7 +995,7 @@ php artisan skv:bootstrap</code></pre>
     <li>Verwijderen vraagt een verse wachtwoordbevestiging.</li>
     <li>Passkeys zijn een optionele module: <code>MODULE_PASSKEYS</code>, standaard <code>true</code>. Met <code>false</code> registreert de kit geen passkeyroutes en geen <code>.well-known/passkey-endpoints</code>, en verdwijnen de knop op de inlogpagina en bij het bevestigen van je wachtwoord en het onderdeel <span class="ui">Passkeys</span> op de beveiligingspagina. Ook een Livewire-verzoek dat de passkeyacties van de beveiligingspagina rechtstreeks aanroept, krijgt dan 404. Opgeslagen passkeys blijven in de database staan. Draai na het wijzigen <code>php artisan config:clear</code> als je de config cachet.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; config/skv.php (modules.passkeys); app/Providers/AppServiceProvider.php; routes/passkeys.php; spec:111, §6.8; app/Tenancy/Listeners/SetPasskeyOrigin.php; resources/views/components/passkey-registration.blade.php; resources/views/pages/settings/security/security.blade.php; tests/Feature/Passkeys/PasskeysModuleTest.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; config/skv.php (modules.passkeys); app/Providers/AppServiceProvider.php; routes/passkeys.php; spec §4.2, §6.8; app/Tenancy/Listeners/SetPasskeyOrigin.php; resources/views/components/passkey-registration.blade.php; resources/views/pages/settings/security/security.blade.php; tests/Feature/Passkeys/PasskeysModuleTest.php</p></details>
 
   <h3 id="tweede-factor">Tweede factor verplicht</h3>
   <p>Een organisatie kan van haar leden een tweede factor eisen: tweestapsverificatie of, als de passkeymodule aan staat, een passkey.</p>
@@ -1001,7 +1008,7 @@ php artisan skv:bootstrap</code></pre>
     <li><strong>Je laatste factor weghalen</strong> mag; daarna stuurt de kit je meteen terug naar <span class="ui">Beveiliging</span>.</li>
     <li><strong>Nieuwe leden.</strong> Wie een uitnodiging voor zo&rsquo;n organisatie accepteert, komt direct daarna op <span class="ui">Beveiliging</span> en vult daar eerst het wachtwoord in dat hij net koos (de beveiligingspagina vraagt altijd een wachtwoordbevestiging).</li>
     <li><strong>Wat bereikbaar blijft:</strong> de beveiligingspagina, het bevestigen van je wachtwoord, tweestapsverificatie en passkeys instellen, uitloggen, de overdrachtslink, &lsquo;inloggen als&rsquo; stoppen en de setupwizard (<code>config('skv.second_factor.exempt_routes')</code>). Een link uit de mail om je e-mailadres te bevestigen hoort daar niet bij: je stelt eerst je factor in, en de link blijft werken tot hij verloopt.</li>
-    <li><strong>Inloggen als.</strong> Tijdens &lsquo;inloggen als&rsquo; geldt de regel niet: de beheerder kan de factor van de ander toch niet instellen.</li>
+    <li><strong>Inloggen als.</strong> Tijdens &lsquo;inloggen als&rsquo; geldt de regel niet: de beheerder kan de factor van de ander toch niet instellen. De beveiligingspagina toont dan ook geen melding over de tweede factor.</li>
     <li><strong>Superbeheerders.</strong> Met <code>REQUIRE_SECOND_FACTOR_SUPER_ADMINS=true</code> moet elke superbeheerder een tweede factor hebben, op elke host. Ze zien dan <span class="ui">Superbeheerders hebben een tweede factor nodig.</span> De regel van een organisatie geldt niet voor superbeheerders.</li>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/SecondFactor.php; app/Tenancy/Auth/AuthenticateOnThisHost.php; app/Http/Middleware/EnsureSecondFactor.php; config/skv.php (second_factor); routes/web.php; routes/settings.php; routes/admin.php; app/Providers/TenancyServiceProvider.php; resources/views/pages/organisations/edit/*; app/Actions/Organisations/UpdateOrganisation.php; resources/views/pages/settings/security/*; tests/Feature/Auth/{SecondFactor,EnsureSecondFactor}Test.php</p></details>
@@ -1014,7 +1021,7 @@ php artisan skv:bootstrap</code></pre>
     <li>De link is 60 minuten geldig. Een ongeldige link geeft <span class="ui">Deze link om je wachtwoord opnieuw in te stellen is ongeldig.</span></li>
     <li>Gelukt: <span class="ui">Je wachtwoord is opnieuw ingesteld.</span></li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Providers/FortifyServiceProvider.php:59-63; app/Http/Controllers/Auth/SendPasswordResetLinkController.php:17-27; lang/nl/passwords.php:7-10; config/auth.php:97-103</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Providers/FortifyServiceProvider.php; app/Http/Controllers/Auth/SendPasswordResetLinkController.php; lang/nl/passwords.php; config/auth.php</p></details>
 
   <h3 id="emailchange">E-mailadres wijzigen</h3>
   <p>Op je profielpagina (je naam linksonder → <span class="ui">Instellingen</span> → <span class="ui">Profiel</span>, <code>/settings/profile</code>) verander je je e-mailadres niet direct. Onder het veld staat: <span class="ui">Een nieuw adres wordt pas gebruikt nadat je het bevestigt via de link die we ernaartoe mailen.</span></p>
@@ -1024,7 +1031,7 @@ php artisan skv:bootstrap</code></pre>
     <li><div><p>Je moet ingelogd zijn als dezelfde gebruiker, en je wachtwoord recent bevestigd hebben. Daarna: <span class="ui">Je e-mailadres is gewijzigd.</span></p></div></li>
   </ol>
   <p>Wijzigt een beheerder jouw e-mailadres, dan geldt het meteen en krijgt je oude adres de mail <span class="ui">Een beheerder heeft je e-mailadres gewijzigd</span>. Al deze mails staan in de taal van je account, ook als een queue-worker ze verstuurt.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/settings/profile/profile.php:33-57; app/Actions/Settings/RequestEmailChange.php:19-58; app/Actions/Settings/ConfirmEmailChange.php:16-53; routes/settings.php:18-23; app/Actions/Users/UpdateUser.php:22-86</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/settings/profile/profile.php; app/Actions/Settings/RequestEmailChange.php; app/Actions/Settings/ConfirmEmailChange.php; routes/settings.php; app/Actions/Users/UpdateUser.php</p></details>
 
   <h3 id="handoff">Wisselen van host: de overdrachtslink</h3>
   <p>Omdat sessies per host gelden, gebruikt de kit een eenmalige overdrachtslink om je naar een andere host te brengen. Die link is 60 seconden geldig, hoort bij één gebruiker en één host, en wordt als hash opgeslagen.</p>
@@ -1032,10 +1039,11 @@ php artisan skv:bootstrap</code></pre>
     <li><strong>Openen:</strong> een superbeheerder klikt op een centrale host in <span class="ui">Organisaties</span> op <span class="ui">Openen</span> en komt ingelogd op het dashboard van die organisatie.</li>
     <li><strong>Adres wijzigen:</strong> verandert een superbeheerder het webadres van een organisatie terwijl hij op die organisatiehost zit, dan gaat hij via zo&rsquo;n link mee naar het nieuwe webadres.</li>
     <li><strong>Al iemand anders ingelogd?</strong> Dan vraagt de pagina <span class="ui">Doorgaan als andere gebruiker?</span> met <span class="ui">Doorgaan als <em>Jan Jansen</em></span> of <span class="ui">Ingelogd blijven als <em>Piet de Vries</em></span>. Alleen een klik op de knop vervangt je sessie.</li>
-    <li>Verlopen, gebruikt of verkeerde host: <span class="ui">Deze inloglink is ongeldig of verlopen.</span></li>
+    <li>De link werkt alleen zolang je wachtwoord hetzelfde is als toen hij gemaakt werd: wijzig je het op de beveiligingspagina, stel je het opnieuw in, of zet iemand het via de opdrachtregel (<code>skv:create-super-admin --password-stdin</code>), dan werkt geen eerdere link meer. Ook de laatste stap van de setupwizard en snel inloggen gebruiken zo&rsquo;n link. Links openen kan hooguit 10 keer per minuut per IP-adres.</li>
+    <li>Verlopen, gebruikt, verkeerde host of een ander wachtwoord: <span class="ui">Deze inloglink is ongeldig of verlopen.</span></li>
     <li>Tijdens &lsquo;inloggen als&rsquo; worden geen overdrachtslinks uitgegeven.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Actions/Auth/IssueHandoff.php:17-85; app/Http/Controllers/Auth/HandoffController.php:21-145; resources/views/pages/auth/handoff-confirm.blade.php:1-18; resources/views/pages/organisations/index/index.php:63-77</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Actions/Auth/IssueHandoff.php; app/Http/Controllers/Auth/HandoffController.php; resources/views/pages/auth/handoff-confirm.blade.php; resources/views/pages/organisations/index/index.php; app/Models/HandoffToken.php; database/migrations/0001_01_01_000010_add_password_hash_to_handoff_tokens_table.php; tests/Feature/Auth/HandoffTest.php</p></details>
 
   <h3 id="foutpaginas">Foutpagina&rsquo;s</h3>
   <p>Gaat er iets mis, dan krijg je een eenvoudige pagina met een korte uitleg en een of twee knoppen. De pagina&rsquo;s laden geen scripts of stylesheets van buiten, volgen de licht- of donkerinstelling van je systeem en staan in je eigen taal (je account, anders de taal van je browser).</p>
@@ -1117,7 +1125,7 @@ php artisan skv:bootstrap</code></pre>
     <li><div><p>Log daarna altijd in op het webadres van je eigen organisatie, bijvoorbeeld <code>http://acme.mijnapp.test/login</code>, niet op het hoofdadres. Daar krijg je <span class="ui">Deze combinatie van e-mailadres en wachtwoord is niet geldig.</span>, ook als je wachtwoord klopt.</p></div></li>
     <li><div><p>Een collega uitnodigen: zijbalk → <span class="ui">Beheer</span> → <span class="ui">Gebruikers</span> → <span class="ui">Gebruiker uitnodigen</span>. Zie <a href="#uitnodigingen">Uitnodigingen</a>.</p></div></li>
   </ol>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/mail/invitation.blade.php:7; lang/nl.json:8,310; resources/views/pages/invitations/accept/accept.php; app/Tenancy/Auth/HostLoginRule.php:9-18; lang/nl/auth.php:7; app/Support/Navigation/Navigation.php; resources/views/pages/users/index/index.blade.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/mail/invitation.blade.php; lang/nl.json; resources/views/pages/invitations/accept/accept.php; app/Tenancy/Auth/HostLoginRule.php; lang/nl/auth.php; app/Support/Navigation/Navigation.php; resources/views/pages/users/index/index.blade.php</p></details>
 
   <h3 id="beheerders">Soorten gebruikers</h3>
   <div class="grid-2">
@@ -1138,7 +1146,7 @@ php artisan skv:bootstrap</code></pre>
       <p>Een lid zonder beheerrechten. Ziet in de zijbalk alleen <span class="ui">Overzicht</span>. Je maakt iemand gebruiker door hem uit te nodigen met een eigen rol zonder beheerrechten, of door na activatie zijn rollen weg te halen (zie <a href="#uitnodigingen">Iemand uitnodigen</a>).</p>
     </div>
   </div>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/SuperAdminGate.php:9-26; app/Authorization/Role.php:11-15; app/Authorization/Permission.php:28-47; app/Policies/UserPolicy.php:70-74; app/Policies/RolePolicy.php:11-48</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/SuperAdminGate.php; app/Authorization/Role.php; app/Authorization/Permission.php; app/Policies/UserPolicy.php; app/Policies/RolePolicy.php</p></details>
 
   <h4>De veiligheidsregels in gewone taal</h4>
   <ul>
@@ -1149,7 +1157,7 @@ php artisan skv:bootstrap</code></pre>
     <li><strong>Jezelf uitsluiten kan niet.</strong> Niemand verwijdert of schakelt zichzelf uit, ook een superbeheerder niet. <span class="ui">Je kunt je eigen rol als organisatiebeheerder niet verwijderen.</span></li>
     <li><strong>Riskante stappen vragen je wachtwoord opnieuw:</strong> een organisatie definitief verwijderen, superbeheer aan- of uitzetten en het e-mailadres van iemand anders wijzigen.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/UserAbilities.php:13-20,111-137,204-210; app/Actions/Users/UpdateUserRoles.php:110-151; app/Authorization/LockoutGuard.php:13-79; app/Policies/UserPolicy.php:36-46; docs/decisions.md:132 (18)</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/UserAbilities.php; app/Actions/Users/UpdateUserRoles.php; app/Authorization/LockoutGuard.php; app/Policies/UserPolicy.php; docs/decisions.md (DEC-28 (18))</p></details>
 
   <h3 id="organisaties">Organisaties</h3>
   <p><span class="ui">Organisaties</span> toont <span class="ui">Naam</span>, <span class="ui">Adres</span> (het volledige webadres, zoals <code>acme.mijnapp.test</code>) en <span class="ui">Acties</span>. Op een organisatiehost zie je alleen je eigen organisatie. Centraal heeft een superbeheerder de keuze <span class="ui">Actief</span> / <span class="ui">Gearchiveerd</span> en de knop <span class="ui">Nieuwe organisatie</span>.</p>
@@ -1175,7 +1183,7 @@ php artisan skv:bootstrap</code></pre>
     <li><strong><span class="ui">Herstellen</span></strong> (alleen centraal) brengt de organisatie terug met alles wat met haar gearchiveerd werd. Dat lukt niet als het e-mailadres van een terugkerende gebruiker nu door een ander account gebruikt wordt.</li>
     <li><strong><span class="ui">Definitief verwijderen</span></strong> kan alleen bij een gearchiveerde organisatie, alleen centraal. Eerst bevestig je je wachtwoord, daarna typ je het organisatieadres over, bijvoorbeeld <code>acme</code> (<span class="ui">Typ <em>acme</em> om te bevestigen.</span>). Dit verwijdert de organisatie, haar gebruikers, uitnodigingen en rollen. Superbeheerders die bij de organisatie hoorden, houden hun account. <strong>Het activiteitenlog blijft bewaard</strong> tot de bewaartermijn verstrijkt. Dit kan niet ongedaan worden gemaakt.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/organisations/{index,create,edit}/*; app/Actions/Organisations/*.php; app/Policies/OrganisationPolicy.php:30-51; app/Rules/OrganisationSlug.php:17-31; docs/decisions.md:132 (13, 30, 33)</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/organisations/{index,create,edit}/*; app/Actions/Organisations/*.php; app/Policies/OrganisationPolicy.php; app/Rules/OrganisationSlug.php; docs/decisions.md (DEC-28 (13), (30), (33))</p></details>
 
   <h3 id="gebruikers">Gebruikers</h3>
   <p><span class="ui">Gebruikers</span> (<span class="ui">Zoek mensen, bekijk hun rollen en beheer hun accounts.</span>) toont 25 mensen per pagina, op naam. Je filtert op naam of e-mailadres, status, rol en (centraal) organisatie, en wisselt tussen <span class="ui">Actief</span> en <span class="ui">Gearchiveerd</span>.</p>
@@ -1197,7 +1205,7 @@ php artisan skv:bootstrap</code></pre>
   </ul>
   <p><strong>Verwijderen</strong> doe je in de lijst <span class="ui">Gebruikers</span> met het prullenbakje in de rij van die persoon. Het venster <span class="ui">Gebruiker verwijderen</span> zegt: <span class="ui"><em>Jan Jansen</em> kan dan niet meer inloggen. Je kunt het account herstellen vanuit de gearchiveerde weergave.</span> Een uitgenodigde gebruiker verwijder je niet; je trekt de uitnodiging in.</p>
   <p><strong><span class="ui">Herstellen</span></strong> doe je in de gearchiveerde weergave van die lijst. Dat gaat niet als de organisatie gearchiveerd is of het e-mailadres inmiddels door een ander gebruikt wordt.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/index/index.blade.php:115-145; resources/views/pages/users/edit/edit.blade.php:19,72,109; app/Enums/UserStatus.php:9-29; app/Actions/Users/{DeleteUser,RestoreUser,UpdateUser,UpdateUserStatus}.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/index/index.blade.php; resources/views/pages/users/edit/edit.blade.php; app/Enums/UserStatus.php; app/Actions/Users/{DeleteUser,RestoreUser,UpdateUser,UpdateUserStatus}.php</p></details>
 
   <h3 id="uitnodigingen">Uitnodigingen</h3>
   <h4>Iemand uitnodigen</h4>
@@ -1218,10 +1226,10 @@ php artisan skv:bootstrap</code></pre>
     <li><div><p>Plak de adressen bij <span class="ui">E-mailadressen</span> (<span class="ui">Eén per regel, of gescheiden door komma&rsquo;s of puntkomma&rsquo;s.</span>, samen hooguit 30.000 tekens), kies een <span class="ui">CSV-bestand</span> van hooguit 512 KB, of allebei. Met Flux Pro sleep je het bestand in een vak.</p></div></li>
     <li><div><p>Kies één keer de <span class="ui">Taal</span> (voor elk adres zonder eigen taal) en minstens één rol. Klik <span class="ui">Lijst controleren</span>.</p></div></li>
     <li><div><p>Elke regel staat op <span class="ui">Gereed</span> of wordt overgeslagen met de reden: <span class="ui">Geen geldig e-mailadres.</span>, <span class="ui">Staat meer dan eens in de lijst.</span>, <span class="ui">Onbekende taal.</span> of <span class="ui">Dit adres kan niet worden uitgenodigd.</span> Die laatste melding geldt voor elke reden waarom een adres niet kan (al lid, al uitgenodigd, in gebruik bij een andere organisatie), zodat de lijst niet verraadt welke adressen elders bestaan. Verander je iets aan de invoer, dan verdwijnt de controle en controleer je opnieuw.</p></div></li>
-    <li><div><p>Klik <span class="ui">Uitnodigingen versturen (<em>12</em>)</span>. De kit controleert de regels nog een keer en verstuurt daarna elke uitnodiging apart, in de taal van die regel. De samenvatting toont <span class="ui">Verstuurd: <em>12</em></span> en <span class="ui">Overgeslagen: <em>2</em></span> met de redenen.</p></div></li>
+    <li><div><p>Klik <span class="ui">Uitnodigingen versturen (<em>12</em>)</span>. De kit controleert de regels nog een keer en verstuurt daarna elke uitnodiging apart, in de taal van die regel. De samenvatting toont <span class="ui">Verstuurd: <em>12</em></span> en <span class="ui">Overgeslagen: <em>2</em></span> met de redenen. Gaat er halverwege iets onverwachts mis, dan komt de fout in het log, toont de samenvatting wat al verstuurd is, en staan de regels die niet meer aan de beurt kwamen bij de overgeslagen regels met <span class="ui">Niet verstuurd: er ging iets mis.</span>; die tellen niet mee voor de limiet.</p></div></li>
   </ol>
   <ul>
-    <li><strong>Het CSV-bestand</strong> heeft een kolom met e-mailadressen en eventueel een kolom met de taal (<code>nl</code> of <code>en</code>). Een kopregel mag; de kit herkent hem alleen aan de kolomnamen: een naam met &lsquo;mail&rsquo; erin (email, e-mail, e-mailadres …) en <code>locale</code>, <code>language</code>, <code>lang</code> of <code>taal</code>. Zonder kopregel is de eerste kolom het adres en de tweede de taal, dus een eerste adres met een typefout blijft gewoon een regel. Komma&rsquo;s en puntkomma&rsquo;s (zoals Excel in het Nederlands bewaart) werken allebei, en een BOM mag. De kit leest het bestand alleen als tekst en bewaart er geen kopie van; de tijdelijke upload van Livewire verdwijnt zodra de lijst verstuurd is of je het bestand weghaalt of vervangt (een bestand op een verlaten pagina ruimt Livewire zelf op, een dag later, bij een volgende upload).</li>
+    <li><strong>Het CSV-bestand</strong> heeft een kolom met e-mailadressen en eventueel een kolom met de taal (<code>nl</code> of <code>en</code>). Een kopregel mag; de kit herkent hem alleen aan de kolomnamen: de eerste regel is een kopregel als geen enkele cel een <code>@</code> bevat en een cel &lsquo;mail&rsquo; bevat zonder punt (email, e-mail, e-mailadres …) of <code>locale</code>, <code>language</code>, <code>lang</code> of <code>taal</code> is. Zonder kopregel is de eerste kolom het adres en de tweede de taal, dus een eerste adres met een typefout blijft gewoon een regel. Komma&rsquo;s en puntkomma&rsquo;s (zoals Excel in het Nederlands bewaart) werken allebei, en een BOM mag. De kit leest het bestand alleen als tekst en bewaart er geen kopie van; de tijdelijke upload van Livewire verdwijnt zodra de lijst verstuurd is of je het bestand weghaalt of vervangt (een bestand op een verlaten pagina ruimt de planner elk uur op zodra het 24 uur oud is, met <code>livewire-tmp-cleanup</code>).</li>
     <li><strong>Hooguit 100 regels</strong> per lijst, en hooguit 100 uitnodigingen per uur per beheerder. Alleen de regels die echt verstuurd worden, tellen; een lijst die groter is dan wat er dit uur nog over is, wordt geweigerd voordat er iets weggaat. Meerdere uitnodigingen tellen niet mee voor de limiet van <span class="ui">Gebruiker uitnodigen</span>.</li>
     <li>Elke verstuurde uitnodiging staat apart in het activiteitenlog (<span class="ui">Uitnodiging verstuurd</span>).</li>
   </ul>
@@ -1246,7 +1254,7 @@ php artisan skv:bootstrap</code></pre>
     <li>Er is al iemand ingelogd: <span class="ui">Log eerst uit om deze uitnodiging te accepteren.</span></li>
     <li>Het formulier <span class="ui">Welkom bij <em>Acme</em></span>: <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span>, <span class="ui">Wachtwoord bevestigen</span> en <span class="ui">Account activeren</span>. Het wachtwoord moet lokaal minimaal 8 tekens hebben; in elke andere omgeving dan <code>local</code> en <code>testing</code> minimaal 12 tekens met hoofd- en kleine letters, cijfers, symbolen en niet gelekt. Een wachtwoordhash in plaats van een wachtwoord wordt hier, bij het opnieuw instellen en op de beveiligingspagina geweigerd (<span class="ui">Geef het wachtwoord zelf mee, geen hash.</span>). Daarna ben je meteen ingelogd: <span class="ui">Welkom, je account is klaar.</span></li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/invite/*; resources/views/pages/invitations/{pending,accept}/*; app/Actions/Invitations/*.php; app/Actions/Invitations/InviteUser.php:84-88; app/Actions/Invitations/AcceptInvitation.php:38; app/Providers/AppServiceProvider.php:56-64; app/Policies/InvitationPolicy.php:25-73 (viewLink :44-59); app/Actions/Users/UpdateUserRoles.php:41-74; app/Rules/AvailableEmail.php:52-59; config/skv.php:12-15; resources/views/pages/invitations/bulk/*; app/Support/Invitations/InvitationList.php; app/Concerns/ChoosesInvitationOrganisation.php; tests/Feature/Invitations/BulkInvitationsTest.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/invite/*; resources/views/pages/invitations/{pending,accept}/*; app/Actions/Invitations/*.php; app/Actions/Invitations/InviteUser.php; app/Actions/Invitations/AcceptInvitation.php; app/Providers/AppServiceProvider.php; app/Policies/InvitationPolicy.php (viewLink); app/Actions/Users/UpdateUserRoles.php; app/Rules/AvailableEmail.php; config/skv.php; resources/views/pages/invitations/bulk/*; app/Support/Invitations/InvitationList.php; app/Concerns/ChoosesInvitationOrganisation.php; tests/Feature/Invitations/BulkInvitationsTest.php</p></details>
 
   <h3 id="rechten">Rollen en rechten</h3>
   <p><span class="ui">Rollen</span> toont de <span class="ui">Systeemrollen</span> (beschermd, niet te wijzigen) en de <span class="ui">Eigen rollen</span> per organisatie. Alleen een superbeheerder maakt, wijzigt of verwijdert eigen rollen (<span class="ui">Nieuwe rol</span>, <span class="ui">Bewerken</span>, <span class="ui">Verwijderen</span>). Verwijder je een rol die mensen hebben, dan raken zij hem kwijt.</p>
@@ -1274,7 +1282,7 @@ php artisan skv:bootstrap</code></pre>
   </div>
   <p>Een superbeheerder heeft alle rechten via de instelling op zijn account. De vier rechten met &lsquo;nee&rsquo; in beide kolommen zijn alleen voor superbeheerders. In de roleditor staan de rechten in de groepen <span class="ui">Gebruikers</span>, <span class="ui">Rollen</span>, <span class="ui">Organisaties</span> en <span class="ui">Activiteitenlog</span>. Rechten die alleen voor superbeheerders zijn (en <code>users.impersonate</code> als de module uit staat) worden daar niet aangeboden.</p>
   <p>Een rolnaam is uniek per organisatie (hoofdletters tellen niet) en mag niet lijken op een systeemrol, zoals &lsquo;organisation-admin&rsquo; of &lsquo; super admin &rsquo;: <span class="ui">Deze naam is gereserveerd voor een systeemrol.</span></p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/Permission.php:10-116; app/Authorization/PermissionGroup.php:15-23; resources/views/pages/roles/index/index.php:229-243; lang/nl.json; app/Concerns/ManagesCustomRoles.php:23-54; app/Actions/Roles/DeleteRole.php:20-63</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Authorization/Permission.php; app/Authorization/PermissionGroup.php; resources/views/pages/roles/index/index.php; lang/nl.json; app/Concerns/ManagesCustomRoles.php; app/Actions/Roles/DeleteRole.php</p></details>
 
   <h3 id="inloggen-als">Inloggen als gebruiker</h3>
   <p>Hiermee werk je tijdelijk als iemand anders, om te helpen. Het is een optionele module (<code>MODULE_IMPERSONATION</code>, standaard aan).</p>
@@ -1296,9 +1304,9 @@ php artisan skv:bootstrap</code></pre>
   <ul>
     <li>Kies je tijdens zo&rsquo;n sessie een taal of weergave, dan geldt die tot de sessie eindigt; het account van de ander verandert niet. Het e-mailadres van de ander kun je tijdens zo&rsquo;n sessie niet wijzigen.</li>
     <li>De melding na het stoppen staat in de taal van de pagina die hem toont, niet in die van de ander.</li>
-    <li>Wordt jouw eigen account uitgeschakeld, verwijderd, gearchiveerd of definitief verwijderd, dan verdwijnt je sessie en komt er geen regel <code>impersonation.stop</code>: de startregel en de statuswijziging zijn dan het spoor.</li>
+    <li>Wordt jouw eigen account uitgeschakeld, verwijderd, gearchiveerd of definitief verwijderd, dan verdwijnt je sessie en komt er geen regel <code>impersonation.stop</code>: de startregel en de statuswijziging zijn dan het spoor. Verloopt je sessie, dan komt er ook geen regel <code>impersonation.stop</code>; dan is de startregel het spoor.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/skv.php:17-22; resources/views/pages/users/index/index.blade.php:121-167; app/Authorization/UserAbilities.php:60-91,180-202; app/Tenancy/Http/Middleware/EnforceImpersonation.php:17-91; resources/views/components/impersonation-banner.blade.php; app/Actions/Audit/LogActivity.php:60-87</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/skv.php; resources/views/pages/users/index/index.blade.php; app/Authorization/UserAbilities.php; app/Tenancy/Http/Middleware/EnforceImpersonation.php; resources/views/components/impersonation-banner.blade.php; app/Actions/Audit/LogActivity.php</p></details>
 
   <h3 id="activiteitenlog">Activiteitenlog</h3>
   <p><span class="ui">Activiteitenlog</span> (<span class="ui">Zien wie wat wanneer heeft gedaan</span>) toont 50 regels per pagina, nieuwste eerst. Filter op <span class="ui">Van</span>, <span class="ui">Tot en met</span>, <span class="ui">Actie</span>, <span class="ui">Onderwerp</span>, <span class="ui">Uitgevoerd door</span> en centraal op organisatie. Met <span class="ui">Details</span> zie je onder meer de <span class="ui">Gebeurtenissleutel</span>, het <span class="ui">IP-adres</span>, de <span class="ui">Browser</span> en de <span class="ui">Eigenschappen</span>.</p>
@@ -1343,24 +1351,25 @@ php artisan skv:bootstrap</code></pre>
       <li>Activiteitenlog geëxporteerd<code>audit.exported</code></li>
     </ul></div>
   </div>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Http/Controllers/ActivityExportController.php; app/Support/Audit/{ActivityFilters,ActivityRows}.php; tests/Feature/Audit/ActivityExportTest.php; app/Enums/ActivityEvent.php; app/Actions/Audit/RecordActivity.php:15-20; config/activitylog.php:15-19; docs/decisions.md:132 (7, 34), :134</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Http/Controllers/ActivityExportController.php; app/Support/Audit/{ActivityFilters,ActivityRows}.php; tests/Feature/Audit/ActivityExportTest.php; app/Enums/ActivityEvent.php; app/Actions/Audit/RecordActivity.php; config/activitylog.php; docs/decisions.md (DEC-28 (7), (34) and its Consequence)</p></details>
 
   <h3 id="systeemstatus">Systeemstatus</h3>
   <p><span class="ui">Systeemstatus</span> (<span class="ui">Gezondheidscontroles, back-ups en de planner bekijken</span>) staat in de groep <span class="ui">Systeem</span>, op <code>/system</code>. Alleen superbeheerders zien hem, en alleen op een centrale host (<code>admin.mijnapp.test</code> of <code>mijnapp.test</code>); op een organisatiehost bestaat de pagina niet.</p>
   <ul>
     <li><strong>Gezondheid.</strong> De controles van de database, de queue, de mislukte taken, de mail en de laatste back-up, met <span class="ui">Gezond</span> of <span class="ui">Niet gezond</span> en het tijdstip (<span class="ui">Gecontroleerd &hellip;</span>). De uitslag blijft 30 seconden bewaard; <span class="ui">Vernieuwen</span> controleert opnieuw. Bewaarde mislukte taken geven alleen een waarschuwing. Een monitoringdienst leest dezelfde uitslag op <code>/health-check</code>, met de waarde van <code>HEALTH_CHECK_KEY</code> (minstens 32 tekens) in de header <code>X-Health-Check-Key</code>. Verzoeken met de juiste sleutel mogen 60 keer per minuut, alle verzoeken zonder samen 300 keer, zodat vreemden je monitor nooit buitensluiten. Daarboven antwoordt hij 429 met <code>Cache-Control: no-store</code>, zodat geen cache dat antwoord bewaart. De limiet per sleutel remt het raden van de sleutel niet af, dus een sleutel die je zelf zet, moet willekeurig zijn. De teller per sleutel staat onder een HMAC van de sleutel met <code>APP_KEY</code>; een nieuwe <code>APP_KEY</code> zet hem dus op nul. Werkt de cache van de beheerlaag niet, dan staan de limieten uit: elk verzoek gaat door en schrijft één waarschuwingsregel in het log (alleen de klasse van de fout). Antwoordt PostgreSQL niet, dan wacht de controle hooguit <code>DB_CONNECT_TIMEOUT</code> seconden (5); de queue en de mislukte taken staan dan op overgeslagen. Met de back-upmodule aan staat de laatste back-up op mislukt zolang er nog geen back-up is: na een nieuwe installatie op een server, of als je de module later aanzet, geeft <code>/health-check</code> 503 tot de eerste back-up. Draai daarom na het deployen één keer <code>php artisan backup:run --only-db</code>. Zouden de back-ups niet versleuteld zijn, dan noemt de laatste back-up één oorzaak met de oplossing: geen <code>BACKUP_ARCHIVE_PASSWORD</code>, versleuteling uitgezet in <code>config/backup.php</code>, of een PHP-zip zonder AES-256. Terwijl de nachtelijke back-up loopt, blijft de controle groen: de nieuwste back-up mag een dag en twee uur oud zijn.</li>
     <li><strong>Back-ups.</strong> Per back-upschijf: of hij bereikbaar is, het aantal back-ups, de <span class="ui">Nieuwste back-up</span> en de <span class="ui">Gebruikte opslag</span>. Staat de module uit (op SQLite altijd), dan staat hier <span class="ui">De back-upmodule staat uit</span>.</li>
-    <li><strong>Planning.</strong> Elke geplande taak met <span class="ui">Wanneer</span> hij draait en de <span class="ui">Volgende keer</span>. Een taak die nu niet draait, zoals de back-uptaken met de module uit, krijgt <span class="ui">uit</span>. Daaronder staat de <span class="ui">Laatste hartslag</span> van de planner. Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbreekt de cronregel op de server.</li>
+    <li><strong>Planning.</strong> Elke geplande taak met <span class="ui">Wanneer</span> hij draait en de <span class="ui">Volgende keer</span>. Een taak die nu niet draait, zoals de back-uptaken met de module uit, krijgt <span class="ui">uit</span>. Daaronder staat de <span class="ui">Laatste hartslag</span> van de planner. Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbreekt de cronregel op de server. Elk uur om kwart voor ruimt <code>livewire-tmp-cleanup</code> op elke server de tijdelijke uploads van Livewire op die ouder zijn dan 24 uur, zoals een foto of een adressenlijst op een verlaten pagina; staan de tijdelijke uploads op S3, dan doet hij niets en regel je dat één keer met <code>php artisan livewire:configure-s3-upload-cleanup</code>. Heb je Livewires eigen opruimen uitgezet (<code>livewire.temporary_file_upload.cleanup</code> op <code>false</code>), dan laat hij de bestanden ook staan.</li>
     <li><strong>Diagnose.</strong> <span class="ui">Controles draaien</span> draait een selectie van de controles van <code>php artisan skv:doctor</code> die geen proces starten (de controles die alleen bij het ontwikkelen horen, ontbreken), ook <code>apex</code>. <span class="ui">Vernieuwen</span> en <span class="ui">Controles draaien</span> mogen elk zes keer per minuut; daarna blijven de regels staan en vraagt de pagina je het over een minuut opnieuw te proberen. Werkt de cache van de beheerlaag of een back-upschijf niet, dan opent de pagina toch: hij meldt dat het rapport niet beschikbaar is of dat de schijf onbereikbaar is. Repareren doe je in de terminal met <code>php artisan skv:doctor --fix</code>.</li>
   </ul>
-  <p><strong>Back-ups.</strong> Met de module aan (alleen op PostgreSQL) maakt de planner elke nacht om 02:00 een versleutelde back-up van de database. Het wachtwoord staat in <code>BACKUP_ARCHIVE_PASSWORD</code> in <code>.env</code>: bewaar een kopie buiten de server, want zonder dat wachtwoord open je geen enkele back-up. Is het leeg, dan start geen enkele back-up (ook <code>php artisan backup:run</code> met de hand weigert) en staan de controle <span class="ui">Wachtwoord van het back-uparchief</span> en de laatste back-up op mislukt; <code>php artisan skv:doctor --fix</code> vult een nieuw wachtwoord in. Heeft de server een configuratiecache, draai daarna <code>php artisan config:cache</code>: de back-up leest het wachtwoord uit de configuratie, niet uit <code>.env</code>. Mislukt een back-up of is de nieuwste ouder dan een dag, dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>. Weigert <code>backup:run</code>, dan zie je één foutregel in je taal, geen stacktrace. De archieven op de lokale schijf <code>backups</code> zijn alleen voor jou leesbaar (modus 0600, mappen 0700); oudere archieven houden hun modus tot de opruiming ze weghaalt. Tijdens een back-up staat de onversleutelde dump even in <code>storage/app/backup-temp</code>; die map is dan alleen voor jou leesbaar (modus 0700). Kan dat niet (een symbolische link, een gedeelde map, de tijdelijke map van het systeem of een map van een ander account), dan weigert <code>backup:run</code> te starten. Draai je <code>backup:run</code> als root (een crontab van root), dan moet die map binnen <code>storage/</code> liggen. Draai de planner, en dus <code>backup:run</code>, daarom als het account van de webserver en nooit vanuit de crontab van root: het account dat <code>storage/app</code> bezit, kan die map anders tijdens de back-up van root door een symbolische link vervangen. De PHP-extensie posix is niet verplicht, maar zonder posix kan de kit niet zien welke mappen van dit account zijn: dan weigert <code>backup:run</code> te starten, telt <code>pg_dump</code> uit Herd alleen als root de eigenaar is, en faalt de controle <code>pg-dump</code> met de reden. Elk uur om kwart over ruimt de planner in de werkmap <code>storage/app/backup-temp/temp</code> bestanden ouder dan zes uur op, ook als de back-upmodule uitstaat; alleen een afgebroken back-up laat ze achter. Het slot tegen een dubbele back-up vervalt na 12 uur, zodat een afgebroken back-up de volgende nacht niet overslaat.</p>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">routes/admin.php; resources/views/pages/system/index/*; app/Support/Health/HealthReport.php; app/Support/Health/SystemChecks.php; app/Support/Scheduler/Heartbeat.php; app/Support/Backups/RefuseUnencryptedBackups.php; app/Support/Backups/PrivateBackupTemp.php; app/Support/Scheduler/OpsSchedule.php; app/Support/Scheduler/ScheduledTasks.php; config/backup.php; README.md (Health check, Backups, Scheduler, System page)</p></details>
+  <p><strong>Back-ups.</strong> Met de module aan (alleen op PostgreSQL) maakt de planner elke nacht om 02:00 een versleutelde back-up van de database. Bestanden gaan niet mee: maak zelf een back-up van de profielfoto&rsquo;s in <code>storage/app/public/avatars</code>. Zet je alleen de database terug, dan wijzen de accounts naar foto&rsquo;s die er niet meer zijn, en zie je een kapot plaatje tot de gebruiker een nieuwe foto opslaat of zijn foto verwijdert. Het wachtwoord staat in <code>BACKUP_ARCHIVE_PASSWORD</code> in <code>.env</code>: bewaar een kopie buiten de server, want zonder dat wachtwoord open je geen enkele back-up. Is het leeg, dan start geen enkele back-up (ook <code>php artisan backup:run</code> met de hand weigert) en staan de controle <span class="ui">Wachtwoord van het back-uparchief</span> en de laatste back-up op mislukt; <code>php artisan skv:doctor --fix</code> vult een nieuw wachtwoord in. Heeft de server een configuratiecache, draai daarna <code>php artisan config:cache</code>: de back-up leest het wachtwoord uit de configuratie, niet uit <code>.env</code>. Mislukt een back-up of is de nieuwste ouder dan een dag, dan gaat er een mail naar <code>BACKUP_NOTIFY_EMAIL</code>. Weigert <code>backup:run</code>, dan zie je één foutregel in je taal, geen stacktrace. De archieven op de lokale schijf <code>backups</code> zijn alleen voor jou leesbaar (modus 0600, mappen 0700); oudere archieven houden hun modus tot de opruiming ze weghaalt. Tijdens een back-up staat de onversleutelde dump even in <code>storage/app/backup-temp</code>; die map is dan alleen voor jou leesbaar (modus 0700). Kan dat niet (een symbolische link, een gedeelde map, de tijdelijke map van het systeem of een map van een ander account), dan weigert <code>backup:run</code> te starten. Draai je <code>backup:run</code> als root (een crontab van root), dan moet die map binnen <code>storage/</code> liggen. Draai de planner, en dus <code>backup:run</code>, daarom als het account van de webserver en nooit vanuit de crontab van root: het account dat <code>storage/app</code> bezit, kan die map anders tijdens de back-up van root door een symbolische link vervangen. De PHP-extensie posix is niet verplicht, maar zonder posix kan de kit niet zien welke mappen van dit account zijn: dan weigert <code>backup:run</code> te starten, telt <code>pg_dump</code> uit Herd alleen als root de eigenaar is, en faalt de controle <code>pg-dump</code> met de reden. Elk uur om kwart over ruimt de planner in de werkmap <code>storage/app/backup-temp/temp</code> bestanden ouder dan zes uur op, ook als de back-upmodule uitstaat; alleen een afgebroken back-up laat ze achter. Het slot tegen een dubbele back-up vervalt na 12 uur, zodat een afgebroken back-up de volgende nacht niet overslaat.</p>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">routes/admin.php; resources/views/pages/system/index/*; app/Support/Health/HealthReport.php; app/Support/Health/SystemChecks.php; app/Support/Scheduler/Heartbeat.php; app/Support/Backups/RefuseUnencryptedBackups.php; app/Support/Backups/PrivateBackupTemp.php; app/Support/Scheduler/OpsSchedule.php; app/Support/Scheduler/ScheduledTasks.php; app/Support/Uploads/StaleTemporaryUploads.php; config/backup.php; README.md (Health check, Backups, Scheduler, System page)</p></details>
 </section>
 
 <!-- ============================ 6 ============================ -->
 <section class="chapter" id="dev">
   <h2><span class="num">6</span>Voor ontwikkelaars</h2>
   <p>De regels staan in <code>.ai/guidelines/skv3.md</code> (Boost kopieert ze naar <code>AGENTS.md</code>), <code>CLAUDE.md</code>, de spec en <code>docs/decisions.md</code>. Veel regels worden afgedwongen door arch-tests in <code>tests/Arch</code>, dus een overtreding breekt <code>composer check</code>.</p>
+  <p>Voor Claude Code levert de kit vier eigen skills in <code>.ai/skills/&lt;naam&gt;/SKILL.md</code>: <code>add-tenant-resource</code>, <code>add-permission</code>, <code>add-settings-page</code> en <code>write-tenant-test</code>. Elke skill is een korte checklist die naar de regels en naar de bestanden om na te doen wijst. <code>php artisan boost:update</code> (en de Claude-stap van de installatie) zet ze naast de skills van Boost in <code>.claude/skills/</code>, dat niet in git staat; ze gaan mee naar elke app die je met de kit maakt. <code>.claude/settings.json</code> keurt de MCP-servers <code>laravel-boost</code> en <code>herd</code> uit <code>.mcp.json</code> vooraf goed (<code>enabledMcpjsonServers</code>), zodat Claude Code er niet naar vraagt, en staat naast de test- en buildcommando&rsquo;s ook <code>composer doctor</code> en <code>npm run build:setup</code> toe.</p>
 
   <h3 id="dev-routes">Routes en hosts</h3>
   <ul>
@@ -1391,7 +1400,7 @@ Route::tenant(function (): void {
     <p class="note-title">Route × host-matrix</p>
     <p>Elke nieuwe named GET-route gaat in <code>matrixRoutes()</code> in <code>tests/Feature/Tenancy/RouteHostMatrixTest.php</code>, of in de uitzonderingen daar. De matrix test vier actoren (gast, lid, organisatiebeheerder, superbeheerder) op drie hosts (tenant, apex, admin). Vergeet je het, dan faalt de test &lsquo;lists every named GET route in the matrix or the exclusions&rsquo;.</p>
   </div>
-  <p class="src">app/Providers/TenancyServiceProvider.php:86-96; app/Tenancy/Http/Middleware/EnsureTenantHost.php:17; EnsureCentralHost.php:17; routes/admin.php:15-66; tests/Feature/Tenancy/RouteHostMatrixTest.php:8-121</p>
+  <p class="src">app/Providers/TenancyServiceProvider.php; app/Tenancy/Http/Middleware/EnsureTenantHost.php; EnsureCentralHost.php; routes/admin.php; tests/Feature/Tenancy/RouteHostMatrixTest.php</p>
 
   <h3 id="dev-livewire">Livewire-componenten</h3>
   <ul>
@@ -1402,7 +1411,7 @@ Route::tenant(function (): void {
     <li>Componenten roepen acties aan; de domeinlogica staat in <code>App\Actions</code>.</li>
     <li>Een actie die alleen op een organisatiehost zin heeft, krijgt <code>#[RequiresTenant]</code>: centraal geeft hij 404, ook bij een vervalst Livewire-verzoek.</li>
     <li><code>password.confirm</code> op een route dekt geen Livewire-updates. Gevoelige acties beginnen daarom met de trait <code>App\Concerns\ConfirmsPasswords</code>.</li>
-    <li>De acties voor jezelf en voor uitnodigingen die mail versturen of een geheim controleren (de adreswijziging, de wachtwoordwijziging, de bevestiging van de TOTP-code, de uitnodiging en de herinnering; CD-3), en elke nieuwe actie die een lid kan herhalen om mail te versturen of een geheim te proberen, begrenzen zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie (ook de uitnodiging van de eerste beheerder vanuit <code>organisations.create</code>, onder <code>invite()</code>, en de adreswijziging door een beheerder op <code>users.edit</code>, onder <code>addressChange()</code>): <code>attempt()</code> vóór de controle van een geheim; <code>around()</code> om het versturen heen: die reserveert de plek, voert de actie uit en geeft de plek terug als de actie een fout gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
+    <li>De acties voor jezelf en voor uitnodigingen die mail versturen of een geheim controleren (de adreswijziging, de wachtwoordwijziging, de bevestiging van de TOTP-code, de uitnodiging en de herinnering; CD-3), en elke nieuwe actie die een lid kan herhalen om mail te versturen, een geheim te proberen, op te zoeken of een adres een account heeft, of de server zwaar werk te laten doen, begrenzen zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie (ook de uitnodiging van de eerste beheerder vanuit <code>organisations.create</code>, onder <code>invite()</code>, en de adreswijziging door een beheerder op <code>users.edit</code>, onder <code>addressChange()</code>): <code>attempt()</code> vóór de controle van een geheim of het opzoeken van een adres (<code>addressLookup()</code>: 500 per dag, elke opzoeking telt en komt nooit terug); <code>around()</code> om het versturen heen: die reserveert de plek, voert de actie uit en geeft de plek terug als de actie een fout gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
   </ul>
 <pre><code>use App\Tenancy\Attributes\RequiresTenant;
 
@@ -1418,7 +1427,7 @@ public function startImpersonation(StartImpersonation $startImpersonation): void
 if ($this->passwordConfirmationRequired(route('users.edit', ['user' => $target->id], absolute: false))) {
     return;
 }</code></pre>
-  <p class="src">.ai/guidelines/skv3.md:3-5,23,26; config/livewire.php:34-36,73-75; tests/Arch/LivewireConventionsTest.php:17-42; resources/views/pages/users/index/index.php:181-192; resources/views/pages/users/edit/edit.php:167; app/Concerns/ConfirmsPasswords.php</p>
+  <p class="src">.ai/guidelines/skv3.md; config/livewire.php; tests/Arch/LivewireConventionsTest.php; resources/views/pages/users/index/index.php; resources/views/pages/users/edit/edit.php; app/Concerns/ConfirmsPasswords.php</p>
 
   <h3 id="dev-ui">UI</h3>
   <ul>
@@ -1482,7 +1491,7 @@ Tenant::run($organisation, fn () => Project::query()->count());
 // App\Actions\Audit and Database\Seeders.</span>
 Tenant::bypass(fn () => Project::query()->count());</code></pre>
   <p>Haal <code>TenantScope</code> nooit weg met <code>withoutGlobalScope(s)</code> of <code>newQueryWithoutScopes</code> buiten die namespaces. <code>TenancyRulesTest</code> zoekt daarnaar. Artisan-commando&rsquo;s draaien centraal, en elke job krijgt automatisch de <code>tenant_id</code> van het moment van dispatchen mee.</p>
-  <p class="src">.ai/guidelines/skv3.md:15-16; app/Tenancy/Concerns/BelongsToOrganisation.php:17-45; config/tenancy.php:21-37; app/Tenancy/SoftDeleteCascade.php:12-63; tests/Feature/Tenancy/TenantModelsTest.php:14-39; app/Tenancy/CurrentTenant.php:49-108; tests/Arch/TenancyRulesTest.php:9-54; TenancyServiceProvider.php:71-84</p>
+  <p class="src">.ai/guidelines/skv3.md; app/Tenancy/Concerns/BelongsToOrganisation.php; config/tenancy.php; app/Tenancy/SoftDeleteCascade.php; tests/Feature/Tenancy/TenantModelsTest.php; app/Tenancy/CurrentTenant.php; tests/Arch/TenancyRulesTest.php; TenancyServiceProvider.php</p>
 
   <h3 id="dev-hostscope">HostScope voor pagina&rsquo;s op elke host</h3>
   <ul>
@@ -1503,7 +1512,7 @@ public function handle(User $actor, Organisation $organisation, string $email, a
     });
 }</code></pre>
   <p>Administratieve acties krijgen de handelende gebruiker als eerste argument en autoriseren met <code>Gate::forUser($actor)</code>.</p>
-  <p class="src">.ai/guidelines/skv3.md:24-25; app/Tenancy/HostScope.php:28-97; app/Actions/Invitations/InviteUser.php:53-70; resources/views/pages/users/index/index.php:225</p>
+  <p class="src">.ai/guidelines/skv3.md; app/Tenancy/HostScope.php; app/Actions/Invitations/InviteUser.php; resources/views/pages/users/index/index.php</p>
 
   <h3 id="dev-perms">Rechten en rollen in code</h3>
   <ul>
@@ -1533,7 +1542,7 @@ public function handle(User $actor, Organisation $organisation, string $email, a
     <li><div><p>Werk de verwachte lijst in <code>PermissionCatalogueTest</code> bij.</p></div></li>
     <li><div><p>Draai <code>php artisan permissions:sync</code>. Dat werkt de catalogus bij, houdt de Organisatiebeheerder-rol gelijk aan alle niet-super-only rechten en haalt super-only rechten uit eigen rollen.</p></div></li>
   </ol>
-  <p class="src">.ai/guidelines/skv3.md:17-18,27-31; app/Authorization/Permission.php; app/Authorization/PermissionsTeam.php:10-50; app/Authorization/helpers.php:14-17; app/Authorization/SyncPermissions.php:13-43; tests/Arch/AuthorizationRulesTest.php:10-49</p>
+  <p class="src">.ai/guidelines/skv3.md; app/Authorization/Permission.php; app/Authorization/PermissionsTeam.php; app/Authorization/helpers.php; app/Authorization/SyncPermissions.php; tests/Arch/AuthorizationRulesTest.php</p>
 
   <h3 id="dev-audit">Auditregels schrijven</h3>
   <p>Schrijf alleen via <code>RecordActivity</code> met een <code>ActivityEvent</code>-case. Nooit <code>activity()</code>, de activitylog-facade of de trait <code>LogsActivity</code>, en nooit een wachtwoord, token of acceptatielink. Mislukte inlogpogingen met een passkey legt alleen <code>App\Listeners\RecordFailedPasskeySignIn</code> vast.</p>
@@ -1545,7 +1554,7 @@ $this->recordActivity->handle(ActivityEvent::OrganisationArchived, $organisation
     'users' => count($userIds),
 ], causer: $actor);</code></pre>
   <p>Een nieuw event: voeg een case <code>Naam = '&lt;prefix&gt;.&lt;actie&gt;'</code> en een <code>label()</code> toe aan <code>app/Enums/ActivityEvent.php</code>. Het prefix moet een groep hebben (<code>auth</code>, <code>security</code>, <code>user</code>, <code>invitation</code>, <code>organisation</code>, <code>role</code>, <code>impersonation</code>), anders volgt een <code>LogicException</code>. Zet het label in beide taalbestanden. Het filter in het log neemt het event vanzelf op. <code>LogActivity</code> voegt organisatie, IP-adres en browser toe, en zet tijdens een inloggen-als-sessie de echte gebruiker als veroorzaker.</p>
-  <p class="src">.ai/guidelines/skv3.md:29; app/Actions/Audit/RecordActivity.php:15-64; app/Actions/Organisations/ArchiveOrganisation.php:27,59-63; app/Enums/ActivityEvent.php:16-114; tests/Arch/AuditRulesTest.php:9-24</p>
+  <p class="src">.ai/guidelines/skv3.md; app/Actions/Audit/RecordActivity.php; app/Actions/Organisations/ArchiveOrganisation.php; app/Enums/ActivityEvent.php; tests/Arch/AuditRulesTest.php</p>
 
   <h3 id="dev-links">Links, mails en taal</h3>
   <ul>
@@ -1566,7 +1575,7 @@ return tenant_url($organisation, URL::temporarySignedRoute(
 
 <span class="cm">// Move the signed-in actor to another host</span>
 $url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code></pre>
-  <p class="src">.ai/guidelines/skv3.md:20-22,30,32; app/Tenancy/Hosts.php:20-91; app/Support/helpers.php:8-16; app/Models/Invitation.php:70-81; app/Actions/Auth/IssueHandoff.php:17-85; app/Mail/InvitationMail.php:17-59; tests/Feature/LangFilesTest.php:6-13</p>
+  <p class="src">.ai/guidelines/skv3.md; app/Tenancy/Hosts.php; app/Support/helpers.php; app/Models/Invitation.php; app/Actions/Auth/IssueHandoff.php; app/Mail/InvitationMail.php; tests/Feature/LangFilesTest.php</p>
 
   <h3 id="dev-tests">Tests</h3>
   <p>Tests zijn Pest-functies (<code>it(...)</code>). Feature-tests gebruiken <code>RefreshDatabase</code>. <code>Livewire::test()</code> slaat alle middleware over, dus hostregels test je met HTTP-verzoeken.</p>
@@ -1597,9 +1606,11 @@ $url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code>
     <span class="cm">// …</span>
 })->with([ <span class="cm">/* own tenant, other tenant, apex, admin */</span> ]);</code></pre>
   <p>Gebruik je <code>Event::fake()</code>, houd dan de tenancy-events echt: <code>Event::fake()->except([TenantResolved::class, TenantForgotten::class])</code>. Anders blijft het rechtenteam leeg.</p>
+  <p>Elk testbestand begint met een docblock <code>/** covers §x.y */</code>. Voor §4 van de spec noem je de vaste ids van de punten (<code>/** covers §4.5.2, §4.5.8, §6.2 */</code>); een kale <code>§4.5</code> telt voor geen enkel punt. <code>php scripts/traceability.php</code> noemt de punten van §4 die geen test noemt en eindigt dan met exitcode 1; <code>tests/Feature/Tooling/TraceabilityTest.php</code> draait hem.</p>
+  <p>Tests onder <code>Feature/Setup</code>, <code>Feature/Console</code>, <code>Feature/Backups</code>, <code>Feature/Health</code> en <code>Feature/System</code> faken elk commando bij naam. Een test faalt als een fake ook commando&rsquo;s dekt die niemand noemt, of als er een commando tegen de bewaking aanliep, ook een dat de code zelf opving (<code>Tests\Fixtures\RecordingProcessFactory</code>). Een test die zonder PostgreSQL of een bruikbare <code>pg_dump</code> overslaat, doet dat via <code>Tests\Fixtures\RequiredPostgres::skips()</code>: met <code>REQUIRE_POSTGRES=true</code>, zoals in CI, faalt hij dan in plaats van over te slaan.</p>
   <p>Een mutatiecontrole kopieert een bestand met <code>cp</code> opzij en weer terug, nooit met <code>git stash</code>: die stash delen alle worktrees. Heb je een Blade- of Livewire-componentbestand gemuteerd, draai dan na het terugzetten <code>php artisan view:clear</code>: Livewire compileert een component alleen opnieuw als de bron nieuwer is dan de gecompileerde klasse, dus na een terugzetting in dezelfde seconde (of met <code>cp -p</code>) blijft de gemuteerde klasse in <code>storage/framework/views</code> staan voor latere testruns en de site.</p>
   <h4>Browsertests</h4>
-  <p>Browsertests staan in <code>tests/Browser</code> en draaien in Chromium met de Pest browser-plugin: <code>composer test:browser</code>. De gewone runs laden die map nooit. Kies de host per bezoek met <code>->withHost()</code>; dat geldt alleen voor de eerste pagina, dus open een volgende pagina met een absoluut adres op dezelfde host.</p>
+  <p>Browsertests staan in <code>tests/Browser</code> en draaien in Chromium met de Pest browser-plugin: <code>composer test:browser</code>. De gewone runs laden die map nooit. Kies de host per bezoek met <code>->withHost()</code>; dat geldt alleen voor de eerste pagina, dus open een volgende pagina met een absoluut adres op dezelfde host. Eén browsertest draai je met <code>php artisan config:clear &amp;&amp; vendor/bin/pest --testsuite=Browser --filter='&lt;naam&gt;'</code>. Een pagina met de app-layout heeft <code>data-test="app-main"</code>, een foutpagina nooit; zo ziet een test het verschil op hetzelfde pad. Een browsertest die een bestand uploadt, volgt <code>tests/Browser/AccountExtrasTest.php</code>: de ingebouwde server van de plugin verminkt multipart-uploads, en <code>Tests\Fixtures\NestUploadedFiles</code> leest ze opnieuw in.</p>
 <pre><code>$page = visit('/login')->withHost('acme.localhost')
     ->fill('email', $member->email)
     ->fill('password', 'password')
@@ -1608,7 +1619,7 @@ $url = $issueHandoff->handle($actor, Hosts::tenant($organisation->slug));</code>
 
 $page->navigate(sameOrigin($page->url(), '/settings/profile'))
     ->assertPathIs('/settings/profile');</code></pre>
-  <p class="src">.ai/guidelines/skv3.md:7,19, (UI); tests/Pest.php; tests/Feature/Auth/HostScopedLoginTest.php:26-40; tests/Browser/LoginTest.php; phpunit.xml; composer.json (test:browser)</p>
+  <p class="src">.ai/guidelines/skv3.md (Tests, UI); tests/Pest.php; tests/TestCase.php; tests/Fixtures/{RecordingProcessFactory,RequiredPostgres,NestUploadedFiles}.php; scripts/traceability.php; tests/Feature/Auth/HostScopedLoginTest.php; tests/Browser/LoginTest.php; tests/Browser/AccountExtrasTest.php; phpunit.xml; composer.json (test:browser)</p>
 
   <h3 id="dev-gate">Kwaliteitspoort</h3>
   <p>Werk is pas af als <strong>beide</strong> slagen:</p>
@@ -1623,17 +1634,17 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
     <li>Geen driver-specifieke SQL (<code>ilike</code>, ruwe <code>ALTER TABLE</code>); gebruik <code>whereLike(..., caseSensitive: false)</code>.</li>
     <li>Geen <code>env()</code> buiten <code>config/</code>, geen <code>dd</code>/<code>dump</code>/<code>ray</code>, geen hardgecodeerde kitnaam (<code>skv</code>) in app-identiteit.</li>
     <li>Gratis Flux is de standaard; Pro-componenten alleen in een Pro-tak (zie <a href="#dev-ui">UI</a>). <code>livewire/flux-pro</code> komt nooit in de gecommitte <code>composer.json</code> of <code>composer.lock</code>.</li>
-    <li>De pre-commit-hook draait Pint en PHPStan op de gestagede PHP-bestanden.</li>
-    <li>CI (<code>.github/workflows/tests.yml</code>) draait vier jobs: PHP 8.4 op PostgreSQL, PHP 8.4 op SQLite met <code>MODULE_IMPERSONATION=false</code> en <code>MODULE_PASSKEYS=false</code>, PHP 8.5 op SQLite, en de browsertests in Chromium (met screenshots en traces als een test faalt).</li>
+    <li>De pre-commit-hook draait Pint (<code>--test</code>) en PHPStan op de gestagede PHP-bestanden, en weigert een bestand dat ook niet-gestagede wijzigingen heeft. Zo controleert hij precies wat je commit en past hij tijdens een commit nooit een bestand aan.</li>
+    <li>CI (<code>.github/workflows/tests.yml</code>) draait drie controlerijen: PHP 8.4 op PostgreSQL, PHP 8.4 op SQLite met <code>MODULE_IMPERSONATION=false</code> en <code>MODULE_PASSKEYS=false</code>, en PHP 8.5 op SQLite; de browsertests in Chromium (met een PostgreSQL-service, en screenshots en traces als een test faalt); en, &rsquo;s nachts, met de hand of bij een pull request die de installatie raakt, de jobs <code>phase1</code> (de wizard na elk van de vier instappunten) en <code>e2e</code> (drie varianten van <code>laravel new</code>). De PostgreSQL-rij en de browserjob zetten <code>REQUIRE_POSTGRES=true</code>. De Flux Pro-licentie komt alleen via <code>COMPOSER_AUTH</code> in de stappen die hem nodig hebben, en in de repository van de kit zelf weigert een stap een gecommitte Flux Pro.</li>
     <li>Eén test: <code>php artisan test --compact --filter=&lt;naam&gt;</code>. Alleen arch-regels: <code>php artisan test --compact tests/Arch</code>.</li>
   </ul>
-  <p class="src">CLAUDE.md (Commands, Conventions); composer.json (scripts); phpstan.neon:7-24; pint.json:2-7; tests/Arch/*; .githooks/pre-commit:5-9; .github/workflows/tests.yml</p>
+  <p class="src">CLAUDE.md (Commands, Conventions); composer.json (scripts); phpstan.neon; pint.json; tests/Arch/*; .githooks/pre-commit; .github/workflows/tests.yml</p>
 </section>
 
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M7d zitten in <code>main</code>. Daarna volgt M8, de release. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
+  <p>Milestones M0 tot en met M8a zitten in <code>main</code>: de kit is klaar voor de release van v1.0.0. Publicatie op GitHub en Packagist (M8b) volgt na akkoord van de eigenaar. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1651,36 +1662,38 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
         <tr><td class="tabnum">M7b</td><td>Installatie verstevigd: de wizard alleen vanaf deze computer en op het vastgelegde adres, statusbestanden die geen links volgen, een Herd-stap die altijd een uitslag of een commando geeft, <code>skv:install</code> alleen in <code>local</code>, <code>testing</code> en <code>staging</code>, een sleutel van minstens 32 tekens voor <code>/health-check</code> met aparte limieten, een privémap voor de tijdelijke dump, en een Systeemstatus die blijft werken als de cache of een schijf uitvalt</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M7c</td><td>Beveiliging verstevigd: limieten per gebruiker, links uit <code>APP_URL</code>, de passkeyacties en herstelcodes op de beveiligingspagina, voorkeuren tijdens &lsquo;inloggen als&rsquo;, meldingen en mails in de taal van de lezer, foutpagina&rsquo;s voor elke 4xx en 5xx, één volgorde van vergrendelen in het beheer, het activiteitenlog, de huisstijl op de inlogpagina&rsquo;s, en de restpunten van de installatie, de beheerlaag en de back-ups</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M7d</td><td>Extra&rsquo;s: sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;, tweede factor verplicht per organisatie, CSV-export van het log, meerdere mensen tegelijk uitnodigen, profielfoto&rsquo;s, en limieten op adreswijzigingen door een beheerder en de uitnodiging uit de organisatiewizard</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M8a</td><td>Klaar voor de release: een limiet op het opzoeken van adressen, overdrachtslinks die bij je wachtwoord horen, een nieuw sessie-id bij &lsquo;andere apparaten uitloggen&rsquo;, het opruimen van tijdelijke uploads, strengere controles van de installatie en de diagnose, bewakingen in de testsuite, de kit-skills voor Claude Code, het traceerbaarheidsscript, de inhoud van CI, de licentie en deze handleiding</td><td><span class="badge b-ok">klaar</span></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">git log (main); CHANGELOG.md; README.md (Status); docs/decisions.md (DEC-34, DEC-35)</p>
+  <p class="src">git log (main); CHANGELOG.md; README.md (Status); docs/decisions.md (DEC-34, DEC-35, DEC-36)</p>
 
   <h3 id="roadmap">Wat er komt</h3>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
+        <tr><td><strong>M8b · Publicatie</strong></td><td>Na akkoord van de eigenaar: de repository op GitHub, de eerste groene CI-run (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist als <code>frankcornet/skv3</code>, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence, DEC-30 Consequence, DEC-31 Consequence, DEC-34 Consequence, DEC-35 Consequence)</p>
+  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence, DEC-30 Consequence, DEC-31 Consequence, DEC-34 Consequence, DEC-35 Consequence, DEC-36 Consequence)</p>
 
   <h3 id="beperkingen">Bekende beperkingen nu</h3>
   <ul>
-    <li>Installeren met één klik vanuit de Herd-app werkt pas na de publicatie (M8); tot dan kloon je de code en open je de wizard zoals in <a href="#herd">Installeren via Herd</a>.</li>
+    <li>Installeren vanuit de Herd-app, met de deeplink, met <code>laravel new</code> of met <code>composer create-project</code> werkt pas na de publicatie (M8b); tot dan kloon je de code en open je de wizard zoals in <a href="#herd">Installeren via Herd</a>.</li>
+    <li>Een paar teksten in Flux-onderdelen blijven in beide talen Engels: de knop die een wachtwoord toont, de knoppen om een veld te wissen of te kopiëren, de sluitknop van een venster, het label van een tekenvak bij een eenmalige code en het gratis bestandsveld (<span class="ui">Choose file</span>, <span class="ui">No file chosen</span>). Flux vouwt die onderdelen bij het compileren tot vaste tekst, dus een vertaling zou voor iedereen de taal van de eerste compilatie tonen (DEC-29).</li>
     <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); de setup controleert de waarden, maar er is nog geen pagina voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
     <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
   </ul>
   <h4>Bewust niet in v1</h4>
   <p>Een database per organisatie, eigen domeinen per organisatie, row-level security in Postgres, tenants via een pad, facturatie, Filament, andere talen dan Nederlands en Engels, Telescope, lidmaatschap van meer dan één organisatie en zelf je account verwijderen.</p>
-  <p class="src">database/seeders/DatabaseSeeder.php; config/branding.php; resources/views/components/app-logo.blade.php; resources/views/layouts/auth.blade.php; routes/console.php:1-10; docs/decisions.md (DEC-28 (15, 30, 33), DEC-29 Consequence); spec:18-25</p>
+  <p class="src">database/seeders/DatabaseSeeder.php; config/branding.php; resources/views/components/app-logo.blade.php; resources/views/layouts/auth.blade.php; routes/console.php; docs/decisions.md (DEC-28 (15, 30, 33), DEC-29 Consequence); spec §1.1</p>
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van <code>main</code> na milestone M7d. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van <code>main</code> na milestone M8a. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
       </footer>
     </main>
   </div>
