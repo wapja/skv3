@@ -131,6 +131,22 @@ it('never shows the TOTP secret to a session whose password confirmation expired
         ->assertSet('qrCodeSvg', '');
 });
 
+it('shows the QR code and the setup key once two-factor setup starts with a confirmed password (§4.2.4)', function (): void {
+    $user = User::factory()->create();
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    actingAs($user);
+    withSession(['auth.password_confirmed_at' => time()]);
+
+    $component = Livewire::test('pages::settings.two-factor-setup-modal', ['requiresConfirmation' => true])
+        ->call('startTwoFactorSetup');
+
+    $secret = decrypt((string) $user->fresh()?->two_factor_secret);
+    expect($secret)->toMatch('/^[A-Z2-7]{16,}$/')
+        ->and($component->get('manualSetupKey'))->toBe($secret)
+        ->and((string) $component->get('qrCodeSvg'))->toStartWith('<svg');
+    $component->assertSee($secret)->assertSeeHtml((string) $component->get('qrCodeSvg'));
+});
+
 it('returns to the security page once the password is confirmed again', function (): void {
     memberOnSecurityPage();
     $snapshot = securityPageSnapshot('pages::settings.security');

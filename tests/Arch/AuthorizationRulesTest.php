@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.6.8, §6.3, §7.2 */
+/** covers §4.6.8, §4.6.10, §6.3, §7.2 */
 
 use App\Actions\Users\UpdateSuperAdmin;
 use App\Authorization\Permission;
@@ -109,4 +109,19 @@ it('writes users.is_super_admin only in SetSuperAdmin (§6.3, M7c T13 #6)', func
     ));
 
     expect(filesMatching($files, $pattern))->toBe([]);
+});
+
+it('assigns and removes roles only in UpdateUserRoles and, for the super admin badge, SetSuperAdmin (§4.6.10, W1)', function (): void {
+    // Spatie's role methods on a user; everything else goes through these two classes (AGENTS.md › Super admin).
+    $pattern = '/->\s*(?:assignRole|syncRoles|removeRole)\s*\(/';
+    $files = array_values(array_filter(
+        kitSourceFiles('app', 'routes', 'resources/views', 'database', 'bootstrap', 'config'),
+        fn (string $path): bool => ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(preg_match($pattern, '$user->assignRole($role)'))->toBe(1)
+        ->and(preg_match($pattern, '$target->syncRoles([])'))->toBe(1)
+        ->and(preg_match($pattern, "\$user\n    ->removeRole(\$role)"))->toBe(1)
+        ->and(preg_match($pattern, '$user->hasRole($role)'))->toBe(0)
+        ->and(filesMatching($files, $pattern))->toBe(['app/Actions/Users/UpdateUserRoles.php', 'app/Authorization/SetSuperAdmin.php']);
 });

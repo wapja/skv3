@@ -12,6 +12,8 @@ use Illuminate\Database\Console\WipeCommand;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 
 it('uses immutable dates', function (): void {
     expect(now()::class)->toBe(CarbonImmutable::class);
@@ -48,3 +50,22 @@ it('makes Eloquent strict outside production', function (): void {
         ->and(Model::preventsSilentlyDiscardingAttributes())->toBeTrue()
         ->and(Model::preventsAccessingMissingAttributes())->toBeTrue();
 });
+
+it('applies the strict password rule everywhere but local development and the test suite (§4.0.1, CD-10)', function (string $environment, bool $accepted): void {
+    app()->detectEnvironment(fn (): string => $environment);
+
+    try {
+        // Ten lower-case letters: the lax rule (8 characters) accepts it; the strict one refuses it on length and
+        // case before it asks the breach API, so the test sends nothing over the network.
+        $validator = Validator::make(['password' => 'abcdefghij'], ['password' => Password::default()]);
+
+        expect($validator->passes())->toBe($accepted);
+    } finally {
+        app()->detectEnvironment(fn (): string => 'testing');
+    }
+})->with([
+    'production' => ['production', false],
+    'staging' => ['staging', false],
+    'local' => ['local', true],
+    'testing' => ['testing', true],
+]);

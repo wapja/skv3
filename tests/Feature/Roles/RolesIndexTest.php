@@ -10,6 +10,7 @@ use App\Authorization\Role;
 use App\Models\Organisation;
 use App\Models\User;
 use App\Tenancy\Facades\Tenant;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as RoleModel;
 
@@ -268,4 +269,19 @@ it('shows the archived-organisation error in the role delete modal (FU4-1)', fun
         ->assertHasErrors('organisation')
         ->assertSee(__('This organisation is archived.'))
         ->assertSeeHtmlInOrder(['data-modal="delete-role"', e(__('This organisation is archived.'))]);
+});
+
+it('groups the system roles under their own heading and shows each custom role\'s permissions as badges (§4.6.5)', function () use ($teamRoleIn): void {
+    $organisation = Organisation::factory()->create();
+    $teamRoleIn($organisation, 'Support Desk', Permission::UsersInviteResend);
+    asOrgAdmin($organisation);
+
+    $html = (string) $this->get(route('roles.index'))->assertOk()->getContent();
+    // The custom role's table row: from its name to the end of the row (the role editor's checkboxes come later).
+    $row = Str::before(Str::after($html, 'Support Desk'), '</tr>');
+
+    expect($html)->toMatch('/data-flux-heading>\s*'.preg_quote(__('System roles'), '/').'\s*</')
+        ->and($html)->toMatch('/data-flux-heading>\s*'.preg_quote(__('Custom roles'), '/').'\s*</')
+        ->and($row)->toContain(Permission::UsersInviteResend->label())
+        ->and($row)->toContain('data-flux-badge');
 });

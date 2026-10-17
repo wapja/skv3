@@ -142,3 +142,16 @@ it('creates the demo super admin with its badge and grant, or not at all (DEC-30
         ->toThrow(RuntimeException::class, 'The audit log is unavailable.');
     expect(Tenant::bypass(fn (): bool => User::query()->where('email', "superadmin@{$apex}")->exists()))->toBeFalse();
 });
+
+it('gives every demo account the shared password "password" (§4.12.2)', function (): void {
+    $this->seed(DemoSeeder::class);
+
+    $passwords = Tenant::bypass(fn (): array => User::query()->whereIn('email', array_column(DemoSeeder::accounts(), 'email'))->pluck('password', 'email')->all());
+
+    expect(DemoSeeder::PASSWORD)->toBe('password')
+        ->and(array_keys($passwords))->toEqualCanonicalizing(array_column(DemoSeeder::accounts(), 'email'));
+
+    foreach ($passwords as $email => $hash) {
+        expect(Hash::check('password', (string) $hash))->toBeTrue("{$email} does not use the demo password");
+    }
+});

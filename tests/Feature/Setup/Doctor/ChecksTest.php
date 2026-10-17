@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1.2, §4.2.10, §5.4 */
+/** covers §4.1.2, §4.2.10, §4.9.2, §5.4 */
 
 use App\Authorization\Permission;
 use App\Authorization\PermissionsTeam;
@@ -590,6 +590,13 @@ it('probes the SMTP port and accepts the log mailer (§5.4)', function (): void 
         ->and($listening->status)->toBe(CheckStatus::Pass)
         ->and($closed->status)->toBe(CheckStatus::Fail)
         ->and($closed->fix)->toBe(__("Start Herd's mail service"));
+});
+
+it('names a mailer other than smtp or log without probing a port (§4.9.2)', function (): void {
+    // Port 1 on the loopback refuses every connection: a probe there would fail the check.
+    new EnvFile($this->sandbox->path('.env'))->set(['MAIL_MAILER' => 'postmark', 'MAIL_HOST' => '127.0.0.1', 'MAIL_PORT' => '1']);
+
+    expect(new MailCheck()->run($this->context))->toEqual(CheckResult::pass(__('Mail uses the :mailer mailer', ['mailer' => 'postmark'])));
 });
 
 it('looks for pg_dump only while the backups module is on (§5.4, RL-11)', function () use ($stub): void {

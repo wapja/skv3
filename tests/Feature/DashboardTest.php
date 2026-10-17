@@ -148,3 +148,27 @@ it('lists an archived organisation\'s entries in the recent activity of a centra
     expect(recordedActivity(ActivityEvent::PasswordChanged)->sole()->trashed())->toBeTrue()
         ->and($html)->toContain(e(ActivityEvent::PasswordChanged->label()));
 });
+
+it('lists the ten newest entries first and names a causer from outside the organisation (§4.8.4)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    // Created before a tenant is bound, so it stays a super admin without an organisation.
+    $operator = User::factory()->superAdmin()->create(['name' => 'Platform Operator']);
+    $admin = asOrgAdmin($acme);
+    $record = fn (User $causer) => app(RecordActivity::class)->handle(ActivityEvent::PasswordChanged, $admin, causer: $causer);
+    $this->freezeSecond();
+
+    $record(User::factory()->for($acme)->create(['name' => 'Oldest Causer']));
+
+    foreach (range(1, 9) as $minute) {
+        $this->travel(1)->minutes();
+        $record(User::factory()->for($acme)->create(['name' => sprintf('Causer %02d', $minute)]));
+    }
+
+    $this->travel(1)->minutes();
+    $record($operator);
+
+    expect($operator->organisation_id)->toBeNull();
+    $this->get(route('dashboard'))->assertOk()
+        ->assertSeeInOrder(['Platform Operator', ...array_map(fn (int $minute): string => sprintf('Causer %02d', $minute), range(9, 1))])
+        ->assertDontSee('Oldest Causer');
+});

@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-/** covers §4.0.1, §4.12, §5.2, §5.3.3 */
+/** covers §4.0.1, §4.12.1, §5.2, §5.3.3 */
 
+use App\Authorization\Permission;
+use App\Authorization\Role;
 use App\Models\Organisation;
 use App\Setup\SetupContext;
 use App\Setup\SetupToken;
@@ -231,3 +233,15 @@ it('seeds the demo data only in local and testing (CD-9, A60)', function (string
     'staging' => ['staging', false],
     'production' => ['production', false],
 ]);
+
+it('seeds the permission catalogue and the system roles in every environment (§4.12.1)', function (string $environment): void {
+    DB::table('roles')->whereNull('team_id')->delete();
+    DB::table('permissions')->delete();
+    app()['env'] = $environment;
+
+    $exit = Artisan::call('db:seed', ['--class' => DatabaseSeeder::class, '--force' => true]);
+
+    expect($exit)->toBe(0)
+        ->and(DB::table('permissions')->orderBy('name')->pluck('name')->all())->toBe(collect(Permission::values())->sort()->values()->all())
+        ->and(DB::table('roles')->whereNull('team_id')->orderBy('name')->pluck('name')->all())->toBe([Role::OrganisationAdmin->value, Role::SuperAdmin->value]);
+})->with(['local', 'testing', 'staging', 'production']);

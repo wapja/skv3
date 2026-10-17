@@ -231,3 +231,16 @@ it('records invitation.reminder_sent', function (): void {
         ->and($reminded->organisation_id)->toBe($organisation->id)
         ->and($reminded->properties?->get('invitation_id'))->toBe($invitation->id);
 });
+
+it('renews the expiry by the configured number of days (§4.5.2)', function (): void {
+    $this->freezeSecond();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    config(['skv.invitations.expires_in_days' => 3]);
+    $this->travel(1)->days();
+
+    app(RemindInvitation::class)->handle($admin, $invitation);
+
+    expect($invitation->expires_at->equalTo(now()->addDays(3)))->toBeTrue();
+});
