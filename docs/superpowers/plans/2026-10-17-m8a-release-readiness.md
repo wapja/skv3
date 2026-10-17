@@ -129,6 +129,9 @@ The owner delegated every non-destructive decision to the controller; each can b
   - `UserActionLimit::addressLookup()` = `new self('address-lookup', 500, 86400)`, with `attempt()`, so every lookup
     counts and is never given back;
   - cost = the row count on bulk Check, 1 elsewhere, and only when the typed address differs from the stored one;
+  - the person behind the session pays: during an impersonation the invite page, `users.edit` and Check charge the
+    impersonator (`Impersonation::impersonator() ?? …`), and the profile refuses a new address before any lookup
+    (`RequestEmailChange` refuses it anyway), so impersonating members never multiplies the cap;
   - the refusal reuses the generic "Too many attempts" key;
   - DEC-36 supersedes DEC-34 (16)'s "accepted for v1".
 - Reason:
@@ -152,7 +155,8 @@ The owner delegated every non-destructive decision to the controller; each can b
 
 **CD-4. Upload clean-up.**
 - Decision: `livewire-tmp-cleanup` at `hourlyAt(45)` on every server (no `onOneServer()`), with a 24 h threshold; it does
-  nothing on an S3 temporary disk (the README points at `livewire:configure-s3-upload-cleanup`).
+  nothing on an S3 temporary disk (the README points at `livewire:configure-s3-upload-cleanup`), and nothing while
+  Livewire's own clean-up is off (`livewire.temporary_file_upload.cleanup`), as Livewire's sweep does.
 - Reason:
   - 24 h equals Livewire's own threshold, so no open tab loses an upload earlier than today;
   - :45 keeps clear of `backup-temp-cleanup` at :15;
@@ -193,7 +197,7 @@ The owner delegated every non-destructive decision to the controller; each can b
 
 **CD-9. Flux credentials in CI.**
 - Decision:
-  - `COMPOSER_AUTH` on the steps that need it (check job: Enable Flux Pro; e2e postgres-pro: Enable Flux Pro, `skv:install` and `skv:doctor`, whose `FluxProCredentialsCheck` reads the credentials), built from the secrets with `php -r … getenv()` so the key is never in argv;
+  - `COMPOSER_AUTH` on the steps that need it (check job: Enable Flux Pro; e2e postgres-pro: Enable Flux Pro, `skv:install` and `skv:doctor`, whose `FluxProCredentialsCheck` reads the credentials), built from the secrets with `php -r … getenv()` so the key is never in argv; e2e's `skv:install` and `skv:doctor` map the secrets only when `FLUX_PRO_SECRETS == 'true'`, the condition of its Enable Flux Pro, so a half-configured pair never reaches them;
   - no `composer config --global http-basic`;
   - `composer audit` moved before the Flux Pro step;
   - the false comment corrected.
@@ -248,6 +252,7 @@ The owner delegated every non-destructive decision to the controller; each can b
   - `TestCase::setUp()` allows `:memory:`, names matching `/_test(_test_\d+)?$/`, paths under `storage/framework/testing`,
     or `DB_TEST_DATABASE`;
   - it reads the environment before `parent::setUp()`, and refuses a non-empty `DB_URL` (its database would win over `DB_DATABASE`; `phpunit.xml` sets `DB_URL=""`);
+  - and it refuses while a configuration cache exists (`bootstrap/cache/config.php`, or the file `APP_CONFIG_CACHE` names), because its database wins over `DB_DATABASE`;
   - `phpunit.xml` keeps no `force` on `DB_*`, because `test:pgsql` passes them.
 - Reason: this protects the developer database (CLAUDE.md safety rule) without breaking `test:pgsql`, parallel runs or
   CI.
@@ -286,6 +291,22 @@ The owner delegated every non-destructive decision to the controller; each can b
 - Reason: generated apps ship `tests.yml` unchanged (the e2e diff asserts it) and must never run a kit-only Packagist
   check.
 
+**Plan review (2026-10-17, wf_562b61db-1b7).** Five dimensions with a skeptic each: 16 findings, 15 confirmed and folded in, 1 refuted (the MAIL_MAILER edit names the throwaway site's .env).
+- K0: Task 1's guard also refuses a configuration cache (CD-16), with a unit and a child-run test and mutation 12.
+- K1: Task 10's mutation 1 also fails the existing two-factor burst test, as now stated.
+- K2: Task 3 charges the impersonator during an impersonation, and the profile refuses a new address before any lookup (CD-2); two new tests, mutations 18–21.
+- K3: Task 7's `StaleTemporaryUploads` honours `livewire.temporary_file_upload.cleanup` (CD-4); one new test, mutation 17.
+- K4 = K14: the File ownership table names T15's and T15b's edits to T8's `ChecksTest` and `ProductionGuardsTest`.
+- K5: Task 15's covers table expects `ProfileUpdateTest`'s line as Task 11 leaves it.
+- K6: Task 16's `PackageMetadataTest` drops the stale-pattern assertion, which would fail in every dist install once M8b export-ignores release-check.
+- K7: DEC-36 (28) rules on DEC-25's M8 list, and the traceability table has its row.
+- K8: e2e's `skv:install` and `skv:doctor` get the Flux secrets only when `FLUX_PRO_SECRETS == 'true'` (CD-9); mutation 20.
+- K9: `e2e-local.sh --db=pgsql` prints the `dropdb` lines for the two databases it created; mutation 21.
+- K10: DEC-36 (8), (25), its Context and the §12 (1) amendment keep Herd Pro's services running for configuration B.
+- K11: Task 18 proves the session rotation with a copied cookie, not a changed cookie value.
+- K12: Task 18's catch-all grep excludes `StrayProcessGuardTest`'s planted dataset row.
+- K13: Task 18 uninstalls the project-scoped Claude plugin (`--keep-data`) the two wizard runs install.
+
 ## Requirement traceability
 
 | Requirement | Task(s) |
@@ -302,6 +323,7 @@ The owner delegated every non-destructive decision to the controller; each can b
 | FM-18 = DEC-34 (16), DEC-35 Consequence | 3 (CD-2) |
 | DEC-35 Consequence: handoff after a password change, upload clean-up, GD without WebP, K9 | 4 (CD-3), 7 (CD-4), 8 |
 | the remaining open M2–M7d follow-ups | 1–12 (per-task item lists) |
+| DEC-25 (M8 list) | 13, 16, 17 (DEC-36 (28)) |
 
 ## File ownership
 
@@ -319,7 +341,7 @@ A task may change a file another task owns only where this table says it adds to
 | `settings/sessions/*`, `SessionsTest.php`, `LockOrderTest.php` | T5 | – |
 | `security.php`, `recovery-codes.php`, `EnsureSecondFactorTest`, organisation edit tests | T6 | T11 appends the A43 test to `OrganisationEditTest` |
 | `OpsSchedule.php`, `StaleTemporaryUploads.php`, schedule tests, avatar actions (`app/Actions/Users/{UpdateAvatar,RemoveAvatar}.php`), `AvatarTest` | T7 | – |
-| `HerdSiteStep.php`, `EnvironmentStep.php`, `StorageLinkCheck.php`, `Bootstrap.php`, `GdCheck.php`, `EnvironmentStepTest`, `ChecksTest`, `tests/Feature/Console/ProductionGuardsTest.php` | T8 | – |
+| `HerdSiteStep.php`, `EnvironmentStep.php`, `StorageLinkCheck.php`, `Bootstrap.php`, `GdCheck.php`, `EnvironmentStepTest`, `ChecksTest`, `tests/Feature/Console/ProductionGuardsTest.php` | T8 | T15 changes the `covers` lines of `ChecksTest` and `ProductionGuardsTest`; T15b then extends both `covers` lines, inserts its §4.9.2 test before 'looks for pg_dump only while the backups module is on' in `ChecksTest` and appends its §4.12.1 tests (with the `Permission` / `Role` imports) to `ProductionGuardsTest` |
 | `tests/Feature/Setup/Steps/HerdSiteStepTest.php` | T1 | T8 adds the K9 fakes |
 | `tests/Feature/Setup/Wizard/HerdStageTest.php` | T8 | T9 adds the C50 assertion |
 | `WizardRunner.php`, `DirectRequest.php`, `SetupAccessTest`, `SetupModeTest`, health/system tests, `ConfigurePgDumpTest`, `CreateOrganisationCommandTest` | T9 | – |
@@ -331,7 +353,7 @@ A task may change a file another task owns only where this table says it adds to
 | `.github/workflows/tests.yml`, `CiWorkflowTest.php`, `scripts/e2e-local.sh`, `WizardPageTest.php` skip, `tests/Fixtures/RequiredPostgres.php`, `tests/Feature/Tooling/RequiredPostgresTest.php` | T13 | – |
 | `tests/Feature/Backups/BackupRunTest.php` | T1 (finally) | T13 adds the `REQUIRE_POSTGRES` skip |
 | `.ai/skills/**`, `.claude/settings.json`, `boost.json`, `AiConfigTest.php` | T14 | T15 adds the `§4.x.n` covers sentence to `write-tenant-test/SKILL.md`; T17 re-runs AiConfigTest after editing CLAUDE.md |
-| `scripts/traceability.php`, traceability and R2 tests, `covers` docblocks | T15 | T15b adds tests to `tests/Arch/AuthorizationRulesTest.php` (T2's) and `tests/Feature/DashboardTest.php` (T11's), and creates `tests/Feature/ConfigDefaultsTest.php` and `tests/Arch/MigrationRulesTest.php` |
+| `scripts/traceability.php`, traceability and R2 tests, `covers` docblocks | T15 | T15b adds tests (and `covers` ids) to `tests/Arch/AuthorizationRulesTest.php` (T2's), `tests/Feature/DashboardTest.php` (T11's), `tests/Feature/Setup/Doctor/ChecksTest.php` and `tests/Feature/Console/ProductionGuardsTest.php` (T8's), and creates `tests/Feature/ConfigDefaultsTest.php` and `tests/Arch/MigrationRulesTest.php` |
 | `.gitattributes`, `LICENSE`, `composer.json`, `PackageMetadataTest` | T16 | – (never export-ignore `docs/superpowers/specs/`, `docs/handleiding.html`, `scripts/traceability.php` or `.ai/skills/`: generated apps run `TraceabilityTest` and `DemoCredentialsExposureTest`) |
 | `lang/nl.json`, `lang/en.json` | – | T5, T7 and T8 each add their own keys to both files (no task deletes or renames; T2 only reads them) |
 | `.ai/guidelines/skv3.md` (+ regenerated AGENTS.md) | – | T1 (Setup paragraph), T3 (limits sentence), T17 (T2's kit-rule sentences, T13's `RequiredPostgres` sentence, E68 scoping, final read); each task regenerates AGENTS.md with `php artisan boost:update --no-discover --no-interaction` |
@@ -348,7 +370,7 @@ A task may change a file another task owns only where this table says it adds to
 
 The test suite gets two guards it lacks today.
 
-The first is a **test-database guard**. `phpunit.xml` sets `DB_DATABASE=:memory:` without `force`, on purpose: `composer test:pgsql` and CI pass their own database. As a result, a `DB_DATABASE` exported in the shell wins, and `RefreshDatabase` then wipes that database, even the developer's own. `Tests\TestCase::setUp()` now reads the environment before `parent::setUp()` boots the application. It refuses to run unless the database is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing`, or the `DB_TEST_DATABASE` that `test:pgsql` was given (CD-16).
+The first is a **test-database guard**. `phpunit.xml` sets `DB_DATABASE=:memory:` without `force`, on purpose: `composer test:pgsql` and CI pass their own database. As a result, a `DB_DATABASE` exported in the shell wins, and `RefreshDatabase` then wipes that database, even the developer's own. `Tests\TestCase::setUp()` now reads the environment before `parent::setUp()` boots the application. It refuses to run unless the database is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing`, or the `DB_TEST_DATABASE` that `test:pgsql` was given, and it refuses to run while a configuration cache exists, because Laravel then loads the cached database and never reads `DB_DATABASE` (CD-16).
 
 The second is a **runtime stray-process guard** behind the static ban in `KitRulesTest`. Every RL-12 test (Setup, Console, Backups, Health, System) runs on a `Tests\Fixtures\RecordingProcessFactory`. That factory notes every stray command *before* `PendingProcess` throws for it, so a caller's `catch (Throwable)` can no longer hide one (L7b-78). After each test it also fails the test when any fake pattern matches a command nobody names (L7b-77). The static rule misses `'**'`, a list value after a named key and `Process::fake($fakes)`; this check does not.
 
@@ -387,6 +409,7 @@ Three smaller items:
     - the public `$command`
     - the stray branch of `run()` / `start()`: no fake matches while the factory records and prevents strays
   - `Illuminate\Support\Env::get()`; `Illuminate\Support\Facades\Process::swap()`
+  - `Illuminate\Foundation\Bootstrap\LoadConfiguration` (a cached `config.php` replaces every config file, so the environment's `DB_*` never reach config) and `Application::getCachedConfigPath()` / `normalizeCachePath()` (`APP_CONFIG_CACHE`)
   - `App\Setup\Support\ShellArgument::quote(string $value): string`
 - Produces:
   - `Tests\Fixtures\RecordingProcessFactory` (final, extends `Illuminate\Process\Factory`):
@@ -397,7 +420,7 @@ Three smaller items:
     - `public function forgetStrays(): void`
     - `public function catchAllPatterns(): array` (`list<string>`, the fake patterns that also match an argv nobody names)
   - `Tests\Fixtures\RecordingPendingProcess` (final, extends `PendingProcess`): `run()` and `start()` record a stray, then call the parent.
-  - `Tests\TestCase::databaseRefusal(mixed $database, mixed $url, mixed $testDatabase, string $basePath): ?string` (public static): the refusal message, or null when the run may go ahead.
+  - `Tests\TestCase::databaseRefusal(mixed $database, mixed $url, mixed $testDatabase, string $basePath, ?string $configCache = null): ?string` (public static): the refusal message, or null when the run may go ahead. `setUp()` passes the configuration-cache path resolved as `Application::getCachedConfigPath()` resolves it (`APP_CONFIG_CACHE`, absolute or relative to the base path, else `bootstrap/cache/config.php`).
   - The RL-12 hook in `tests/Pest.php`:
     - `beforeEach`: `Process::swap(new RecordingProcessFactory)`, then `preventStrayProcesses()` + `fake([])`
     - `afterEach`: fails on `catchAllPatterns() !== []` or `strays() !== []`
@@ -410,6 +433,7 @@ Background for the implementer:
   - The developer's `.env` can never change it: Dotenv is immutable, and phpunit has set the variable before Laravel loads `.env`.
   - A parallel run's `_test_test_<n>` suffix is applied to *config* later, so the environment still holds `…_test`. The regex accepts both anyway (CD-16).
   - A non-empty `DB_URL` is refused: its database would win over `DB_DATABASE` (`ConfigurationUrlParser`), and phpunit sets `DB_URL=""`.
+  - A configuration cache bypasses the environment: when `bootstrap/cache/config.php` (or the file `APP_CONFIG_CACHE` names) exists, `LoadConfiguration` loads it and never reads the config files, so the connection is whatever the developer's `.env` said when it was cached, while the environment still says `:memory:`. That is why the guard refuses any configuration cache, first. The composer scripts run `config:clear` first, but `php artisan test --filter=…` and `vendor/bin/pest` do not, and the kit itself tells developers to run `php artisan config:cache` (`BackupPasswordCheck`'s fix). No test writes `bootstrap/cache/config.php`.
 - **Why the guard test runs a child Pest.** Only a real run proves that the check sits before `parent::setUp()`. The child gets an SQLite path in a directory that does not exist (`/nonexistent-directory/database.sqlite`). Even with the guard removed nothing can be created there: Laravel's `migrate:fresh` offers to create a missing SQLite file, and `touch()` fails in a missing directory. The parallel runner's variables (`LARAVEL_PARALLEL_TESTING`, `PARATEST`, `TEST_TOKEN`, `UNIQUE_TEST_TOKEN`) are removed (`false` unsets a variable in Symfony's Process), so the child is a plain run. `tests/Feature/Tooling` is outside the RL-12 directories and already runs PHP children (`PgsqlTestDatabaseScriptTest`).
 - **Why a `PendingProcess` subclass.** `PendingProcess::run()` throws `RuntimeException('Attempted process [...] without a matching fake.')` before it records anything, so `Process::assertRan()` never sees a stray. `RecordingPendingProcess` asks the same question first, through the protected `toSymfonyProcess()` and `fakeFor()`, and tells the factory. Pools and pipes build their processes through `newPendingProcess()` too.
 - **What the recorder ignores.** A factory that does not prevent strays (`DetachedStepLauncherTest` and `BackupRunTest`'s probe, the two real-process exceptions in `AGENTS.md`) records nothing, and so does a factory that is not recording.
@@ -512,7 +536,9 @@ declare(strict_types=1);
 
 /** covers §7.2 */
 
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 it('lets the tests run only on a test database (CD-16, A84a)', function (mixed $database, mixed $testDatabase, bool $allowed): void {
@@ -541,6 +567,17 @@ it('refuses a DB_URL, whose database would win over DB_DATABASE (CD-16)', functi
     expect(TestCase::databaseRefusal(':memory:', 'pgsql://root@127.0.0.1/my_app', null, '/srv/app'))->toBeString()->toContain('DB_URL');
 });
 
+it('refuses a cached configuration, whose database wins over DB_DATABASE (CD-16)', function (): void {
+    $cache = (string) tempnam(sys_get_temp_dir(), 'config-cache');
+
+    try {
+        expect(TestCase::databaseRefusal(':memory:', '', null, '/srv/app', $cache))->toBeString()->toContain('cached configuration')
+            ->and(TestCase::databaseRefusal(':memory:', '', null, '/srv/app', $cache.'.missing'))->toBeNull();
+    } finally {
+        unlink($cache);
+    }
+});
+
 it('stops a run on the development database before the application boots (CD-16, A84a)', function (): void {
     // A real child run, as `composer test` would start it with DB_DATABASE exported. The directory does not exist, so
     // even without the guard nothing could be created; the parallel runner's variables are removed for the child.
@@ -561,9 +598,40 @@ it('stops a run on the development database before the application boots (CD-16,
     expect($result->exitCode())->not->toBe(0)
         ->and($result->output().$result->errorOutput())->toContain('Refusing to run the tests on the database');
 });
+
+it('stops a run under a configuration cache before the application boots, whatever DB_DATABASE says (CD-16)', function (): void {
+    // `php artisan config:cache` (the doctor's fix for a missing backup password) freezes the developer's database
+    // into the cache, which Laravel then loads instead of reading DB_DATABASE. The cache here is an empty one in a
+    // directory of its own, named through APP_CONFIG_CACHE, so the repository's bootstrap/cache is never touched.
+    $directory = storage_path('framework/testing/'.Str::uuid());
+    File::ensureDirectoryExists($directory);
+    file_put_contents($directory.'/config.php', "<?php return [];\n");
+
+    try {
+        $result = Process::path(base_path())
+            ->env([
+                'APP_CONFIG_CACHE' => $directory.'/config.php',
+                'DB_CONNECTION' => 'sqlite',
+                'DB_DATABASE' => ':memory:',
+                'DB_URL' => '',
+                'DB_TEST_DATABASE' => false,
+                'LARAVEL_PARALLEL_TESTING' => false,
+                'PARATEST' => false,
+                'TEST_TOKEN' => false,
+                'UNIQUE_TEST_TOKEN' => false,
+            ])
+            ->timeout(120)
+            ->run([PHP_BINARY, 'vendor/bin/pest', 'tests/Feature/ExampleTest.php']);
+    } finally {
+        File::deleteDirectory($directory);
+    }
+
+    expect($result->exitCode())->not->toBe(0)
+        ->and($result->output().$result->errorOutput())->toContain('Refusing to run the tests with a cached configuration');
+});
 ```
 
-The `toBeString()` matters: Pest's `toContain()` on `null` passes, so without it a guard that ignores `DB_URL` would stay green (found in the prototype's mutation run).
+The `toBeString()` matters: Pest's `toContain()` on `null` passes, so without it a guard that ignores `DB_URL` would stay green (found in the prototype's mutation run). The configuration cache gets its own test rather than a dataset row, because the dataset passes no cache path and the case needs a real file; the child case writes an empty cache (`<?php return [];`) into a directory of its own under `storage/framework/testing` and names it with `APP_CONFIG_CACHE`, so the repository's `bootstrap/cache` is never touched.
 
 `tests/Feature/Setup/Steps/HerdSiteStepTest.php`: add `use App\Setup\Support\ShellArgument;` after `use App\Setup\Support\EnvFile;`. In "names the command HTTPS asks for when Herd's listings fail (RL-7)", replace the `Process::fake([...])` and the `expect(...)` line with:
 
@@ -603,8 +671,9 @@ Run: `php artisan test --compact tests/Feature/Setup/StrayProcessGuardTest.php t
 Expected: FAIL.
 - `StrayProcessGuardTest`: every case fails with `Class "Tests\Fixtures\RecordingProcessFactory" not found`.
 - `TestDatabaseGuardTest`:
-  - the dataset and the DB_URL case fail with `Call to undefined method Tests\TestCase::databaseRefusal()`;
-  - the child-run case fails on the output: the child has no guard, so it fails with `Database file at path [/nonexistent-directory/database.sqlite] does not exist` instead of the refusal.
+  - the dataset, the DB_URL case and the cached-configuration case fail with `Call to undefined method Tests\TestCase::databaseRefusal()`;
+  - the child-run case fails on the output: the child has no guard, so it fails with `Database file at path [/nonexistent-directory/database.sqlite] does not exist` instead of the refusal;
+  - the configuration-cache child case fails on the output too: the child boots on the empty cache and fails with `Target class [files] does not exist.` instead of the refusal (plan review prototype).
 - `HerdSiteStepTest` passes on HEAD code. These two cases are strengthened weak tests, proven red by mutation in Step 8 (rows 8 and 9).
 
 - [ ] **Step 3: The recording factory**
@@ -770,7 +839,8 @@ pest()->beforeEach(function (): void {
     /**
      * CD-16, A84a: phpunit.xml sets DB_DATABASE without `force`, because `composer test:pgsql` and CI pass their own, so
      * a DB_DATABASE exported in the shell wins. The check runs before parent::setUp(), which boots the application and
-     * lets RefreshDatabase wipe the database it names.
+     * lets RefreshDatabase wipe the database it names. A configuration cache wins over the environment, so it is
+     * refused too; its path is resolved as Application::getCachedConfigPath() resolves it.
      *
      * Every test starts a new request cycle, as a php-fpm worker does: Livewire keeps the `@assets` it rendered (the
      * passkey script) and other per-request state in static properties, which would otherwise leak into the HTML of
@@ -778,7 +848,13 @@ pest()->beforeEach(function (): void {
      */
     protected function setUp(): void
     {
-        $refusal = self::databaseRefusal(Env::get('DB_DATABASE'), Env::get('DB_URL'), Env::get('DB_TEST_DATABASE'), dirname(__DIR__));
+        $basePath = dirname(__DIR__);
+        $configCache = Env::get('APP_CONFIG_CACHE');
+        $configCache = is_string($configCache) && $configCache !== ''
+            ? (str_starts_with($configCache, '/') || str_starts_with($configCache, '\\') ? $configCache : $basePath.'/'.$configCache)
+            : $basePath.'/bootstrap/cache/config.php';
+
+        $refusal = self::databaseRefusal(Env::get('DB_DATABASE'), Env::get('DB_URL'), Env::get('DB_TEST_DATABASE'), $basePath, $configCache);
 
         if ($refusal !== null) {
             throw new RuntimeException($refusal);
@@ -792,11 +868,16 @@ pest()->beforeEach(function (): void {
     /**
      * Why the tests must not run on this database, or null when they may (CD-16): DB_DATABASE is `:memory:`, a name
      * ending in `_test` (a parallel worker's `_test_test_<n>` too), a file under storage/framework/testing, or the
-     * DB_TEST_DATABASE that `composer test:pgsql` was given. A DB_URL is refused: its database would win over
-     * DB_DATABASE.
+     * DB_TEST_DATABASE that `composer test:pgsql` was given. A configuration cache is refused first: Laravel then never
+     * reads DB_DATABASE, so its database is the one the cache was built with. A DB_URL is refused: its database would
+     * win over DB_DATABASE.
      */
-    public static function databaseRefusal(mixed $database, mixed $url, mixed $testDatabase, string $basePath): ?string
+    public static function databaseRefusal(mixed $database, mixed $url, mixed $testDatabase, string $basePath, ?string $configCache = null): ?string
     {
+        if ($configCache !== null && is_file($configCache)) {
+            return 'Refusing to run the tests with a cached configuration: its database wins over DB_DATABASE. Run php artisan config:clear (CD-16).';
+        }
+
         if (is_string($url) && $url !== '') {
             return 'Refusing to run the tests with DB_URL set: unset it and name a test database in DB_DATABASE (CD-16).';
         }
@@ -816,7 +897,7 @@ pest()->beforeEach(function (): void {
     }
 ```
 
-Unit tests (`tests/Unit`) do not extend `Tests\TestCase` and touch no database, so the guard does not run there. The browser suite extends it and uses `:memory:`. `composer test:pgsql` passes `DB_DATABASE=${DB_TEST_DATABASE:-<folder>_test}`, which passes either way. CI's check job uses `app_test`. With `--parallel`, every worker refuses each test on its own: the prototype run with `DB_DATABASE=/nonexistent-directory/x.sqlite vendor/bin/pest --parallel tests/Feature/Dashboard` reported 8 errors, each with the refusal, and exit 2.
+The configuration-cache check comes first: under a cache the environment's `DB_*` say nothing about the database the application will use. The path is resolved as `Application::normalizeCachePath()` resolves `APP_CONFIG_CACHE` (a leading `/` or `\` is absolute, anything else is relative to the base path, not the working directory). The plan-review prototype ran `php artisan config:cache` in a scratch copy: `vendor/bin/pest tests/Feature/ExampleTest.php` then stopped with the refusal, and passed again after `config:clear`. Unit tests (`tests/Unit`) do not extend `Tests\TestCase` and touch no database, so the guard does not run there. The browser suite extends it and uses `:memory:`. `composer test:pgsql` passes `DB_DATABASE=${DB_TEST_DATABASE:-<folder>_test}`, which passes either way. CI's check job uses `app_test`. With `--parallel`, every worker refuses each test on its own: the prototype run with `DB_DATABASE=/nonexistent-directory/x.sqlite vendor/bin/pest --parallel tests/Feature/Dashboard` reported 8 errors, each with the refusal, and exit 2.
 
 - [ ] **Step 6: Fake the commands the recorder found**
 
@@ -908,8 +989,9 @@ Next, revert or break each change locally, run the named test, expect it to fail
 | 9 | `app/Setup/Steps/HerdSiteStep.php` `siteState()`: `$linkPath = null;` instead of the `links` lookup | `HerdSiteStepTest` › 'names the command HTTPS asks for when Herd's listings fail' (both rows; passes with HEAD's test) |
 | 10 | `HerdSiteStep::run()`: `['link', $name, ShellArgument::quote($name)]` | `HerdSiteStepTest` › 'quotes a folder name with a space…' › 'herd link' (passes with HEAD's test) |
 | 11 | `BackupRunTest.php`: inside the test body, after `$usablePgDump()` in `config([...])`, add `Process::run(['true']);` | under `composer test:pgsql`, 'backs up the database…' fails with "without a matching fake" (with HEAD's file it ran `true` for real). Skipped on SQLite. |
+| 12 | `databaseRefusal()`: delete the config-cache check (`if ($configCache !== null && is_file($configCache)) { return …; }`) | 'refuses a cached configuration…' ("null is of type string") and 'stops a run under a configuration cache…' (the child fails on `Target class [files] does not exist.`) |
 
-The prototype ran rows 1–10 and saw each one fail (row 4 only after the `toBeString()` fix). Row 11 needs PostgreSQL; it was not run.
+The prototype ran rows 1–10 and saw each one fail (row 4 only after the `toBeString()` fix), and the plan review's prototype ran row 12. Row 11 needs PostgreSQL; it was not run.
 
 - [ ] **Step 9: The guideline**
 
@@ -1462,20 +1544,20 @@ This task adds one per-user limit, `UserActionLimit::addressLookup()` (500 looku
 - `users.edit` `saveAccount()`: cost 1, field `email`, only when the address is editable and differs from the stored one, before `validate()` (and so before the RL-18 confirmation park);
 - bulk `check()`: cost `count($entries)`, field `addresses`, after the empty-list and `MAX_ROWS` guards and before `review()`. `send()` re-reviews only the `#[Locked]` rows a Check already paid for and is not charged.
 
-`organisations.create` (super admins only, under `invite()`) and `RestoreUser` (no typed address) are not charged. The refusal reuses "Too many attempts. Try again in :seconds seconds.", so there are no new lang keys. The docs part of this task: the limits sentence in `.ai/guidelines/skv3.md` (AGENTS.md regenerated) and the README "Limits" bullet, with the sign-in sentences moved into a bullet of their own (D80). The handleiding mirror and DEC-36 (superseding DEC-34 (16)'s "accepted for v1") are Task 17's.
+`organisations.create` (super admins only, under `invite()`) and `RestoreUser` (no typed address) are not charged. The person behind the session pays: during an impersonation the invite page, `users.edit` and *Check* charge the impersonator (`Impersonation::impersonator() ?? …`), and the profile refuses a new address before any lookup, so impersonating member after member never multiplies the cap (plan review K2). The refusal reuses "Too many attempts. Try again in :seconds seconds.", and the impersonation refusal reuses `RequestEmailChange`'s "The address can't be changed during an impersonation.", so there are no new lang keys. The docs part of this task: the limits sentence in `.ai/guidelines/skv3.md` (AGENTS.md regenerated) and the README "Limits" bullet, with the sign-in sentences moved into a bullet of their own (D80). The handleiding mirror and DEC-36 (superseding DEC-34 (16)'s "accepted for v1") are Task 17's.
 
 **Files:**
 - Modify:
   - `app/Support/RateLimits/UserActionLimit.php` (the `addressLookup()` factory, directly after `addressChange()`)
-  - `resources/views/pages/settings/profile/profile.php` (`updateProfileInformation()`: the lookup charge and its docblock sentence)
-  - `resources/views/pages/users/invite/invite.php` (`invite()`: the lookup charge)
-  - `resources/views/pages/users/edit/edit.php` (`saveAccount()`: the lookup charge and its docblock sentence)
-  - `resources/views/pages/invitations/bulk/bulk.php` (`check()`: the lookup charge and its docblock)
+  - `resources/views/pages/settings/profile/profile.php` (`updateProfileInformation()`: the impersonation refusal, the lookup charge and their docblock sentences; the `ValidationException` import)
+  - `resources/views/pages/users/invite/invite.php` (`invite()`: the lookup charge; the `Impersonation` import)
+  - `resources/views/pages/users/edit/edit.php` (`saveAccount()`: the lookup charge and its docblock sentence; the `Impersonation` import)
+  - `resources/views/pages/invitations/bulk/bulk.php` (`check()`: the lookup charge and its docblock; the `Impersonation` import)
   - `.ai/guidelines/skv3.md` (the `UserActionLimit` bullet; then regenerate the git-ignored `AGENTS.md`)
   - `README.md` (› Accounts and security: the **Limits** bullet and a new **Sign-in limits** bullet)
   - `CHANGELOG.md` (a new `### Security` heading at the end of `[Unreleased]`, with this task's line)
 - Test:
-  - `tests/Feature/Auth/ActionLimitsTest.php` (three new tests at the end of the file: profile, invite page, `users.edit`)
+  - `tests/Feature/Auth/ActionLimitsTest.php` (five new tests at the end of the file: profile, invite page, `users.edit`, the profile during an impersonation, and the impersonator's bucket on the invite, edit and bulk pages)
   - `tests/Feature/Invitations/BulkInvitationsTest.php` (two new tests; the existing test 'counts nothing for a list larger than what is left, not even for a moment, …' starts its mock after the Check)
   - unchanged and green: `tests/Feature/Support/UserActionLimitTest.php`, `tests/Feature/Auth/AdministratorActionLimitsTest.php`, `tests/Feature/Impersonation/ImpersonationPreferencesTest.php`, `tests/Feature/Users`, `tests/Feature/Settings`, `tests/Feature/Invitations`, `tests/Feature/Organisations`
 
@@ -1483,21 +1565,23 @@ This task adds one per-user limit, `UserActionLimit::addressLookup()` (500 looku
 - Consumes:
   - `App\Support\RateLimits\UserActionLimit` (unchanged API): `attempt(User $user, string $field, int $cost = 1): void` (counts first with `RateLimiter::increment()`, refuses past the maximum, never gives back), `hit(User $user, int $cost = 1): void`, `key(User $user): string`, `around()`, `emailChange()`, `invite()`, `addressChange()`, `bulkInvite()`; `assertCost()` throws `InvalidArgumentException` for a cost above the maximum
   - `App\Support\Invitations\InvitationList::MAX_ROWS` (100), `App\Rules\AvailableEmail`, `App\Actions\Invitations\InviteUser::addressRules(Organisation $organisation): array`
-  - `App\Concerns\ChoosesInvitationOrganisation::currentUser()` (bulk and invite pages), `App\Concerns\ResolvesCurrentUser::currentUser()` (profile, `users.edit`)
-  - test helpers: `onTenant()`, `asOrgAdmin()`, `pageSnapshot()`, `callPageAction()`; `Pest\Laravel\withSession()`; the file-local `$errorsOf`, `$throttled` (ActionLimitsTest) and `$templateRoleId`, `$snapshotOf`, `$deliveredMails` (BulkInvitationsTest)
+  - `App\Concerns\ChoosesInvitationOrganisation::currentUser()` (bulk and invite pages), `App\Concerns\ResolvesCurrentUser::currentUser()` (profile, `users.edit`); both return the impersonated user during an impersonation
+  - `App\Tenancy\Auth\Impersonation::impersonator(): ?User` (null outside an impersonation, or once the impersonator is deleted) and `::isTarget(User $user): bool`; the lang key "The address can't be changed during an impersonation." (`RequestEmailChange`, both lang files)
+  - test helpers: `onTenant()`, `asOrgAdmin()`, `pageSnapshot()`, `callPageAction()`, `useImpersonationModule()`, `startImpersonatingOverHttp()`, `withPermissionsTeam()`, `User::factory()->superAdmin()`; `Pest\Laravel\withSession()`; the file-local `$errorsOf`, `$throttled` (ActionLimitsTest) and `$templateRoleId`, `$snapshotOf`, `$deliveredMails` (BulkInvitationsTest)
 - Produces:
   - `UserActionLimit::addressLookup(): self` = `new self('address-lookup', 500, 86400)`; key `address-lookup:{user id}`. Its maximum must stay ≥ `InvitationList::MAX_ROWS`, because a full Check costs 100 at once.
   - The `### Security` heading under `## [Unreleased]` in `CHANGELOG.md`, after `### Removed` (Task 4 and later tasks add their Security lines under it).
 
 **Notes for the implementer:**
 - **Why `attempt()` and not `around()`.** A lookup reveals its answer whether or not the save goes through, so a refused address must cost as much as an accepted one. `attempt()` also counts a refused attempt (it is a burst guard), so a member who hits the limit stays refused for the rest of the window; the tests assert the counter past 500 on purpose.
-- **Order on the profile page.** The charge sits before `validate()` and outside `emailChange()->around()`. Inside the closure, or wrapped by `around()`, a refused address would give the lookup back. The comparison runs after the page's existing `Str::lower()`, so the stored address in other letters is no lookup, and a name-only or language-only save counts nothing. During an impersonation the charge lands on the impersonated user's bucket (the page's `currentUser()`); `RequestEmailChange` refuses the change itself afterwards, and `AvailableEmail` has already answered by then, so counting it is right.
+- **Order on the profile page.** The charge sits before `validate()` and outside `emailChange()->around()`. Inside the closure, or wrapped by `around()`, a refused address would give the lookup back. The comparison runs after the page's existing `Str::lower()`, so the stored address in other letters is no lookup, and a name-only or language-only save counts nothing. During an impersonation the profile refuses a new address before any lookup, and the other pages charge the impersonator's bucket (`Impersonation::impersonator() ?? …`), so impersonating members never multiplies the cap. (Charging the page's `currentUser()` would put an impersonator's lookups on each target's bucket, 500 more per member a day, and `AvailableEmail` would still answer before `RequestEmailChange` refuses the change: a taken address got "This address can't be used.", a free one the impersonation message.)
 - **Order on `users.edit`.** The charge comes before `validate()`, so a save parked for the RL-18 password confirmation counts one lookup, and the save from the restored draft counts another: 2 per real change, well inside 500. Your own and a pending user's address are not editable (`$emailEditable` false) and never count.
 - **The invite page.** The lookup counts after the format check (`'email'` rule, no database) and `organisationToInvite()` (authorisation), before `invite()->around()`; `around()` gives back only the invite slot when `InviteUser` refuses the address.
 - **The bulk page.** The charge is `count($entries)`: every parsed row, an invalid or a repeated one included (simple and conservative). A list refused by the empty-list or `MAX_ROWS` guard looks nothing up and costs nothing. A refused Check keeps `rows` empty, so nothing can be sent from it.
 - **The existing mock test.** 'counts nothing for a list larger than what is left, not even for a moment, so a parallel send still fits (CD-6)' mocks the rate limiter with `shouldNotReceive('increment')` before calling `check()`. The Check's lookup now increments, so the test fails as it stands ("Method increment(<Any Arguments>) … should be called exactly 0 times but called 1 times"). Start the mock after the Check; it still guards the Send it was written for (mutation 17 below).
 - **Reading the rows over HTTP.** Livewire 4 dehydrates an array property as a tuple, so an empty `rows` reads `[[], ['s' => 'arr']]` in the snapshot's `data`.
-- **No lang keys**: the refusal is `UserActionLimit::refuse()`'s "Too many attempts. Try again in :seconds seconds.".
+- **No lang keys**: the refusal is `UserActionLimit::refuse()`'s "Too many attempts. Try again in :seconds seconds.", and the profile's impersonation refusal is `RequestEmailChange`'s existing "The address can't be changed during an impersonation." (`lang/nl.json` and `lang/en.json` hold it; the informal Dutch is already there).
+- **The impersonation tests.** Both start the impersonation over HTTP (`startImpersonatingOverHttp()`), because `Impersonation` reads the session. The second one has a super admin impersonate the organisation admin, so the impersonated user may invite, edit and check; `withSession(['auth.password_confirmed_at' => time()])` after the start lets `users.edit` save without parking (RL-18).
 - **No `git stash`.** For mutation checks copy the file aside with `cp`, change it, run the test, copy it back, then `php artisan view:clear` for the component files.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1585,6 +1669,50 @@ it('counts the address an administrator types on users.edit before the confirmat
     expect($errorsOf(callPageAction($snapshot, 'saveAccount', updates: ['name' => 'Mila de Vries', 'email' => 'MILA@acme.test'])))->toBe([])
         ->and($member->fresh()?->name)->toBe('Mila de Vries')
         ->and(RateLimiter::attempts($lookups))->toBe(501);
+});
+
+it('refuses a new address on the profile during an impersonation before any lookup, and charges nobody (FM-18, CD-2)', function () use ($errorsOf): void {
+    useImpersonationModule(true);
+    Notification::fake();
+    $organisation = onTenant(Organisation::factory()->create(['slug' => 'acme']));
+    User::factory()->for(Organisation::factory())->create(['email' => 'taken@example.com']);
+    $admin = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $admin->unsetRelation('roles');
+    $member = User::factory()->for($organisation)->create(['email' => 'mila@acme.test']);
+    startImpersonatingOverHttp($admin, $member);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+
+    // A taken and a free address get the same answer: an impersonation never changes the address, so neither is
+    // looked up, and impersonating member after member adds no lookups to anyone's day.
+    foreach (['taken@example.com', 'free@example.com'] as $address) {
+        expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['email' => $address])))
+            ->toBe(['email' => [__('The address can\'t be changed during an impersonation.')]]);
+    }
+
+    expect(RateLimiter::attempts(UserActionLimit::addressLookup()->key($member)))->toBe(0)
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($admin)))->toBe(0);
+    Notification::assertNothingSent();
+});
+
+it('charges the impersonator, not the impersonated administrator, for the lookups of the invite, edit and bulk pages (FM-18, CD-2)', function () use ($errorsOf): void {
+    useImpersonationModule(true);
+    Notification::fake();
+    $organisation = onTenant(Organisation::factory()->create(['slug' => 'acme']));
+    $superAdmin = User::factory()->superAdmin()->create();
+    $admin = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $admin->unsetRelation('roles');
+    $member = User::factory()->for($organisation)->create(['email' => 'mila@acme.test']);
+    $templateId = (string) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+    startImpersonatingOverHttp($superAdmin, $admin);
+    withSession(['auth.password_confirmed_at' => time()]);
+
+    expect($errorsOf(callPageAction(pageSnapshot(route('users.invite'), 'pages::users.invite'), 'invite', updates: ['email' => 'new@example.com', 'roles' => [$templateId]])))->toBe([])
+        ->and($errorsOf(callPageAction(pageSnapshot(route('users.edit', ['user' => $member->id]), 'pages::users.edit'), 'saveAccount', updates: ['email' => 'mila.new@acme.test'])))->toBe([])
+        ->and($errorsOf(callPageAction(pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk'), 'check', updates: ['addresses' => 'ada@example.com, bob@example.com', 'roles' => [$templateId]])))->toBe([])
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($superAdmin)))->toBe(4)
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($admin)))->toBe(0);
 });
 ```
 
@@ -1675,12 +1803,12 @@ it('charges a Check one lookup per row after the list checks, and never charges 
 
 Run: `php artisan test --compact tests/Feature/Auth/ActionLimitsTest.php tests/Feature/Invitations/BulkInvitationsTest.php --filter=FM-18`
 
-Expected: FAIL, all five:
-- the three ActionLimitsTest tests with "Call to undefined method App\Support\RateLimits\UserActionLimit::addressLookup()"
+Expected: FAIL, all seven:
+- the five ActionLimitsTest tests with "Call to undefined method App\Support\RateLimits\UserActionLimit::addressLookup()"
 - 'refuses a Check whose rows would pass the address-lookup limit …' with "Failed asserting that two arrays are identical." (no error on `addresses`: today the 100 rows are reviewed)
 - 'charges a Check one lookup per row …' with "Failed asserting that 0 is identical to 4."
 
-Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on behaviour instead: "Failed asserting that 498 is identical to 499." (profile) and "Failed asserting that 499 is identical to 500." (invite page, `users.edit`): no page counts a lookup yet.
+Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on behaviour instead: "Failed asserting that 498 is identical to 499." (profile) and "Failed asserting that 499 is identical to 500." (invite page, `users.edit`): no page counts a lookup yet. 'refuses a new address on the profile during an impersonation …' gets "This address can't be used." for the taken address (`AvailableEmail` answers before `RequestEmailChange` refuses), and 'charges the impersonator …' "Failed asserting that 0 is identical to 4.".
 
 - [ ] **Step 3: `UserActionLimit::addressLookup()`**
 
@@ -1701,7 +1829,7 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
 
 - [ ] **Step 4: The profile page**
 
-`resources/views/pages/settings/profile/profile.php` (`UserActionLimit` and `Str` are already imported): replace the whole `updateProfileInformation()` method, docblock included:
+`resources/views/pages/settings/profile/profile.php` (`UserActionLimit`, `Str` and `Impersonation` are already imported): add `use Illuminate\Validation\ValidationException;` after `use Illuminate\Validation\Rule;`, and replace the whole `updateProfileInformation()` method, docblock included:
 
 ```php
     /**
@@ -1712,12 +1840,19 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
      * so a refusal saves nothing, and given back when any part of the save throws (UserActionLimit::around()).
      * A typed address other than the stored one is looked up by AvailableEmail, so it first counts under
      * UserActionLimit::addressLookup() (FM-18, CD-2), outside around(): a refused address is never given back.
+     * During an impersonation a new address is refused before any lookup: RequestEmailChange refuses it anyway, and
+     * AvailableEmail's answer would tell a taken address from a free one.
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
         $user = $this->currentUser();
 
         $this->email = Str::lower($this->email);
+
+        // FM-18: an impersonation never changes the address (RequestEmailChange refuses it): look nothing up.
+        if ($this->email !== $user->email && Impersonation::isTarget($user)) {
+            throw ValidationException::withMessages(['email' => [__('The address can\'t be changed during an impersonation.')]]);
+        }
 
         if ($this->email !== $user->email) {
             UserActionLimit::addressLookup()->attempt($user, 'email');
@@ -1771,7 +1906,7 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
 
 - [ ] **Step 5: The invite page**
 
-`resources/views/pages/users/invite/invite.php` (`UserActionLimit` is already imported): replace the whole `invite()` method:
+`resources/views/pages/users/invite/invite.php` (`UserActionLimit` is already imported): add `use App\Tenancy\Auth\Impersonation;` after `use App\Support\RateLimits\UserActionLimit;`, and replace the whole `invite()` method:
 
 ```php
     public function invite(InviteUser $inviteUser): void
@@ -1788,8 +1923,8 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
         $organisation = $this->organisationToInvite();
 
         // FM-18: InviteUser looks the address up, so the lookup counts first and is never given back, also when the
-        // invitation is refused (CD-2).
-        UserActionLimit::addressLookup()->attempt($this->currentUser(), 'email');
+        // invitation is refused (CD-2). The person behind the session pays: during an impersonation the impersonator.
+        UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $this->currentUser(), 'email');
 
         // CD-3: a per-user limit on sent invitations, here and not in InviteUser, so a bulk caller counts its own way.
         // The slot is reserved before the send and given back when InviteUser refuses (DEC-27 (2)).
@@ -1808,7 +1943,7 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
 
 - [ ] **Step 6: `users.edit`**
 
-`resources/views/pages/users/edit/edit.php` (`UserActionLimit` is already imported): replace the whole `saveAccount()` method, docblock included:
+`resources/views/pages/users/edit/edit.php` (`UserActionLimit` is already imported): add `use App\Tenancy\Auth\Impersonation;` after `use App\Support\RateLimits\UserActionLimit;`, and replace the whole `saveAccount()` method, docblock included:
 
 ```php
     /**
@@ -1817,7 +1952,8 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
      * A new address mails the old one, so it is limited per administrator (FM-19): the slot is reserved after the
      * confirmation and before anything is saved, so a refusal saves nothing, and given back when the save throws
      * (UserActionLimit::around()). A save that keeps the address counts nothing. A new address is first counted
-     * under UserActionLimit::addressLookup() (FM-18, CD-2), before the validation looks it up.
+     * under UserActionLimit::addressLookup() (FM-18, CD-2), before the validation looks it up; during an
+     * impersonation the impersonator's bucket pays.
      */
     public function saveAccount(UpdateUser $updateUser, UpdateUserStatus $updateUserStatus): void
     {
@@ -1830,8 +1966,9 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
         $this->email = Str::lower(trim($this->email));
 
         // FM-18: AvailableEmail looks a new address up, so the lookup counts first and is never given back (CD-2).
+        // The person behind the session pays: during an impersonation the impersonator.
         if ($emailEditable && $this->email !== $target->email) {
-            UserActionLimit::addressLookup()->attempt($actor, 'email');
+            UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $actor, 'email');
         }
 
         $this->validate([
@@ -1882,7 +2019,7 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
 
 - [ ] **Step 7: The bulk page's Check**
 
-`resources/views/pages/invitations/bulk/bulk.php` (`UserActionLimit` is already imported): replace the whole `check()` method, docblock included. `send()` stays as it is:
+`resources/views/pages/invitations/bulk/bulk.php` (`UserActionLimit` is already imported): add `use App\Tenancy\Auth\Impersonation;` after `use App\Support\RateLimits\UserActionLimit;`, and replace the whole `check()` method, docblock included. `send()` stays as it is:
 
 ```php
     /** Parses the input and reviews every row, one address lookup each (FM-18); nothing is written or sent. */
@@ -1911,8 +2048,9 @@ Once Step 3 has added the factory alone, the ActionLimitsTest tests fail on beha
         }
 
         // FM-18: review() looks every row up with InviteUser's address rules, so each row counts, an invalid or a
-        // repeated one included, and is never given back (CD-2). send() re-reviews only these #[Locked] rows.
-        UserActionLimit::addressLookup()->attempt($this->currentUser(), 'addresses', count($entries));
+        // repeated one included, and is never given back (CD-2); during an impersonation the impersonator pays.
+        // send() re-reviews only these #[Locked] rows.
+        UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $this->currentUser(), 'addresses', count($entries));
 
         $this->rows = $this->review($entries, $organisation, $inviteUser);
     }
@@ -1926,7 +2064,7 @@ Expected: PASS. The existing tests stay far below 500 lookups. Without the Step 
 
 - [ ] **Step 9: Verify by mutation**
 
-For each mutation: copy the file aside with `cp`, change it, run `php artisan view:clear`, then `php artisan test --compact tests/Feature/Auth/ActionLimitsTest.php tests/Feature/Invitations/BulkInvitationsTest.php --filter=FM-18` (mutation 17: `--filter="not even for a moment"`), confirm the named test fails, copy the original back, run `php artisan view:clear` again and confirm the file passes (never `git stash`). Name each mutation and its result in the task report.
+For each mutation: copy the file aside with `cp`, change it, run `php artisan view:clear`, then `php artisan test --compact tests/Feature/Auth/ActionLimitsTest.php tests/Feature/Invitations/BulkInvitationsTest.php --filter=FM-18` (mutation 17: `--filter="not even for a moment"`; rows 18–21 were run in the plan review's prototype with the results shown), confirm the named test fails, copy the original back, run `php artisan view:clear` again and confirm the file passes (never `git stash`). Name each mutation and its result in the task report.
 
 | # | mutation | the test that must fail |
 |---|---|---|
@@ -1947,6 +2085,10 @@ For each mutation: copy the file aside with `cp`, change it, run `php artisan vi
 | 15 | `addressLookup()`: `new self('address-lookup', 500, 3600)` | all three ActionLimitsTest FM-18 tests and 'refuses a Check whose rows would pass …' (the seconds in the message) |
 | 16 | `addressLookup()`: `new self('address-lookup', 99, 86400)` | the three ActionLimitsTest FM-18 tests ("A cost of 498 does not fit the address-lookup limit of 99.") |
 | 17 | bulk `send()`: delete `$limit->ensureAvailable($actor, 'addresses', count($ready));` | 'counts nothing for a list larger than what is left, not even for a moment, …' (still guards the Send after its change: "Component has no errors.") |
+| 18 | profile: delete the `if (… && Impersonation::isTarget($user)) { throw … }` block | 'refuses a new address on the profile during an impersonation …' (the taken address gets "This address can't be used.") |
+| 19 | invite: `attempt($this->currentUser(), 'email')` (drop `Impersonation::impersonator() ?? `) | 'charges the impersonator, not the impersonated administrator, …' ("3 is identical to 4") |
+| 20 | `users.edit`: `attempt($actor, 'email')` (drop `Impersonation::impersonator() ?? `) | 'charges the impersonator, …' ("3 is identical to 4") |
+| 21 | bulk: `attempt($this->currentUser(), 'addresses', count($entries))` (drop `Impersonation::impersonator() ?? `) | 'charges the impersonator, …' ("2 is identical to 4") |
 
 - [ ] **Step 10: The kit guideline and the README**
 
@@ -1956,7 +2098,7 @@ For each mutation: copy the file aside with `cp`, change it, run `php artisan vi
 - After the sentence "The organisation wizard's first-admin invitation counts under `invite()` (`around()`, field `adminEmail`)." insert:
 
 ```markdown
-`addressLookup()` (500/86 400 s, FM-18) counts every `AvailableEmail` check of a typed address with `attempt()` before it runs and never gives it back: the profile's email change and `users.edit` only when the typed address differs from the stored one, the invite page before `invite()`'s `around()`, and the bulk page's *Check* one per row after the list's own checks (*Send* re-reviews only the checked rows and is not charged); its maximum never drops below `InvitationList::MAX_ROWS`.
+`addressLookup()` (500/86 400 s, FM-18) counts every `AvailableEmail` check of a typed address with `attempt()` before it runs and never gives it back: the profile's email change and `users.edit` only when the typed address differs from the stored one, the invite page before `invite()`'s `around()`, and the bulk page's *Check* one per row after the list's own checks (*Send* re-reviews only the checked rows and is not charged); during an impersonation the impersonator's bucket pays (`Impersonation::impersonator() ?? …`), and the profile refuses a new address before any lookup; its maximum never drops below `InvitationList::MAX_ROWS`.
 ```
 
 Then regenerate the git-ignored `AGENTS.md` with `php artisan boost:update --no-discover --no-interaction` and check it shows the new sentence (`grep -c 'addressLookup' AGENTS.md` prints 1). The command changes no tracked file.
@@ -1964,7 +2106,7 @@ Then regenerate the git-ignored `AGENTS.md` with `php artisan boost:update --no-
 `README.md`, › Accounts and security: replace the whole **Limits** bullet (the line that starts with "- **Limits** (per user).") with these two bullets. The sign-in sentences move into their own bullet, because the sign-in limits count per address and IP address, not per user (D80):
 
 ```markdown
-- **Limits** (per user). Requesting an email change: 3 per 10 minutes. Changing the password, confirming two-factor sign-in and *Log out other devices*: 5 per minute, every attempt counts. Inviting and reminding: 10 per minute each (the invite limit also covers the first administrator's invitation from the organisation wizard), and one reminder per invitation per 10 minutes. Bulk invitations: 100 per hour per administrator. An administrator changing another user's address: 10 per hour. Exporting the activity log: 5 per minute. Saving a profile photo: 10 per 10 minutes, every attempt counts. Uploading a file (the photo or a bulk invitation list): 10 per minute and 60 per hour (`livewire-upload`). The two-factor management routes and removing a passkey: 10 per minute (`account-security`). Looking up whether an address can be used: 500 addresses a day, every lookup counts, also one that is refused: a new address on the profile page or on an administrator's *Edit user*, the address on *Invite user*, and every row of a bulk invitation's *Check the list* (sending a checked list adds nothing). Above a limit the form says *Too many attempts. Try again in … seconds.*
+- **Limits** (per user). Requesting an email change: 3 per 10 minutes. Changing the password, confirming two-factor sign-in and *Log out other devices*: 5 per minute, every attempt counts. Inviting and reminding: 10 per minute each (the invite limit also covers the first administrator's invitation from the organisation wizard), and one reminder per invitation per 10 minutes. Bulk invitations: 100 per hour per administrator. An administrator changing another user's address: 10 per hour. Exporting the activity log: 5 per minute. Saving a profile photo: 10 per 10 minutes, every attempt counts. Uploading a file (the photo or a bulk invitation list): 10 per minute and 60 per hour (`livewire-upload`). The two-factor management routes and removing a passkey: 10 per minute (`account-security`). Looking up whether an address can be used: 500 addresses a day, every lookup counts, also one that is refused: a new address on the profile page or on an administrator's *Edit user*, the address on *Invite user*, and every row of a bulk invitation's *Check the list* (sending a checked list adds nothing); during an impersonation the lookups count for the impersonator, and the profile page refuses a new address before it looks anything up. Above a limit the form says *Too many attempts. Try again in … seconds.*
 - **Sign-in limits** (per address and IP address). Five failed sign-ins a minute per address and IP address, and 20 failed sign-ins a minute per IP address. A successful sign-in, also with a second factor or a passkey, clears that address's failed attempts from that IP address. A throttled sign-in returns to the login page.
 ```
 
@@ -1974,7 +2116,7 @@ Then regenerate the git-ignored `AGENTS.md` with `php artisan boost:update --no-
 
 ```markdown
 ### Security
-- Looking up whether an address can be used is limited to 500 addresses a day per user, every lookup counted, refused ones too: the profile's email change, *Invite user*, an administrator's address change and each row of the bulk invitation page's *Check the list*. Before, a member could test without limit which addresses have an account (FM-18).
+- Looking up whether an address can be used is limited to 500 addresses a day per user, every lookup counted, refused ones too: the profile's email change, *Invite user*, an administrator's address change and each row of the bulk invitation page's *Check the list*; during an impersonation the impersonator's lookups count, and the profile refuses a new address before looking it up. Before, a member could test without limit which addresses have an account (FM-18).
 ```
 
 No lang keys.
@@ -3159,7 +3301,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 7: Uploads, bulk invitations and photos (§4.9, §6.6, §4.5; CD-4; E5, E11, E12, E14, E16, E55, E56, E59)
 
 DEC-35's Consequence left Livewire's temporary uploads without a scheduled clean-up, and M7d's reviews left five small faults on the bulk page and the photo actions. This task closes them:
-- **E5 (CD-4):** Livewire deletes a temporary upload older than 24 hours only when someone uploads again (`WithFileUploads::cleanupOldUploads()`), so a photo with its EXIF and GPS data, or a CSV of addresses, left on an abandoned page stays on disk until the next upload. A new `App\Support\Uploads\StaleTemporaryUploads::removeStale()` mirrors Livewire's sweep (same disk, same directory, same 24 hours, nothing on S3), and the ops schedule runs it as `livewire-tmp-cleanup`, hourly at :45 on every server.
+- **E5 (CD-4):** Livewire deletes a temporary upload older than 24 hours only when someone uploads again (`WithFileUploads::cleanupOldUploads()`), so a photo with its EXIF and GPS data, or a CSV of addresses, left on an abandoned page stays on disk until the next upload. A new `App\Support\Uploads\StaleTemporaryUploads::removeStale()` mirrors Livewire's sweep (same disk, same directory, same 24 hours, nothing on S3, and nothing while `livewire.temporary_file_upload.cleanup` is false, Livewire's own opt-out), and the ops schedule runs it as `livewire-tmp-cleanup`, hourly at :45 on every server.
 - **E11:** on a central host, *Check* without an organisation and without a role says "Choose at least one role." instead of "Choose an organisation first.": `check()` and `send()` resolve the organisation before they validate the batch.
 - **E12, E16:** `send()` catches only `ValidationException` per row, so a queue push that fails or an authorisation lost halfway answers 500 and shows nothing of what was already sent. A `catch (Throwable)` around the loop reports the failure, skips the failed row and the rows after it with "Not sent: something went wrong." and still sets the summary; the `finally` release (E16) gives the unsent rows their attempts back.
 - **E14:** the bulk page's `<flux:error name="organisation" />` names no property and can never show anything; the select already shows `organisationId`'s error. The line goes.
@@ -3193,7 +3335,7 @@ DEC-35's Consequence left Livewire's temporary uploads without a scheduled clean
 - Consumes:
   - Task 3's `bulk.php`: `check()` keeps its HEAD opening (`$this->summary = null; $this->rows = []; $this->validateBatch(); $this->validate([...]); … $organisation = $this->organisationToInvite();`) and adds the FM-18 `addressLookup()` charge after the `MAX_ROWS` guard; `send()` is unchanged by Task 3. Task 3 also replaces the opening of 'counts nothing for a list larger than what is left, …' in `BulkInvitationsTest.php`; this task touches neither.
   - Task 3's `### Security` heading under `## [Unreleased]` in `CHANGELOG.md` (after `### Removed`), with the lines Tasks 3–6 put under it.
-  - Livewire 4.4.7's `Livewire\Features\SupportFileUploads\FileUploadConfiguration::isUsingS3()`, `::storage()`, `::path(string $path = '')` and `::directory()` (not public API; under test `storage()` is the faked `tmp-for-tests` disk, shared by every test in the process).
+  - Livewire 4.4.7's `Livewire\Features\SupportFileUploads\FileUploadConfiguration::isUsingS3()`, `::shouldCleanupOldUploads()` (`livewire.temporary_file_upload.cleanup`, default true; `WithFileUploads` sweeps only while it is true), `::storage()`, `::path(string $path = '')` and `::directory()` (not public API; under test `storage()` is the faked `tmp-for-tests` disk, shared by every test in the process).
   - `App\Actions\Invitations\InviteUser::handle(User $actor, Organisation $organisation, string $email, array $roleIds, Locale $locale): Invitation` (final, so the test makes it fail through a `User::creating` listener, as the existing raced test does)
   - `asMember()`, `asOrgAdmin()`, `asSuperAdmin()`, `onAdminHost()`, `onTenant()`, `recordedActivity()` (`tests/Pest.php`); the file-local `$templateRoleId`, `$deliveredMails` (BulkInvitationsTest) and `$orientedJpeg`, `$memberWithPhoto` (AvatarTest)
 - Produces:
@@ -3286,6 +3428,14 @@ it('leaves an S3 temporary disk to its lifecycle rule (E5, CD-4)', function () u
 
     expect(app(StaleTemporaryUploads::class)->removeStale())->toBe(0)
         ->and($disk->exists(FileUploadConfiguration::path('stale.csv')))->toBeTrue();
+});
+
+it('leaves the uploads alone while Livewire\'s clean-up is off (E5)', function () use ($upload): void {
+    config(['livewire.temporary_file_upload.cleanup' => false]);
+    $upload(FileUploadConfiguration::path('stale.csv'), 25);
+
+    expect(app(StaleTemporaryUploads::class)->removeStale())->toBe(0)
+        ->and(FileUploadConfiguration::storage()->exists(FileUploadConfiguration::path('stale.csv')))->toBeTrue();
 });
 
 it('skips an upload that is gone before its age is read, as a parallel clean-up leaves it (E5)', function (): void {
@@ -3404,8 +3554,10 @@ use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
  * Livewire's own threshold, so no open page loses its upload earlier than it would today.
  *
  * It mirrors cleanupOldUploads() of livewire/livewire 4.4 (FileUploadConfiguration is not public API: check this
- * class when Livewire changes it): the configured temporary disk and directory, and nothing on an S3 disk, whose
- * clean-up is a bucket lifecycle rule (php artisan livewire:configure-s3-upload-cleanup).
+ * class when Livewire changes it): the configured temporary disk and directory, nothing on an S3 disk, whose
+ * clean-up is a bucket lifecycle rule (php artisan livewire:configure-s3-upload-cleanup), and nothing while
+ * Livewire's own clean-up is switched off (livewire.temporary_file_upload.cleanup), as for an app that processes the
+ * temporary files later.
  */
 final readonly class StaleTemporaryUploads
 {
@@ -3415,7 +3567,7 @@ final readonly class StaleTemporaryUploads
     /** Removes the temporary uploads older than STALE_AFTER_HOURS; returns how many. */
     public function removeStale(): int
     {
-        if (FileUploadConfiguration::isUsingS3()) {
+        if (FileUploadConfiguration::isUsingS3() || ! FileUploadConfiguration::shouldCleanupOldUploads()) {
             return 0;
         }
 
@@ -3946,6 +4098,7 @@ For each mutation: copy the file aside with `cp`, change it (for a file under `r
 | 14 | `RemoveAvatar.php`: `return false;` → `return true;` | › 'says nothing and tells the user menu nothing …', › 'tells whether it removed a photo' |
 | 15 | `UpdateAvatar.php`: `$disk->put($path, $encoded)` → `$disk->put($path, (string) $file->get())` (the upload stored as sent) | › 'drops the photo's metadata, also without ext-exif' (the one metadata test without an ext-exif skip), and the 512 × 512 test |
 | 16 | `profile.php`: delete the `if (! $removed) { return; }` block | › 'says nothing and tells the user menu nothing …' |
+| 17 | `StaleTemporaryUploads.php`: drop `\|\| ! FileUploadConfiguration::shouldCleanupOldUploads()` | `StaleTemporaryUploadsTest` › 'leaves the uploads alone while Livewire's clean-up is off' ("1 is identical to 0"; run in the plan review's prototype) |
 
 Not mutation-covered by design: `send()`'s new order (unobservable, see the notes) and the deleted Blade line (E14, dead markup).
 
@@ -3966,14 +4119,14 @@ Every job but `backup-temp-cleanup` and `livewire-tmp-cleanup` runs on one serve
 and add this row to the table directly after the `backup-temp-cleanup` row:
 
 ```markdown
-| `livewire-tmp-cleanup` | every hour at :45 | always (removes Livewire's temporary uploads older than 24 hours, such as a photo or a list of addresses left on an abandoned page; on an S3 temporary-upload disk it does nothing: run `php artisan livewire:configure-s3-upload-cleanup` once, so the bucket expires them) |
+| `livewire-tmp-cleanup` | every hour at :45 | always (removes Livewire's temporary uploads older than 24 hours, such as a photo or a list of addresses left on an abandoned page; on an S3 temporary-upload disk it does nothing: run `php artisan livewire:configure-s3-upload-cleanup` once, so the bucket expires them; and nothing while `livewire.temporary_file_upload.cleanup` is false) |
 ```
 
 `CHANGELOG.md`, under `## [Unreleased]`:
 - `### Added`, directly after the line that starts with `- Livewire's temporary uploads take one file`:
 
 ```markdown
-- An hourly clean-up (`livewire-tmp-cleanup`, at :45, on every server) removes Livewire's temporary uploads older than 24 hours, so a photo with its metadata or a list of addresses left on an abandoned page no longer waits for the next upload; on an S3 temporary-upload disk it does nothing (`php artisan livewire:configure-s3-upload-cleanup` sets the bucket's lifecycle rule instead).
+- An hourly clean-up (`livewire-tmp-cleanup`, at :45, on every server) removes Livewire's temporary uploads older than 24 hours, so a photo with its metadata or a list of addresses left on an abandoned page no longer waits for the next upload; on an S3 temporary-upload disk it does nothing (`php artisan livewire:configure-s3-upload-cleanup` sets the bucket's lifecycle rule instead), and neither does it while Livewire's own clean-up is switched off (`livewire.temporary_file_upload.cleanup`).
 ```
 
 - `### Fixed`, as its last two lines (after any Tasks 3–6 added):
@@ -5368,7 +5521,7 @@ Tests only. DEC-28 and DEC-29 left nine protections that work today but that no 
 - **D13 (M7c T2 #1):** the trusted-proxy case of `PasswordResetHostTest` now proves the request saw the forwarded port, so "APP_URL beats a trusted proxy" is really exercised.
 - **D16 (M7c T2 #4):** the same file resets Symfony's static trusted proxies after each test, which the proxy case left at `127.0.0.1` for every later request built outside the middleware.
 
-Re-verification on `5a621c3`: all nine are open as triaged. Every mutation in Step 7 was run in a prototype: each fails the new test and leaves the file's other tests green (mutation 6 aside, see there). D16's leak was confirmed: without the reset, a request built in a later test of the file still trusts `127.0.0.1`.
+Re-verification on `5a621c3`: all nine are open as triaged. Every mutation in Step 7 was run in a prototype: each fails the new test and leaves the file's other tests green (mutations 1 and 6 aside, see there). D16's leak was confirmed: without the reset, a request built in a later test of the file still trusts `127.0.0.1`.
 
 **Files:**
 - Test:
@@ -5673,11 +5826,11 @@ Expected: PASS (`PasskeyTest` turns the passkeys module on in its `beforeEach`, 
 
 - [ ] **Step 7: Verify by mutation**
 
-For each mutation: copy the file aside with `cp`, change it, run the named test file with `php artisan test --compact <file>`, confirm the named tests fail, copy the original back and confirm the file passes (never `git stash`). Each mutation leaves the named file's other tests green (mutation 6 notes its one exception), so the new test is what catches it. Name each mutation and its result in the task report.
+For each mutation: copy the file aside with `cp`, change it, run the named test file with `php artisan test --compact <file>`, confirm the named tests fail, copy the original back and confirm the file passes (never `git stash`). Each mutation leaves the named file's other tests green (mutations 1 and 6 note their exceptions), so the new test is what catches it. Name each mutation and its result in the task report.
 
 | # | Item | Mutation | Must fail |
 |---|---|---|---|
-| 1 | A20 | `FortifyServiceProvider::configureRateLimiting()`: drop `->after(self::failedAttempt($request))` from `Limit::perMinute(5)->by('two-factor:'.$challenge)` | LoginThrottleTest 'does not count successful two-factor sign-ins (FU3-16)' (429 on the sixth code) |
+| 1 | A20 | `FortifyServiceProvider::configureRateLimiting()`: drop `->after(self::failedAttempt($request))` from `Limit::perMinute(5)->by('two-factor:'.$challenge)` | LoginThrottleTest 'does not count successful two-factor sign-ins (FU3-16)' (429 on the sixth code); the existing 'bounds a burst of parallel two-factor guesses for one challenge' also fails (5 admitted instead of 10, because without after() the 5/min limit counts every request on entry), which is expected |
 | 2 | A20 | `FortifyServiceProvider::passkeysLimiter()`: drop `->after(self::failedAttempt($request))` from the per-user/per-IP limit | PasskeyTest 'does not count successful passkey sign-ins …' and '… confirmations …' (429) |
 | 3 | A21 | `TenancyServiceProvider::boot()`: replace `&& app(HostLoginRule::class)->allows($user)` in `Passkeys::authorizeLoginUsing()` with `&& ! $user->trashed() && $user->isActive() && ($user->belongsToCurrentHost() \|\| \App\Tenancy\Facades\Tenant::check())` (any organisation host) | PasskeyTest 'refuses a passkey on the host of another organisation …' (200 instead of 422); the apex test stays green |
 | 4 | A22 | `UnscopedTwoFactorLoginRequest::allowedChallengedUser()`: replace `app(HostLoginRule::class)->allows($user)` with `! $user->trashed() && $user->isActive()` | HostScopedLoginTest 'refuses a two-factor challenge for a super admin demoted before the code …' (redirect to the dashboard) |
@@ -6815,7 +6968,7 @@ What changes:
 
 Background for the implementer:
 - **Why `php -r` builds `COMPOSER_AUTH`.** `getenv()` inside PHP reads the key, so it never appears in a command line (a `jq --arg` or a `"$FLUX_LICENSE_KEY"` argument would put it in argv), and `json_encode` escapes any quote or backslash in it. PHP is on PATH in every step that needs it (after *Setup PHP*). The prototype proved, in a temporary `COMPOSER_HOME` with no `auth.json`, that `composer config http-basic.composer.fluxui.dev` prints the credentials from `COMPOSER_AUTH` (exit 0) and fails without it ("is not defined", exit 1), and that `Process::env(Toolchain::environment())` passes `COMPOSER_AUTH` through to the child (Symfony's Process inherits the parent environment; `environment()` only removes the project's `.env` keys). Nothing writes an `auth.json`, so no later step can read the key.
-- **Residual exposure, accepted under CD-9.** On the postgres-pro row with secrets present, `skv:install`'s own children (`npm ci` among them) inherit `COMPOSER_AUTH` for that one step, because its Claude step needs Composer to reach the fluxui repository. Secrets reach only trusted events: fork pull requests and Dependabot pull requests get no repository secrets, so `FLUX_PRO_SECRETS` is false there.
+- **Residual exposure, accepted under CD-9.** On the postgres-pro row with both secrets present (`FLUX_PRO_SECRETS == 'true'`, the same condition as *Enable Flux Pro*; with only one secret configured the two steps map empty values, because Flux Pro was never installed), `skv:install`'s own children (`npm ci` among them) inherit `COMPOSER_AUTH` for that one step, because its Claude step needs Composer to reach the fluxui repository. Secrets reach only trusted events: fork pull requests and Dependabot pull requests get no repository secrets, so `FLUX_PRO_SECRETS` is false there.
 - **Why a symlink in `/usr/local/bin`.** `BackupRunTest` finds `pg_dump` through `new Toolchain(storage_path('framework/testing/home'))`, whose PATH is fixed (`Toolchain::SYSTEM_PATH`), so `GITHUB_PATH` does not reach it; `PostgresBinaries::find()` reads `PG_DUMP_BINARY_PATH` from the sandbox `.env` file, not from the process. The runner's `/usr/bin/pg_dump` is Debian's `pg_wrapper`, which chooses the runner's own older PostgreSQL cluster's version. `/usr/local/bin` comes before `/usr/bin` on the toolchain PATH, and the Herd directories and the sandbox `~/.local/bin` do not exist on Linux; a `CiWorkflowTest` case pins that order. `ChecksTest`'s two "pg_dump is on the system PATH" skips already skip on the runner (`/usr/bin/pg_dump` exists), so the link changes nothing there.
 - **`REQUIRE_POSTGRES` reaches Pest** through the process environment (`getenv()`), in parallel workers too. A required run calls no probe in the skip closure: it reaches the test body, which fails on the PDO connection (`WizardPageTest`, the browser test) or on the new explicit `expect($pgDump)->not->toBeNull(...)` (`BackupRunTest`). Only the value `true` counts.
 - **Symfony YAML** (`symfony/yaml`, already installed through `laravel/roster`; `HerdManifestStepTest` uses it) reads `on:` as the string key `on`, as GitHub does, and `DB_PASSWORD: ''` as an empty string. A workflow it cannot parse fails every test that reads it; the prototype also parsed the file with PyYAML and Ruby's Psych.
@@ -7007,6 +7160,7 @@ Replace `tests/Feature/Tooling/CiWorkflowTest.php` with the file below. It keeps
 - 'runs the free job with the passkeys module off (§6.8)' is strengthened and retitled 'runs the free job with the passkeys module off and every other row with it on (§6.8, A80)': it reads the parsed matrix row by row, where the old regex also matched php85's line.
 - 'enables Flux Pro in CI only when the secrets exist, before any view compiles (§6.7, §8)' becomes '…, after the audit and before any view compiles (§6.7, §8, CD-9)': it pins the step's environment, its exact script and the step order instead of `composer config --global`.
 - 'maps the Flux Pro credentials of the e2e job in its Flux Pro step alone (§6.7, §8)' becomes 'maps the e2e job's Flux credentials only on the postgres-pro row (§6.7, §8, CD-9)': the e2e job now maps them in three steps, so the old title is false.
+- 'quotes the names in the cleanup commands the local e2e script prints (RL-6, g2-05)' also pins the `dropdb` line a `--db=pgsql` run prints for the two databases `skv:install` created (plan review K9).
 - New: the kit guard (CD-11, run in sandbox repositories, six cases), the hardening test (F35), PostgreSQL with Herd's credentials and `REQUIRE_POSTGRES` (CD-10), the PostgreSQL 18 client (F17), the credential steps and the `COMPOSER_AUTH` lines (CD-9, the latter run for real), the unconditional phase-1 diffs (g1-24), the `boost:update` count after `skv:install` (F23, run for real, six cases), the path filter (F25, against real paths), and the local script's variants and refusals (F56).
 
 ```php
@@ -7475,13 +7629,14 @@ it('maps the e2e job\'s Flux credentials only on the postgres-pro row (§6.7, §
         ->and($position('e2e', 'Enable Flux Pro'))->toBeLessThan($position('e2e', 'skv:install'));
 
     // skv:install's composer require and skv:doctor's credentials check talk to the fluxui repository; the default
-    // rows prove the credential-free path, so they get empty values (§8).
+    // rows prove the credential-free path, so they get empty values (§8), and so does a run without both secrets,
+    // where Enable Flux Pro never ran and nothing needs the key (plan review K8).
     foreach (['skv:install', 'skv:doctor'] as $name) {
         $credentialed = $step('e2e', $name);
 
         expect($credentialed['env'] ?? null)->toBe([
-            'FLUX_USERNAME' => "\${{ matrix.name == 'postgres-pro' && secrets.FLUX_USERNAME || '' }}",
-            'FLUX_LICENSE_KEY' => "\${{ matrix.name == 'postgres-pro' && secrets.FLUX_LICENSE_KEY || '' }}",
+            'FLUX_USERNAME' => "\${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}",
+            'FLUX_LICENSE_KEY' => "\${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}",
         ])->and($credentialed['run'])->toStartWith('if [ -n "$FLUX_LICENSE_KEY" ]; then');
     }
 });
@@ -7613,6 +7768,8 @@ it('quotes the names in the cleanup commands the local e2e script prints (RL-6, 
         ->toContain("printf '  herd unisolate %q\\n' \"--site=\$NAME\"")
         ->toContain("printf '  herd unlink %q\\n' \"\$NAME\"")
         ->toContain("printf '  rm -rf %q\\n' \"\$TARGET\"")
+        // --db=pgsql leaves the two databases skv:install created; the cleanup names them too (plan review K9).
+        ->toContain("printf '  dropdb -h 127.0.0.1 -U root --if-exists %q\\n'")
         // An echo would print the name as it is, so a folder with a space or a quote gives a broken command.
         ->and(preg_match('/echo "  (herd|rm) /', $cleanup))->toBe(0);
 });
@@ -7654,7 +7811,7 @@ it('never hides a failed command substitution behind export or local in the shel
 
 Run: `php artisan test --compact tests/Feature/Tooling/CiWorkflowTest.php`
 
-Expected: FAIL, 20 of 40 (20 pass: the kept tests, the hardening test and the passkeys test, which are weak-test items proven by mutation in Step 11, and 'builds COMPOSER_AUTH…', which runs the pinned lines). The failures:
+Expected: FAIL, 21 of 40 (19 pass: the kept tests but 'quotes the names in the cleanup commands…', the hardening test and the passkeys test, which are weak-test items proven by mutation in Step 11, and 'builds COMPOSER_AUTH…', which runs the pinned lines). The failures:
 - 'refuses a committed Flux Pro in the kit's own repository only' ×6: `check has no single step named [Kit commits no Flux Pro]`
 - 'runs the PostgreSQL tests in CI as Herd's root user…': the service env is `postgres`/`postgres`
 - 'installs a PostgreSQL 18 pg_dump…': `check has no single step named [PostgreSQL 18 client]`
@@ -7665,6 +7822,7 @@ Expected: FAIL, 20 of 40 (20 pass: the kept tests, the hardening test and the pa
 - 'counts boost:update again after skv:install…' ×6: `e2e has no single step named [boost:update after skv:install]`
 - 'runs phase1 and e2e on pull requests that touch what they install': `composer.lock`, `package.json`, … are not matched
 - 'installs the e2e job's variants with the local script…': `Unknown option: --flags=--pest --bogus` instead of the installer-flag message
+- 'quotes the names in the cleanup commands the local e2e script prints': the cleanup prints no `dropdb` line for a `--db=pgsql` run
 
 - [ ] **Step 8: Replace the workflow**
 
@@ -8183,13 +8341,14 @@ jobs:
           php artisan skv:flux-pro --no-interaction
 
       # CD-9: with Flux Pro the app lists the fluxui repository, so the Claude step's composer require needs the
-      # credentials too; the other rows map empty values and run without them.
+      # credentials too; the other rows, and a run without both secrets (Flux Pro was never enabled), map empty values
+      # and run without them.
       - name: skv:install
         if: steps.changes.outputs.run == 'true'
         working-directory: ${{ runner.temp }}/tmp
         env:
-          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && secrets.FLUX_USERNAME || '' }}
-          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && secrets.FLUX_LICENSE_KEY || '' }}
+          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}
+          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}
         run: |
           if [ -n "$FLUX_LICENSE_KEY" ]; then
             COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
@@ -8226,8 +8385,8 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: ${{ runner.temp }}/tmp
         env:
-          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && secrets.FLUX_USERNAME || '' }}
-          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && secrets.FLUX_LICENSE_KEY || '' }}
+          FLUX_USERNAME: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_USERNAME || '' }}
+          FLUX_LICENSE_KEY: ${{ matrix.name == 'postgres-pro' && env.FLUX_PRO_SECRETS == 'true' && secrets.FLUX_LICENSE_KEY || '' }}
         run: |
           if [ -n "$FLUX_LICENSE_KEY" ]; then
             COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
@@ -8594,6 +8753,15 @@ if [ "$ENTRY" = herd ]; then
 fi
 printf '  rm -rf %q\n' "$TARGET"
 printf '  rm -rf %q\n' "$WORK"
+# --db=pgsql: skv:install's DatabaseStep created <name> and <name>_test on this machine's PostgreSQL. Read before the
+# printed rm -rf runs (this script deletes nothing, so $TARGET/.env is still there).
+if [ "$ENTRY" = herd ] && [ "$DB" = pgsql ] && [ "$PHASE1_ONLY" = false ]; then
+    DB_NAME="$(grep -E '^DB_DATABASE=' "$TARGET/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    if [ -n "$DB_NAME" ]; then
+        echo '  # skv:install created these PostgreSQL databases (dropdb is in the Herd PostgreSQL service bin directory):'
+        printf '  dropdb -h 127.0.0.1 -U root --if-exists %q\n' "$DB_NAME" "${DB_NAME}_test"
+    fi
+fi
 
 exit "$FAILED"
 ```
@@ -8619,7 +8787,7 @@ Then the green path of CD-10 on this machine (Herd's PostgreSQL 18 and its trust
 
 - [ ] **Step 11: Verify by mutation**
 
-Copy the file aside (`cp <file> <scratchpad>/<name>.bak`), make the change, run the named test, expect it to fail, then `cp` it back. Never `git stash`. All 19 ran in the prototype with the stated result.
+Copy the file aside (`cp <file> <scratchpad>/<name>.bak`), make the change, run the named test, expect it to fail, then `cp` it back. Never `git stash`. Rows 1–19 ran in the prototype with the stated result; rows 20 and 21 come from the plan review (K8, K9) and were not prototyped.
 
 | # | Mutation | Test that must fail |
 |---|---|---|
@@ -8642,6 +8810,8 @@ Copy the file aside (`cp <file> <scratchpad>/<name>.bak`), make the change, run 
 | 17 | `e2e-local.sh`: drop the `elif [ "$VARIANT" = true ]` branch | 'installs the e2e job's variants with the local script…' (exit 1 "already exists" instead of 2; nothing is installed) |
 | 18 | `e2e-local.sh`: `$a["modules"] = ["passkeys", "impersonation"];` | 'installs the e2e job's variants…' (the modules differ from the postgres-pro row's) |
 | 19 | `RequiredPostgres::skips()`: `return ! $available();` | 'skips a PostgreSQL test only while REQUIRE_POSTGRES is unset' |
+| 20 | e2e *skv:install*: drop `env.FLUX_PRO_SECRETS == 'true' && ` from `FLUX_LICENSE_KEY` | 'maps the e2e job's Flux credentials only on the postgres-pro row' (plan review K8) |
+| 21 | `e2e-local.sh`: delete the `dropdb` `printf` line | 'quotes the names in the cleanup commands the local e2e script prints' (plan review K9) |
 
 - [ ] **Step 12: CHANGELOG**
 
@@ -9210,7 +9380,7 @@ Background for the implementer:
 - **Where the ids go.** At the start of each bullet: `- §4.2.3 Password reset. → The reset URL …`. Only the top-level `- ` lines between `## 4.` and `## 5.` are bullets (§4 has no nested ones). The script requires the id's subsection to be the `### 4.x` heading the bullet is under, so a bullet moved to another subsection must get a new id there.
 - **Which docblock.** Every test file starts with its `/** covers … */` line (`RouteHostMatrixTest` has it as a ` * covers §6.2` line inside a longer first docblock; both forms count). A `covers` string later in the file, for example inside a fixture string of `TraceabilityTest`, does not count.
 - **How the citations were chosen.** For each bullet, the strongest one to three existing test files that check it, read test by test (Step 4's table names them). Where a file had `§4.x` and now cites bullets of `§4.x`, the bullet ids replace `§4.x`; where it cites none of `§4.x`'s bullets, `§4.x` stays. The §4 tokens are sorted and placed where the first §4 token was; the other tokens (`§6.2`, `Appendix A W5, W14`, …) keep their order.
-- **If an earlier task changed a covers line.** Tasks 1–14 add tests to some of these files but, as planned, change none of their first docblocks. If a line differs from Step 5's "Today" column anyway, keep that task's tokens and add the ids of the "After" column.
+- **If an earlier task changed a covers line.** Task 11 changes one of these lines: `tests/Feature/Settings/ProfileUpdateTest.php` reads `§4.10, §4.11` once Task 11 is done (its A74 test); every other file in Step 5's table is unchanged by Tasks 1–14. If a line differs from Step 5's "Today" column anyway, keep that task's tokens and add the ids of the "After" column.
 - **The R2 test reads `public/` without following `public/storage`** (the link to the uploads; Global Constraints) and reads `docs/handleiding.*`. The demo addresses come from `DemoSeeder::accounts()` on any apex, also in the manual's `&lt;apex&gt;` placeholder form. A pair is a demo address and the demo password on one line: the manual's line 751 says the password is in the setup summary without printing it, and its factory snippet `'password' => 'password'` names no address, so both pass. The README documents the demo password on purpose (§10) and is not served, so it is not scanned.
 - **No kit name in tests.** `NameLeakTest` scans `tests/`, so the test files never spell the spec's file name or the kit's name; the script, outside `tests/`, holds the spec's path.
 
@@ -9814,7 +9984,7 @@ In each file below, change only the text between `/** covers ` and ` */` on its 
 | `tests/Feature/Settings/AppearanceTest.php` | `§4.10, §6.5` | `§4.4.8, §4.10.2, §6.5` |
 | `tests/Feature/Settings/AvatarTest.php` | `§6.6, §4.3, §4.8, §6.7` | `§6.6, §4.3.3, §4.4.8, §4.8, §6.7` |
 | `tests/Feature/Settings/EmailChangeTest.php` | `§4.2` | `§4.2.9` |
-| `tests/Feature/Settings/ProfileUpdateTest.php` | `§4.10` | `§4.2.8, §4.10.2` |
+| `tests/Feature/Settings/ProfileUpdateTest.php` | `§4.10, §4.11` (after Task 11) | `§4.2.8, §4.10.2, §4.11` |
 | `tests/Feature/Settings/RecoveryCodesTest.php` | `§4.2` | `§4.2.4` |
 | `tests/Feature/Settings/SecurityActionsTest.php` | `§4.2` | `§4.2.4, §4.2.6` |
 | `tests/Feature/Settings/SecurityTest.php` | `§4.10` | `§4.2.6, §4.10.2` |
@@ -10578,7 +10748,7 @@ A new `tests/Feature/Tooling/PackageMetadataTest.php` pins the three. The metada
 
 **Interfaces:**
 - Consumes: `composer.json`'s `name` (`frankcornet/skv3`); `BootstrapCommand`'s production message (`__('This is a production install: follow the production checklist in the README.')`).
-- Produces: `LICENSE` (MIT); `composer.json` `homepage` = `https://github.com/{name}`, `support` = `{"issues": "{homepage}/issues", "source": "{homepage}"}`; `.gitattributes` without `export-ignore` lines. M8b's release-check workflow (CD-22) will add its own `export-ignore` line; the test accepts any pattern that matches an existing path and ignores none of the shipped files.
+- Produces: `LICENSE` (MIT); `composer.json` `homepage` = `https://github.com/{name}`, `support` = `{"issues": "{homepage}/issues", "source": "{homepage}"}`; `.gitattributes` without `export-ignore` lines. M8b's release-check workflow (CD-22) adds its own `export-ignore` line. The test only checks that no export-ignore pattern matches a shipped file (`$shipped`), because in a dist install an export-ignored file is absent while `.gitattributes` still names it, so a pattern that matches no path is normal in a generated app.
 
 Background for the implementer:
 - `PackageMetadataTest` ships into every generated app with the rest of `tests/` and must pass there. It reads the app's own `composer.json`, so the links are built from the package name, never a literal (NameLeakTest scans `tests/`). An app that later renames its package or changes its licence changes these tests with it, as it already does for `CiWorkflowTest`'s installer test.
@@ -10624,7 +10794,7 @@ $composer = function (): array {
     return $composer;
 };
 
-it('ships every file the app points its users to in a Packagist install, and ignores no missing path (F50)', function () use ($exportIgnored): void {
+it('ships every file the app points its users to in a Packagist install (F50)', function () use ($exportIgnored): void {
     $patterns = $exportIgnored();
     $ignored = fn (string $file): bool => array_any($patterns, fn (string $pattern): bool => fnmatch($pattern, $file) || str_starts_with($file, rtrim($pattern, '/').'/'));
     // The README holds the production checklist BootstrapCommand sends a production install to; the MIT notice must
@@ -10633,8 +10803,7 @@ it('ships every file the app points its users to in a Packagist install, and ign
 
     expect((string) file_get_contents(app_path('Console/Commands/BootstrapCommand.php')))->toContain('production checklist in the README')
         ->and(array_values(array_filter($shipped, fn (string $file): bool => ! is_file(base_path($file)))))->toBe([])
-        ->and(array_values(array_filter($shipped, $ignored)))->toBe([])
-        ->and(array_values(array_filter($patterns, fn (string $pattern): bool => (glob(base_path($pattern)) ?: []) === [])))->toBe([]);
+        ->and(array_values(array_filter($shipped, $ignored)))->toBe([]);
 });
 
 it('ships the MIT licence composer.json declares (F59, CD-20)', function () use ($composer): void {
@@ -10665,7 +10834,7 @@ it('describes the package for Packagist, with links built from its own name (F58
 Run: `php artisan test --compact tests/Feature/Tooling/PackageMetadataTest.php`
 
 Expected: FAIL, all three:
-- 'ships every file the app points its users to in a Packagist install…': `LICENSE` is missing (with `LICENSE` in place it fails next on `README.md` and `CHANGELOG.md`, then on the missing `browser-tests.yml`; mutations 1–3 show each)
+- 'ships every file the app points its users to in a Packagist install…': `LICENSE` is missing (with `LICENSE` in place it fails next on `README.md` and `CHANGELOG.md`, which the export-ignore lines leave out; mutations 1 and 2 show each; the stale `browser-tests.yml` line names no shipped file, so the test does not see it, and Step 3 removes it anyway)
 - 'ships the MIT licence composer.json declares': `Failed asserting that '' starts with "MIT License…"`
 - 'describes the package for Packagist…': the keywords are `['laravel', 'framework']`
 
@@ -10756,16 +10925,15 @@ Expected: `./composer.json is valid` and no lock diff (CD-15's package check `gi
 
 - [ ] **Step 5: Verify by mutation**
 
-Copy the file aside, make the change, run `php artisan test --compact tests/Feature/Tooling/PackageMetadataTest.php`, expect the named test to fail, then `cp` it back. All six ran in the prototype.
+Copy the file aside, make the change, run `php artisan test --compact tests/Feature/Tooling/PackageMetadataTest.php`, expect the named test to fail, then `cp` it back. All five ran in the prototype.
 
 | # | Mutation | Test that must fail |
 |---|---|---|
 | 1 | add `README.md export-ignore` to `.gitattributes` | 'ships every file the app points its users to…' (`README.md` listed as ignored) |
-| 2 | add `.github/workflows/browser-tests.yml export-ignore` | 'ships every file…' (a pattern that matches no path) |
-| 3 | add `*.md export-ignore` | 'ships every file…' (`README.md` and `CHANGELOG.md` matched by the glob) |
-| 4 | `LICENSE`'s first line `MIT License` → `The MIT License (MIT)` | 'ships the MIT licence composer.json declares' |
-| 5 | `support.source` → `https://example.com/skv3` | 'describes the package for Packagist…' |
-| 6 | drop the `homepage` line | 'describes the package for Packagist…' (`null`) |
+| 2 | add `*.md export-ignore` | 'ships every file…' (`README.md` and `CHANGELOG.md` matched by the glob) |
+| 3 | `LICENSE`'s first line `MIT License` → `The MIT License (MIT)` | 'ships the MIT licence composer.json declares' |
+| 4 | `support.source` → `https://example.com/skv3` | 'describes the package for Packagist…' |
+| 5 | drop the `homepage` line | 'describes the package for Packagist…' (`null`) |
 
 - [ ] **Step 6: CHANGELOG**
 
@@ -11127,7 +11295,7 @@ npm run build:setup     # rebuild resources/setup/setup.css
 php scripts/traceability.php   # spec §4 bullets no test cites (exits 1 while there are any)
 ```
 
-The tests never touch your development database: `Tests\TestCase` refuses to run unless `DB_DATABASE` is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing` or the `DB_TEST_DATABASE` that `composer test:pgsql` was given, and it refuses any non-empty `DB_URL`, so an exported `DB_DATABASE` can never let `RefreshDatabase` wipe your own database. To run one browser test, call Pest directly, because Composer appends extra arguments to every line of `composer test:browser`: `php artisan config:clear && vendor/bin/pest --testsuite=Browser --filter='<name>'`. With `REQUIRE_POSTGRES=true`, as CI sets it, the tests that need PostgreSQL or a usable `pg_dump` fail instead of skipping when it is missing. Every test file starts with a `covers` docblock line; for the spec's §4 it cites the bullet ids (`§4.5.2`), and `php scripts/traceability.php` (run by `TraceabilityTest`) fails while a §4 bullet has no test that cites it.
+The tests never touch your development database: `Tests\TestCase` refuses to run unless `DB_DATABASE` is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing` or the `DB_TEST_DATABASE` that `composer test:pgsql` was given, and it refuses any non-empty `DB_URL` and any configuration cache (run `php artisan config:clear` first), so neither an exported `DB_DATABASE` nor a cached configuration can let `RefreshDatabase` wipe your own database. To run one browser test, call Pest directly, because Composer appends extra arguments to every line of `composer test:browser`: `php artisan config:clear && vendor/bin/pest --testsuite=Browser --filter='<name>'`. With `REQUIRE_POSTGRES=true`, as CI sets it, the tests that need PostgreSQL or a usable `pg_dump` fail instead of skipping when it is missing. Every test file starts with a `covers` docblock line; for the spec's §4 it cites the bullet ids (`§4.5.2`), and `php scripts/traceability.php` (run by `TraceabilityTest`) fails while a §4 bullet has no test that cites it.
 ````
 
 24. **F59: the licence.** Replace
@@ -11313,7 +11481,7 @@ with
 
 ````text
     <li><strong>De tests trekken zich niets aan van je <code>.env</code>-hosts.</strong> <code>phpunit.xml</code> zet het apex vast op <code>localhost</code>.</li>
-    <li><strong>De tests raken je ontwikkeldatabase nooit.</strong> Ze weigeren te starten als <code>DB_DATABASE</code> geen <code>:memory:</code> is, geen naam die op <code>_test</code> eindigt, geen bestand onder <code>storage/framework/testing</code> en niet de <code>DB_TEST_DATABASE</code> van <code>composer test:pgsql</code>, en ook als <code>DB_URL</code> gevuld is. Een <code>DB_DATABASE</code> die je in je shell hebt gezet, kan <code>RefreshDatabase</code> zo nooit je eigen database laten wissen.</li>
+    <li><strong>De tests raken je ontwikkeldatabase nooit.</strong> Ze weigeren te starten als <code>DB_DATABASE</code> geen <code>:memory:</code> is, geen naam die op <code>_test</code> eindigt, geen bestand onder <code>storage/framework/testing</code> en niet de <code>DB_TEST_DATABASE</code> van <code>composer test:pgsql</code>, en ook als <code>DB_URL</code> gevuld is of de configuratie gecachet is (draai dan eerst <code>php artisan config:clear</code>). Een <code>DB_DATABASE</code> die je in je shell hebt gezet of een gecachete configuratie kan <code>RefreshDatabase</code> zo nooit je eigen database laten wissen.</li>
     <li><strong>Een server zonder <code>APP_ENV</code> is productie.</strong> Noemen <code>.env</code> en de omgeving van het proces geen <code>APP_ENV</code> (of een lege), dan behandelt <code>skv:bootstrap</code> de app als productie, net als Laravel zelf: hij maakt dan alleen <code>.env</code>, <code>APP_KEY</code> en de gegenereerde geheimen klaar. Een verse kopie van <code>.env.example</code> zegt <code>local</code>, dus een lokale installatie merkt hier niets van.</li>
 ````
 
@@ -11340,7 +11508,7 @@ with
 
 ````text
     <li>De routes voor tweestapsbeheer en het verwijderen van een passkey: 10 keer per minuut (<code>account-security</code>).</li>
-    <li>Opzoeken of een e-mailadres gebruikt kan worden: 500 adressen per dag per gebruiker. Elke opzoeking telt, ook een geweigerde: een nieuw adres op je profielpagina of bij <span class="ui">Gebruiker bewerken</span>, het adres bij <span class="ui">Gebruiker uitnodigen</span>, en elke regel van <span class="ui">Lijst controleren</span> bij meerdere uitnodigingen. Een gecontroleerde lijst versturen telt niet. Zo kan niemand ongemerkt nagaan welke adressen al een account hebben.</li>
+    <li>Opzoeken of een e-mailadres gebruikt kan worden: 500 adressen per dag per gebruiker. Elke opzoeking telt, ook een geweigerde: een nieuw adres op je profielpagina of bij <span class="ui">Gebruiker bewerken</span>, het adres bij <span class="ui">Gebruiker uitnodigen</span>, en elke regel van <span class="ui">Lijst controleren</span> bij meerdere uitnodigingen. Een gecontroleerde lijst versturen telt niet. Ben je ingelogd als een andere gebruiker, dan tellen de opzoekingen voor jou, en weigert de profielpagina een nieuw adres voordat er iets wordt opgezocht. Zo kan niemand ongemerkt nagaan welke adressen al een account hebben.</li>
     <li>Inloggen (per adres en IP-adres, niet per gebruiker): 5 mislukte pogingen per minuut per adres en IP-adres, en 20 per minuut per IP-adres. Log je met succes in, ook met een tweede stap of een passkey, dan tellen de mislukte pogingen van dat adres vanaf dat IP-adres niet meer mee.</li>
   </ul>
 ````
@@ -11463,7 +11631,7 @@ Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbree
 with
 
 ````text
-Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbreekt de cronregel op de server. Elk uur om kwart voor ruimt <code>livewire-tmp-cleanup</code> op elke server de tijdelijke uploads van Livewire op die ouder zijn dan 24 uur, zoals een foto of een adressenlijst op een verlaten pagina; staan de tijdelijke uploads op S3, dan doet hij niets en regel je dat één keer met <code>php artisan livewire:configure-s3-upload-cleanup</code>.</li>
+Staat er <span class="ui">De planner heeft nog niet gedraaid</span>, dan ontbreekt de cronregel op de server. Elk uur om kwart voor ruimt <code>livewire-tmp-cleanup</code> op elke server de tijdelijke uploads van Livewire op die ouder zijn dan 24 uur, zoals een foto of een adressenlijst op een verlaten pagina; staan de tijdelijke uploads op S3, dan doet hij niets en regel je dat één keer met <code>php artisan livewire:configure-s3-upload-cleanup</code>. Heb je Livewires eigen opruimen uitgezet (<code>livewire.temporary_file_upload.cleanup</code> op <code>false</code>), dan laat hij de bestanden ook staan.</li>
 ````
 
 26. **E60: de foto's staan niet in de back-up.** Replace
@@ -11789,7 +11957,7 @@ with
 
 ````text
 - Tests are Pest functions (`it(...)`). Feature tests use `RefreshDatabase` via `tests/Pest.php`. Arch rules live in `tests/Arch`. Every test file starts with a `/** covers §x.y */` docblock; for the spec's §4 it cites the frozen bullet ids (`§4.5.2`), because a plain `§4.5` cites none of its bullets, and `php scripts/traceability.php` (run by `TraceabilityTest`) fails while a §4 bullet has no test that cites it.
-- `Tests\TestCase` refuses to run on a database that is not a test database (`:memory:`, a name ending in `_test`, a file under `storage/framework/testing`, or the `DB_TEST_DATABASE` of `composer test:pgsql`; a non-empty `DB_URL` is refused); never relax it. A test that skips while PostgreSQL or a usable `pg_dump` is missing skips through `Tests\Fixtures\RequiredPostgres::skips()`, so `REQUIRE_POSTGRES=true` in CI turns the skip into a failure (`RequiredPostgresTest`).
+- `Tests\TestCase` refuses to run on a database that is not a test database (`:memory:`, a name ending in `_test`, a file under `storage/framework/testing`, or the `DB_TEST_DATABASE` of `composer test:pgsql`; a non-empty `DB_URL` and a configuration cache are refused); never relax it. A test that skips while PostgreSQL or a usable `pg_dump` is missing skips through `Tests\Fixtures\RequiredPostgres::skips()`, so `REQUIRE_POSTGRES=true` in CI turns the skip into a failure (`RequiredPostgresTest`).
 ````
 
 2. **A25: the central context.** Replace
@@ -11964,7 +12132,7 @@ with
 
 ````text
 - Never run `migrate:fresh` or `db:wipe` against the development database; tests use their own databases.
-- The tests refuse to run unless `DB_DATABASE` is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing` or the `DB_TEST_DATABASE` given to `composer test:pgsql`, and they refuse a non-empty `DB_URL` (`Tests\TestCase`); never relax that guard.
+- The tests refuse to run unless `DB_DATABASE` is `:memory:`, a name ending in `_test`, a file under `storage/framework/testing` or the `DB_TEST_DATABASE` given to `composer test:pgsql`, and they refuse a non-empty `DB_URL` and a configuration cache (`Tests\TestCase`); never relax that guard.
 ````
 
 `config/trustedproxy.php` (a comment only; Laravel's `TrustProxies::setTrustedProxyIpAddresses()` trusts every proxy by itself only on Laravel Cloud and on `*.on-forge.com` and `*.on-vapor.com` hosts):
@@ -12025,7 +12193,7 @@ mail (SMTP probe only when `MAIL_MAILER=smtp`; any other mailer passes with a me
 with
 
 ````text
-`model:prune` only once a model is prunable. → Built (M7a–M8a): `model:prune` removes the expired handoff tokens; `backup-temp-cleanup` (hourly at :15) and `livewire-tmp-cleanup` (hourly at :45: Livewire's temporary uploads older than 24 hours, nothing on an S3 temporary disk; DEC-36 (4)) run on every server without an overlap lock; the `scheduler-heartbeat` runs every minute.
+`model:prune` only once a model is prunable. → Built (M7a–M8a): `model:prune` removes the expired handoff tokens; `backup-temp-cleanup` (hourly at :15) and `livewire-tmp-cleanup` (hourly at :45: Livewire's temporary uploads older than 24 hours, nothing on an S3 temporary disk or while `livewire.temporary_file_upload.cleanup` is false; DEC-36 (4)) run on every server without an overlap lock; the `scheduler-heartbeat` runs every minute.
 ````
 
 4. **§4.5 (CD-2): the address-lookup limit.** Replace
@@ -12037,7 +12205,7 @@ with
 with
 
 ````text
-→ Generic "this address can't be invited" message (no cross-organisation enumeration). → Every check of a typed address (the profile's email change, `users.edit`, `users.invite` and each row of the bulk page's *Check*) counts under `UserActionLimit::addressLookup()`, 500 a day per user, refused ones too, so an account cannot list which addresses have one (FM-18, DEC-36 (2)).
+→ Generic "this address can't be invited" message (no cross-organisation enumeration). → Every check of a typed address (the profile's email change, `users.edit`, `users.invite` and each row of the bulk page's *Check*) counts under `UserActionLimit::addressLookup()`, 500 a day per user, refused ones too, so an account cannot list which addresses have one; during an impersonation the impersonator pays, and the profile refuses a new address before any lookup (FM-18, DEC-36 (2)).
 ````
 
 5. **§5.1: the real clone URL.** Replace
@@ -12378,7 +12546,7 @@ Any `manual()` commands left are optional improvements listed in the summary, ne
 with
 
 ````text
-Any `manual()` commands left are optional improvements listed in the summary, never needed for a working app. → M8a records a local approximation (`scripts/e2e-local.sh --entry=herd`, from the `laravel new` start to the dashboard; free Herd approximated by SQLite with Herd Pro's services stopped); the measurement through the Herd GUI and the deep link is M8b (CD-8, DEC-36 (8)).
+Any `manual()` commands left are optional improvements listed in the summary, never needed for a working app. → M8a records a local approximation (`scripts/e2e-local.sh --entry=herd`, from the `laravel new` start to the dashboard; free Herd approximated by SQLite while Herd Pro's services keep running, because stopping them would change the owner's other sites); the measurement through the Herd GUI and the deep link is M8b (CD-8, DEC-36 (8)).
 ````
 
 Run `php scripts/traceability.php | tail -1` again: the same `90 bullets` and `0 problems`, and the same cited and uncovered counts as before.
@@ -12488,9 +12656,9 @@ Then append DEC-36 at the end of the file, after DEC-35, with one blank line bef
 ````markdown
 ### DEC-36 — Release readiness build rulings (M8a)
 
-**Context:** DEC-34's and DEC-35's Consequences deferred to M8 FM-18's probe limit (which must also cover the bulk page's "Check"), the M7c plan review's K9 (`HerdSiteStep::isComplete()` ignoring the PHP version), a doctor note for GD without WebP support, a handoff link that still signs in after a password change or reset, a scheduled clean-up of Livewire's temporary uploads, the carried minors of M2–M7d, the CI runs of the e2e and `phase1` jobs, the release check and publication. Spec §11.2 makes publication conditional on the owner's explicit approval. Before the plan, six triage reports re-checked every carried follow-up and the spec's §7–§12 on `5a621c3`, and one reconciliation turned them into 127 M8a items in 18 tasks, 14 M8b steps, 55 post-v1 items and 29 won't-fix items.
+**Context:** DEC-34's and DEC-35's Consequences deferred to M8 FM-18's probe limit (which must also cover the bulk page's "Check"), the M7c plan review's K9 (`HerdSiteStep::isComplete()` ignoring the PHP version), a doctor note for GD without WebP support, a handoff link that still signs in after a password change or reset, a scheduled clean-up of Livewire's temporary uploads, the carried minors of M2–M7d, DEC-25's list of CI and packaging items for M8, the CI runs of the e2e and `phase1` jobs, the release check and publication. Spec §11.2 makes publication conditional on the owner's explicit approval. Before the plan, six triage reports re-checked every carried follow-up and the spec's §7–§12 on `5a621c3`, and one reconciliation turned them into 127 M8a items in 18 tasks, 13 M8b steps, 55 post-v1 items and 29 won't-fix items.
 **Question:** What did M8a build to make skv3 ready for v1.0.0, which deviations from the spec and the plan did it record, and what is left for M8b and after v1?
-**Answer:** Items (1)–(22) are the controller's decisions CD-1…CD-22 (`docs/superpowers/plans/2026-10-17-m8a-release-readiness.md`), taken under the owner's delegation of every non-destructive decision (2026-10-15, reaffirmed 2026-10-17), as built; the owner can overrule each of them. (23) lists the other items each task closed, (24) the deviations from the spec with their reasons, (25) the deviations from the plan and the controller's rulings, (26) the documentation and (27) the controller's success-criteria evidence run. (1) CD-1, the split: M8a is everything provable locally (Tasks 1–18); M8b is publication, the first CI runs and the release (see Consequence), because §11.2 makes publication conditional on the owner's explicit approval and nothing in M8b can run without a remote. (2) CD-2, the address-lookup limit (FM-18, D82 = E1, D80), which supersedes DEC-34 (16)'s "accepted for v1": `UserActionLimit::addressLookup()` (`address-lookup:<user id>`, 500 per 86 400 s, `attempt()`, never given back) counts every `AvailableEmail` check of a typed address before it runs. The profile's email change and an administrator's change on `users.edit` cost 1 only when the typed address (lower-cased) differs from the stored one, before `validate()`; on the profile the charge sits outside `emailChange()->around()`, so a refused address is not given back, and on `users.edit` a save parked for the RL-18 password confirmation and the save from the restored draft count one each. `users.invite` costs 1 after the format check and `organisationToInvite()`, before `invite()->around()`. The bulk page's *Check* costs `count($entries)` (every parsed row, invalid and repeated ones included) after the empty-list and `MAX_ROWS` guards; *Send*, which re-reviews only the `#[Locked]` rows a Check paid for, costs nothing. `organisations.create` (super admins only) and `RestoreUser` (no typed address) are not charged. The refusal is the generic "Too many attempts. Try again in :seconds seconds." on the field. The maximum must stay at least `InvitationList::MAX_ROWS`, because a full Check costs 100 at once; the constant is the one tuning point, and the per-user key keeps one member's probing from blocking an administrator. E1's `addressProbe()`, counted only for a refused address on the profile, was not built: "free" is information too. The README's sign-in sentences moved into their own *Sign-in limits* bullet, because those limits count per address and IP address (D80). (3) CD-3, handoff links bound to the password (E4 = DEC-35 (12) (a)): the new migration `0001_01_01_000010_add_password_hash_to_handoff_tokens_table` adds a nullable `handoff_tokens.password_hash` (string, 64) that holds `SessionGuard::hashPasswordForCookie()` of the user's password hash, the HMAC with `APP_KEY` that `AuthenticateSession` keeps in the session. `IssueHandoff` stores it (`HandoffToken::passwordBindingFor()`), and `HandoffController::userOf()` refuses a missing or different value (`HandoffToken::isBoundTo()`) before the host rule, with the same "This sign-in link is invalid or has expired." redirect, leaving the token unconsumed. So every write of `users.password` ends the links issued before: the security page, a reset, `skv:create-super-admin --password-stdin`, setup's `DatabaseStep`, the rehash of `Auth::logoutOtherDevices()` and a bcrypt rehash at sign-in; rotating `APP_KEY` ends links in flight too, which a 60-second link can afford. A link issued before the migration (null) is refused. The explicit delete in "log out other devices" stays. It is a new migration rather than an edit of `…000004`, because developer databases are already migrated and `migrate:fresh` is forbidden; until `php artisan migrate` runs there (CD-19), *Open*, the quick login and the slug-rename handoff fail on the unknown column. (4) CD-4, the upload clean-up (E5): `App\Support\Uploads\StaleTemporaryUploads::removeStale()` mirrors Livewire's own sweep (`FileUploadConfiguration`'s disk and directory, `STALE_AFTER_HOURS` = 24, nothing on an S3 temporary disk), and the ops schedule runs it as `livewire-tmp-cleanup` at `45 * * * *` on every server, without an overlap lock or module filter: each server sweeps its own local disk, 24 hours equals Livewire's threshold so no open tab loses an upload earlier than before, and :45 keeps clear of `backup-temp-cleanup` at :15. A file another sweep deleted between the listing and `lastModified()` (`UnableToRetrieveMetadata`) is skipped. On S3 the README points at `php artisan livewire:configure-s3-upload-cleanup`. (5) CD-5, the kit skills (§9; F40, F41): `.ai/skills/{add-tenant-resource,add-permission,add-settings-page,write-tenant-test}/SKILL.md`, each a short checklist that points at the `AGENTS.md` rules and the real files to copy; Boost 2.10 publishes them to the git-ignored `.claude/skills/` and `boost.json` lists them. They ship to generated apps (`ClaudeStep` runs `boost:install`), so they name no kit or site name and no milestone. `.claude/settings.json` gained `Bash(composer doctor)`, `Bash(npm run build:setup)` and `enabledMcpjsonServers: ["laravel-boost", "herd"]`, the `.mcp.json` keys the Claude step writes. `AiConfigTest` asks Boost's `SkillComposer` whether it finds each skill under its folder's name, and resolves every file, class and method the skills name. (6) CD-6, the manual's format (F47): the Dutch manual stays `docs/handleiding.html`, a self-contained page since dfe18df, instead of the `docs/handleiding.md` that §10 named; a conversion would be churn with no gain for a reader. §10 is amended. It is never under `public/`, which `DemoCredentialsExposureTest` guards (see (17)). (7) CD-7, the pre-commit hook (F15): `.githooks/pre-commit` runs `pint --test` and `phpstan analyse` on the staged PHP files and refuses a file that also has unstaged changes, instead of §7.4's `pint --dirty`, which would also format unstaged edits and rewrite files mid-commit; it checks exactly what is committed. §7.4 is amended. (8) CD-8, success criterion 1: M8a measures locally with `scripts/e2e-local.sh --entry=herd` (Herd's exact `laravel new` command, then the wizard), from the `laravel new` start, which stands in for *Create*, to the dashboard: configuration A with Herd Pro and PostgreSQL, configuration B with SQLite and Herd Pro's services stopped, recorded as a free-Herd approximation, each with `skv:doctor --json` (see (27)). The measurement as the spec words it, from *Create* in the Herd GUI and through the deep link, needs a package Composer can resolve, so it is M8b; a global vcs repository before publication would change the owner's global Composer configuration. (9) CD-9, Flux credentials in CI (B33 = C132): no step runs `composer config --global http-basic…` any more, which left the licence in `COMPOSER_HOME/auth.json` for every later step. The steps that need it export `COMPOSER_AUTH` for themselves, built from `FLUX_USERNAME` and `FLUX_LICENSE_KEY` with `php -r … getenv()`, so the key never reaches a command line: the check job's *Enable Flux Pro*, and on the e2e postgres-pro row *Enable Flux Pro*, `skv:install` (its Claude step runs `composer require --dev laravel/boost` in an app that now lists the fluxui repository) and `skv:doctor` (its `flux-pro-credentials` check runs `composer config http-basic.composer.fluxui.dev` once Pro is installed; added during planning, because the header's CD-9 named only the first two). `composer audit` runs before Pro is installed, because it audits the committed lock, which never holds Pro, and the two false comments were corrected. Accepted residual: on the postgres-pro row `skv:install`'s own children, `npm ci` among them, inherit `COMPOSER_AUTH` for that one step; pull requests from forks and Dependabot get no repository secrets. (10) CD-10, PostgreSQL required in CI (B80 = C133 = F16, C134 = F17): `Tests\Fixtures\RequiredPostgres::skips()` lets the three PostgreSQL-dependent tests (`WizardPageTest`'s "completes on PostgreSQL…", the browser test "sets a super-admin install up on PostgreSQL…" and `BackupRunTest`) skip only while `REQUIRE_POSTGRES` is not `true`; *Check (PostgreSQL)* and *Browser tests* set it, and `RequiredPostgresTest` makes every such skip go through the fixture. The check job's service and a new `postgres:18` service on the browser job use Herd's credentials (`root`, trust), which `Detector::postgresReachable()` probes; before, the check job's `postgres`/`postgres` service made the wizard test skip on the pgsql row too. A *PostgreSQL 18 client* step installs `postgresql-client-18` from PGDG and links its `pg_dump` into `/usr/local/bin`, because `BackupRunTest` finds it through `Toolchain`'s fixed PATH, which neither `GITHUB_PATH` nor a process `PG_DUMP_BINARY_PATH` reaches, and the runner's `/usr/bin/pg_dump` wrapper picks an older version. (11) CD-11, the kit-repository Flux Pro guard (B108 = C35 = C119 = C135): a check-job step with `if: github.repository == 'frankcornet/skv3'` fails when the committed `composer.json` or `composer.lock` names `flux-pro` or `composer.fluxui.dev`, or `composer.json` carries `extra.skv`; generated apps skip it and may commit the mark (CD-13 of M7b). `tests.yml` already named the kit (`--using=frankcornet/skv3:dev-ci`), and the test derives the name from `composer.json`. The release-check job repeats the guard on the tag (M8b). (12) CD-12, a missing `APP_ENV` (C37, DEC-33's Consequence): `Bootstrap::isProduction()` treats a project where no source names an `APP_ENV` (no line in `.env`, a blank value, nothing in `getenv()` or `$_SERVER`) as production, as Laravel's own default does (`config/app.php`); `run()` copies `.env.example` (`APP_ENV=local`) before it asks, so a fresh install is unaffected and only a server `.env` written without `APP_ENV` changes behaviour: `skv:bootstrap` then only prepares `.env`, `APP_KEY` and the generated secrets. (13) CD-13, badge colours (A62 = C137 = D88): `App\Authorization\Role::color()` (super admin violet, organisation admin zinc) replaces the literal `color="violet"` at both super-admin badge sites (`users.index`, `users.edit`), next to the existing `UserStatus::color()` and `CheckStatus::color()`; nothing a user sees changes. `Permission` and `ActivityEvent` are shown as plain badges or text, never coloured, so they get no `color()`, and §6.5 is narrowed to the enums shown as a coloured badge. The dashboard's "Your roles" card still shows the super-admin label as a plain badge (post-v1). (14) CD-14, the shared documentation files: each behaviour task wrote the README section and the CHANGELOG line of its own change and regenerated `AGENTS.md` after its guideline edit (Tasks 1 and 3); Task 17 alone mirrored the changes into `docs/handleiding.html`, wrote this entry, amended the spec and `CLAUDE.md` and made one consistency pass over the CHANGELOG (see (26)); older decisions got only an inline pointer. (15) CD-15, the gate template (E6, E7): the `composer.lock` package check is `git diff <base> -- composer.lock | grep -E '^[-+] {12}"name": '`, which matches packages and not `authors[].name`. The browser suite's one warning without details in the agent JSON reporter is pest-plugin-browser's `Trace::cleanup()`, an `@rmdir()` of the missing `tests/Browser/Traces` (`vendor/pestphp/pest-plugin-browser/src/Support/Trace.php:139` in 5.1.2), which laravel/pao counts but cannot detail; a terminal or CI run shows no warning, so it is not a finding (won't fix, B58 = C128; creating the directory would only change the warning). Task 18 removes the two stale setup sandboxes of 2026-10-13 under `storage/framework/testing/setup` (E7). (16) CD-16, the test-database guard (A84a): `Tests\TestCase::setUp()` reads the environment (`Env::get()`) before `parent::setUp()` boots the application, because `RefreshDatabase` runs inside it, and refuses to run unless `DB_DATABASE` is `:memory:`, matches `/_test(_test_\d+)?$/` (a parallel worker's suffix included), is a path under `storage/framework/testing`, or equals `DB_TEST_DATABASE`; a non-empty `DB_URL` is refused too, because its database would win over `DB_DATABASE` (`phpunit.xml` sets `DB_URL=""`). `phpunit.xml` keeps no `force` on `DB_*`, because `composer test:pgsql` and CI pass their own. `TestDatabaseGuardTest` proves the order with a child Pest run on an SQLite path in a directory that does not exist. (17) CD-17, traceability (F54, success criterion 3, and F57, criterion 5): the 90 top-level bullets of spec §4 carry frozen ids `§4.0.1`…`§4.12.2`, never renumbered (a new bullet takes the next free number of its subsection, a removed id is never reused). Only the `covers` lines of a `*Test.php` file's first docblock count; `§4.x.n` cites a bullet and a plain `§4.x` cites none. `php scripts/traceability.php [--spec=…] [--tests=…]` lists the uncovered bullets, the cited ids §4 does not have and the bullets without a valid id, and exits 1 on any; `TraceabilityTest` runs it against the real spec and against planted projects. After Task 15 every bullet is cited (100 test files' `covers` lines name bullet ids). Read clause by clause, 21 bullets had a clause no test would catch: Task 15b closed 19 of them, Task 10 (A20) and Task 11 (A43) the other two. Four clauses kept no test of their own, each covered by another: a passkey surviving a slug rename and the origin reset on `TenantForgotten` (both follow from the fixed apex relying-party id that `PasskeyTest` pins), the recovery codes' show/hide toggle (client-side Alpine state), the System page and `/health-check` sharing one cache (both call `HealthReport::cached()`, which `HealthReportTest` covers) and the index name `users_email_unique` (`UserModelTest` runs the behaviour on both drivers). `DemoCredentialsExposureTest` is Appendix A R2's regression test: nothing under `public/` (the uploads behind `public/storage` aside) is a manual or an HTML page or names a demo account, and the manual never puts a demo address and the demo password on one line; with it every Appendix A finding has a regression test. (18) CD-18, "log out other devices" rotates this device's session (E21): inside the transaction, after `Auth::logoutOtherDevices()`, the action calls `session()->migrate()` and moves this device's `sessions` row to the new id (`UPDATE sessions SET id = <new> WHERE id = <old>`), then deletes the user's other rows and unused handoff tokens; the CSRF token stays, so the page's other components keep working. It was revised during planning from `migrate(true)`, which under the database driver deletes the row at once, so the list the same Livewire update renders lost "This device". A request with the old cookie finds no row and starts a guest session; with another session driver the old session stays stored, but it holds the old password hash, which `AuthenticateSession` refuses. `LockOrderTest` pins the write order users → sessions → handoff tokens → activity (E26). (19) CD-19, the developer database: Task 4's migration reaches the test databases through `RefreshDatabase`; the owner applies it to the developer database with `php artisan migrate`, which is not pre-approved. (20) CD-20, the licence: `LICENSE` is MIT, "Copyright (c) 2026 Frank Cornet", as `composer.json` and the README already declared (F59); reported to the owner afterwards. (21) CD-21, the manual's sources: every *Bronnen* block and source line of `docs/handleiding.html` names files without line numbers (E67), because line references went stale after every milestone; the spec's line numbers became section numbers and the decision log's became decision numbers. (22) CD-22, the deep link and release-check: the deep link `https://herd.laravel.com/new/frankcornet/skv3`, which already answers 200, is in the README and the manual (B30 = F46, C131's documentation half) and is verified in M8b; release-check is written in M8b, in its own `export-ignore`d workflow file guarded by `github.repository`, never in `tests.yml`, which generated apps ship unchanged (the e2e diff asserts it) and which must never run a kit-only Packagist check. (23) The other items each task closed (the triage ids of the planning run's reconciliation): Task 1 runs every RL-12 test (Setup, Console, Backups, Health, System) on `Tests\Fixtures\RecordingProcessFactory`, which records a stray before `PendingProcess` throws for it and, after the test, fails it on a stray (also one a `catch (Throwable)` swallowed) or on a fake pattern that matches a command nobody names (L7b-76, -77, -78); the recorder found two hidden strays, now faked by name (`DoctorStepTest`'s `node -v`, `InstallCommandTest`'s `herd services:list --json` and `herd tld`); `BackupRunTest` turns the guard back on right after its real `pg_dump --version` probe, in a `finally` (L7b-71, -80); two `HerdSiteStepTest` cases were strengthened (L7b-21, with a closure flag, because a fake that throws is never recorded; L7b-22, which also bans the quoted `'--site=<name>'` form). Task 2 pinned seven kit rules no test held: A5, the strict default re-read from `config/tenancy.php` with `TENANCY_STRICT` cleared everywhere `env()` reads; A6, the debug-call rule also catching `\dd()` and the `dd*`/`dump*` helpers, over Blade, the component classes and the route files; A8, a second `permissions:sync` (and the run after a drift repair) leaving every row as it was and issuing no INSERT or UPDATE; A25, `CentralContext` named only in `app/Tenancy/` and `TenancyServiceProvider`, an import included; D77, `users.is_super_admin` written only by `SetSuperAdmin` (factories and `InviteUser`'s `false` exempt); C110, the exec ban widened to `bootstrap/` (without `bootstrap/cache/`) and `scripts/`, plus shell-string commands (`fromShellCommandline()`, a string to `Process::run()`, `start()` or `command()`); C141, none of the eight Blaze-folded Flux keys in `lang/*.json`. Task 5 also lower-cased the platform slot mid-sentence ("Unknown browser on unknown platform", E17), strengthened the sessions tests (E19 an expired row, E23 the emptied password field) and rewrapped the action's docblock (E25). Task 6 hid the security page's second-factor callout during an impersonation (E35), made the recovery-code reader accept only a non-empty list of strings and catch the `unserialize()` warning (`DecryptException|ErrorException`, without an import in the namespace-less component, where `use ErrorException;` is itself a warning; D17, D18), and pinned E31, E34, E37, E40, E41 and E43. Task 7 also made the bulk page resolve the organisation before it validates the batch (E11; applied in `send()` too without a test, because the order cannot be observed there), catch any `Throwable` around the send loop, report it and skip the remaining rows as "Not sent: something went wrong." while the `finally` gives their attempts back (E12, E16), dropped its dead `<flux:error name="organisation" />` (E14; no failing test, because it rendered nothing), made `RemoveAvatar::handle()` return whether it removed a photo so the page confirms only then (E55), made `UpdateAvatar` refuse any header type but JPEG, PNG and WebP before decoding (E56) and moved the "no EXIF in the stored WebP" assertion into a test that runs without ext-exif (E59). Task 8 closed K9 (D85 = E2 = D55; DEC-34 (14) and DEC-35's Consequence): `HerdSiteStep::isComplete()` also requires `runsSupportedPhp()`, last and inside its `try`, so a re-run on a site Herd serves with PHP 8.3 reaches the isolate; only one existing test needed the `herd isolated` and `php -r` fakes, not the four files the triage expected. It closed D63: setup and the doctor accept `public/storage` only when it resolves to `storage/app/public`; a wrong or dangling link is replaced with `storage:link --force`, a directory or a file is never removed, and the doctor's `storage-link` row, which passed for anything in that place, now fails for anything but the link and still warns while it is missing. It closed E3 and DEC-35's GD note: the `gd` row warns when `imagetypes()` lacks `IMG_WEBP`. Task 9 kept the Herd stage's own error when `strand()` fails too, reporting the second one (L7b-28), refused a garbled step pid (`ctype_digit`, 1 < pid ≤ 2147483647; L7b-33), extended `DirectRequest`'s deny-list with `x-client-ip`, `client-ip`, `x-cluster-client-ip`, `fastly-client-ip`, `x-host`, `x-original-url`, `x-forwarded`, `forwarded-for` and the prefix `tailscale-` (D57, M7c T10 #5; it stays a deny-list, DEC-33's residual stays accepted), and strengthened L7b-10, -15, -49, -50, -55, -60, -67 and -74 and L-46 and L-49. Task 10 wrote the tests DEC-28 and DEC-29 left for protections that work but that no test would miss (A20 the two-factor and passkey limiters counting failures only; A21 a member's passkey refused on another organisation's host by the host rule alone; A22 the two-factor challenge re-applying the host rule; A23 a released worker job leaving no tenant bound; A24 `AuthenticateSession` on Livewire updates; A42 impersonating a member with confirmed two-factor authentication; A45 the lock-out guard deciding on the locked row), and made `PasswordResetHostTest`'s trusted-proxy case see the forwarded port and reset Symfony's static trusted proxies after each test (D13, D16). Task 11 pinned A43, A71, A72, A73, A74, A76, A84o, A84p, A84r (the window half), D34, D35, D36, D50 and E44, added `Role::color()` (see (13)) and made `LoginTrend` independent of `Date::use(CarbonImmutable::class)` (C138 = D89). Task 12 marked the app layout (`data-test="app-main"`), so `SmokeTest` tells a page from an error page at the same path (A77), waits for the sign-in redirect (A84s) and for the saved appearance with a bounded poll (A78), and covered the sessions modal, the free photo input and the bulk flow in Chromium (E69) and the Pro file items' escaping of a client-chosen name (E74, Pro only). Task 13 also widened the `phase1` and `e2e` path filter (B107 = F25), made *Phase 1 assertions* diff `tests/` on every row and count `boost:update` again after `skv:install` (B26 = C130 = F23), pinned the hardening and the passkeys matrix (F35, A80), gave `scripts/e2e-local.sh` the options `--flags=` and `--db=` (F56's script half) and made `CiWorkflowTest` read the parsed workflow. Task 16 ships `README.md` and `CHANGELOG.md` in dist installs (F50: `.gitattributes` export-ignored them, and a workflow that does not exist), added the Packagist metadata without `authors`, because every generated app keeps the kit's `composer.json` (F58), and the `LICENSE` (F59); the metadata keys are not part of Composer's content-hash, so `composer.lock` did not change. (24) The deviations from the spec, each with its reason: (a) §10's `docs/handleiding.md` is `docs/handleiding.html` (CD-6). (b) §7.4's `pint --dirty` is `pint --test` on the staged files (CD-7). (c) §6.5's `color()` "on status, role, permission and activity enums" is narrowed to the enums shown as a coloured badge (CD-13). (d) §4.9's mail check "else info": `MailCheck` has no info status, and any mailer but `smtp` passes with a message that names it and opens no socket, which is what "info" meant; §4.9 and §5.4 are amended. (e) §8's table put release-check among the jobs of `tests.yml`; it gets its own `export-ignore`d workflow file in M8b (CD-22). (f) §12 (1)'s measurement from *Create* in the Herd GUI is approximated locally in M8a and measured as worded in M8b (CD-8). (g) §6.7's CI line "`composer config http-basic…` from `FLUX_USERNAME` / `FLUX_LICENSE_KEY`" became per-step `COMPOSER_AUTH` (CD-9). The access gate's header list (§5.3.4), the doctor's checks and repairs (§5.4), the schedule (§4.9) and the handoff (§6.4) grew as built and were amended without a deviation. (25) The deviations from the plan and the controller's rulings. While the plan was written, its writers re-verified every item on `5a621c3` and recorded these changes to the triage: the header's CD-3, CD-9, CD-16 and CD-18 were revised (CD-9 gained `skv:doctor`, CD-16 the `DB_URL` refusal, CD-18 the moved row instead of `migrate(true)`); E1's `addressProbe()` gave way to CD-2's `addressLookup()`, and the existing bulk test "counts nothing for a list larger than what is left…" starts its rate-limiter mock after the Check, whose lookup now increments; the K9 fakes needed one test, not four files; C134 reaches `BackupRunTest` through a `/usr/local/bin` link, not PATH or `PG_DUMP_BINARY_PATH`; Task 13 also created `Tests\Fixtures\RequiredPostgres` and `RequiredPostgresTest`, which the ownership table did not list, and pins the `e2e-local.sh` options in `CiWorkflowTest` rather than `ComposerScriptsTest`; Task 3 created the CHANGELOG's `### Security` heading, which `[Unreleased]` lacked; L7b-10's triage claim that a reordered gate passed today was wrong, so its mutation sets the header only on responses that are no client error; E44's mutation "throttle after `can:`" cannot be made, because Laravel's middleware priority runs `ThrottleRequests` before `Authorize` in any order (so a refused export uses a slot), and the mutation is a limiter that counts only users who may export; D50's mutation sits in `tests/Support/FluxProLint.php`, because the lint and the stripper share `FluxProBranches::branches()`; A43's old host stays at 404 through two guards (`OrganisationObserver::forgetSlugs()` and `SubdomainResolver`'s slug re-check), so its mutation removes both; A78's `html.dark` proves nothing about the save (Flux sets it before the request leaves), so a bounded database poll was added; E74's file name `<b>x</b>.csv` holds a `/` that no browser sends, so the test uses `<img src=x onerror=alert(1)>`; pest-plugin-browser 5.1.2's in-process server keeps a `files[]` multipart part under that flat key and turns bytes that are not UTF-8 into `?`, so the browser suite reads uploads again with `Tests\Fixtures\NestUploadedFiles` and fakes Livewire's `tmp-for-tests` disk (an upstream report is post-v1); E5's sweep also skips a file deleted between the listing and the read. The deviations from the task briefs during the run, the controller's rulings in the ledger, the final review, its fix rounds and the rulings after it: (filled in after execution). (26) The documentation (Task 17): the README's status line (M8a done, M8b after the owner's approval), the Herd deep link and the real clone URL without the "once it is published" caveat, the setup gate's full header list and the IPv4-mapped address, `skv:bootstrap` without any `APP_ENV` (also in the production checklist), the doctor's `storage-link` and `gd` rows and `storage:link --force`, the second factor during an impersonation, recovery codes in a form Fortify never writes, the CSV header rule (E66), the hourly upload clean-up and a bulk send that fails halfway, `UpdateAvatar`'s `DecoderException` (E61) and type check, an impersonation that ends with the session (A29), the folded Flux copy that stays English (A60), the photos outside the backups (E60, also in the production checklist), the kit skills and the Claude settings, the test-database guard, the focused browser-test command (D27), `REQUIRE_POSTGRES`, the traceability script and the licence; `docs/handleiding.html` says the same in Dutch, adds the address-lookup and sign-in limits, the password-bound handoff link, this device's new session id and the M8a row, and names M8b in its status, roadmap and known limitations; its source lines name files without line numbers (CD-21); `CLAUDE.md` names the focused browser-test command, the traceability script, the kit skills and the test-database guard; the kit guideline gained the `covers` and test-database rules, `RequiredPostgres`, the central-context and super-admin-write rules, the password-bound handoff, the folded Flux keys, the upload clean-up as a backstop, the browser-test marker, command and upload pattern, the widened exec ban, and scoped two rules E68 found worded kit-wide (`X-Livewire` decides no access; audit and log downloads, not every download, are GET routes), and `AGENTS.md` was regenerated from it; `config/trustedproxy.php`'s docblock names the hosts Laravel trusts by itself (A27); the spec's header (accepted), §4.5, §4.9, §5.1, §5.2, §5.3.3, §5.3.4, §5.4 (B21), §6.4, §6.5, §6.6, §6.7, §7.2, §7.4, §8, §9, §10, §11.2 and §12 were amended, and §6.6's avatar rule, overwritten in place in M7d, was restored to `image|max:2048` with the as-built rule behind the → marker (E65); the CHANGELOG pass folded the two lines on `skv:bootstrap` in production into one, added the test suite's guards, the traceability script with the R2 test and the sign-in trend fix (Tasks 1, 11 and 15 add no line of their own), and points the old header list at the Security line that extends it. Amended in place: DEC-27 (2) (the custom `fortify.prefix` is stale since 661e707, A86), DEC-33's Consequence (the missing `APP_ENV`), DEC-34 (14) (K9) and (16) (FM-18), DEC-35 (1) (`DecoderException`, E61), (11) ((f), the avatar rule, E65), (12) (a) (the handoff after a password change) and its Consequence. (27) The controller's success-criteria evidence run (Task 18): (filled in after execution).
+**Answer:** Items (1)–(22) are the controller's decisions CD-1…CD-22 (`docs/superpowers/plans/2026-10-17-m8a-release-readiness.md`), taken under the owner's delegation of every non-destructive decision (2026-10-15, reaffirmed 2026-10-17), as built; the owner can overrule each of them. (23) lists the other items each task closed, (24) the deviations from the spec with their reasons, (25) the deviations from the plan and the controller's rulings, (26) the documentation, (27) the controller's success-criteria evidence run and (28) the rulings on DEC-25's M8 list. (1) CD-1, the split: M8a is everything provable locally (Tasks 1–18); M8b is publication, the first CI runs and the release (see Consequence), because §11.2 makes publication conditional on the owner's explicit approval and nothing in M8b can run without a remote. (2) CD-2, the address-lookup limit (FM-18, D82 = E1, D80), which supersedes DEC-34 (16)'s "accepted for v1": `UserActionLimit::addressLookup()` (`address-lookup:<user id>`, 500 per 86 400 s, `attempt()`, never given back) counts every `AvailableEmail` check of a typed address before it runs. The profile's email change and an administrator's change on `users.edit` cost 1 only when the typed address (lower-cased) differs from the stored one, before `validate()`; on the profile the charge sits outside `emailChange()->around()`, so a refused address is not given back, and on `users.edit` a save parked for the RL-18 password confirmation and the save from the restored draft count one each. `users.invite` costs 1 after the format check and `organisationToInvite()`, before `invite()->around()`. The bulk page's *Check* costs `count($entries)` (every parsed row, invalid and repeated ones included) after the empty-list and `MAX_ROWS` guards; *Send*, which re-reviews only the `#[Locked]` rows a Check paid for, costs nothing. `organisations.create` (super admins only) and `RestoreUser` (no typed address) are not charged. The person behind the session pays: during an impersonation the invite page, `users.edit` and *Check* charge the impersonator (`Impersonation::impersonator() ?? …`), and the profile refuses a new address with `RequestEmailChange`'s "The address can't be changed during an impersonation." before any lookup, so impersonating member after member never multiplies the cap and the profile is no has-an-account oracle (the plan review's K2). The refusal is the generic "Too many attempts. Try again in :seconds seconds." on the field. The maximum must stay at least `InvitationList::MAX_ROWS`, because a full Check costs 100 at once; the constant is the one tuning point, and the per-user key keeps one member's probing from blocking an administrator. E1's `addressProbe()`, counted only for a refused address on the profile, was not built: "free" is information too. The README's sign-in sentences moved into their own *Sign-in limits* bullet, because those limits count per address and IP address (D80). (3) CD-3, handoff links bound to the password (E4 = DEC-35 (12) (a)): the new migration `0001_01_01_000010_add_password_hash_to_handoff_tokens_table` adds a nullable `handoff_tokens.password_hash` (string, 64) that holds `SessionGuard::hashPasswordForCookie()` of the user's password hash, the HMAC with `APP_KEY` that `AuthenticateSession` keeps in the session. `IssueHandoff` stores it (`HandoffToken::passwordBindingFor()`), and `HandoffController::userOf()` refuses a missing or different value (`HandoffToken::isBoundTo()`) before the host rule, with the same "This sign-in link is invalid or has expired." redirect, leaving the token unconsumed. So every write of `users.password` ends the links issued before: the security page, a reset, `skv:create-super-admin --password-stdin`, setup's `DatabaseStep`, the rehash of `Auth::logoutOtherDevices()` and a bcrypt rehash at sign-in; rotating `APP_KEY` ends links in flight too, which a 60-second link can afford. A link issued before the migration (null) is refused. The explicit delete in "log out other devices" stays. It is a new migration rather than an edit of `…000004`, because developer databases are already migrated and `migrate:fresh` is forbidden; until `php artisan migrate` runs there (CD-19), *Open*, the quick login and the slug-rename handoff fail on the unknown column. (4) CD-4, the upload clean-up (E5): `App\Support\Uploads\StaleTemporaryUploads::removeStale()` mirrors Livewire's own sweep (`FileUploadConfiguration`'s disk and directory, `STALE_AFTER_HOURS` = 24, nothing on an S3 temporary disk, and nothing while `livewire.temporary_file_upload.cleanup` is false, Livewire's own opt-out for apps that process the temporary files later), and the ops schedule runs it as `livewire-tmp-cleanup` at `45 * * * *` on every server, without an overlap lock or module filter: each server sweeps its own local disk, 24 hours equals Livewire's threshold so no open tab loses an upload earlier than before, and :45 keeps clear of `backup-temp-cleanup` at :15. A file another sweep deleted between the listing and `lastModified()` (`UnableToRetrieveMetadata`) is skipped. On S3 the README points at `php artisan livewire:configure-s3-upload-cleanup`. (5) CD-5, the kit skills (§9; F40, F41): `.ai/skills/{add-tenant-resource,add-permission,add-settings-page,write-tenant-test}/SKILL.md`, each a short checklist that points at the `AGENTS.md` rules and the real files to copy; Boost 2.10 publishes them to the git-ignored `.claude/skills/` and `boost.json` lists them. They ship to generated apps (`ClaudeStep` runs `boost:install`), so they name no kit or site name and no milestone. `.claude/settings.json` gained `Bash(composer doctor)`, `Bash(npm run build:setup)` and `enabledMcpjsonServers: ["laravel-boost", "herd"]`, the `.mcp.json` keys the Claude step writes. `AiConfigTest` asks Boost's `SkillComposer` whether it finds each skill under its folder's name, and resolves every file, class and method the skills name. (6) CD-6, the manual's format (F47): the Dutch manual stays `docs/handleiding.html`, a self-contained page since dfe18df, instead of the `docs/handleiding.md` that §10 named; a conversion would be churn with no gain for a reader. §10 is amended. It is never under `public/`, which `DemoCredentialsExposureTest` guards (see (17)). (7) CD-7, the pre-commit hook (F15): `.githooks/pre-commit` runs `pint --test` and `phpstan analyse` on the staged PHP files and refuses a file that also has unstaged changes, instead of §7.4's `pint --dirty`, which would also format unstaged edits and rewrite files mid-commit; it checks exactly what is committed. §7.4 is amended. (8) CD-8, success criterion 1: M8a measures locally with `scripts/e2e-local.sh --entry=herd` (Herd's exact `laravel new` command, then the wizard), from the `laravel new` start, which stands in for *Create*, to the dashboard: configuration A with Herd Pro and PostgreSQL, configuration B with SQLite while Herd Pro's services keep running (stopping them would change the owner's other sites), recorded as a free-Herd approximation, each with `skv:doctor --json` (see (27)). The measurement as the spec words it, from *Create* in the Herd GUI and through the deep link, needs a package Composer can resolve, so it is M8b; a global vcs repository before publication would change the owner's global Composer configuration. (9) CD-9, Flux credentials in CI (B33 = C132): no step runs `composer config --global http-basic…` any more, which left the licence in `COMPOSER_HOME/auth.json` for every later step. The steps that need it export `COMPOSER_AUTH` for themselves, built from `FLUX_USERNAME` and `FLUX_LICENSE_KEY` with `php -r … getenv()`, so the key never reaches a command line: the check job's *Enable Flux Pro*, and on the e2e postgres-pro row *Enable Flux Pro*, `skv:install` (its Claude step runs `composer require --dev laravel/boost` in an app that now lists the fluxui repository) and `skv:doctor` (its `flux-pro-credentials` check runs `composer config http-basic.composer.fluxui.dev` once Pro is installed; added during planning, because the header's CD-9 named only the first two). `composer audit` runs before Pro is installed, because it audits the committed lock, which never holds Pro, and the two false comments were corrected. The e2e `skv:install` and `skv:doctor` map the secrets only when `FLUX_PRO_SECRETS == 'true'`, the condition of *Enable Flux Pro*, so with one secret missing nothing gets the key (the plan review's K8). Accepted residual: on the postgres-pro row with both secrets `skv:install`'s own children, `npm ci` among them, inherit `COMPOSER_AUTH` for that one step; pull requests from forks and Dependabot get no repository secrets. (10) CD-10, PostgreSQL required in CI (B80 = C133 = F16, C134 = F17): `Tests\Fixtures\RequiredPostgres::skips()` lets the three PostgreSQL-dependent tests (`WizardPageTest`'s "completes on PostgreSQL…", the browser test "sets a super-admin install up on PostgreSQL…" and `BackupRunTest`) skip only while `REQUIRE_POSTGRES` is not `true`; *Check (PostgreSQL)* and *Browser tests* set it, and `RequiredPostgresTest` makes every such skip go through the fixture. The check job's service and a new `postgres:18` service on the browser job use Herd's credentials (`root`, trust), which `Detector::postgresReachable()` probes; before, the check job's `postgres`/`postgres` service made the wizard test skip on the pgsql row too. A *PostgreSQL 18 client* step installs `postgresql-client-18` from PGDG and links its `pg_dump` into `/usr/local/bin`, because `BackupRunTest` finds it through `Toolchain`'s fixed PATH, which neither `GITHUB_PATH` nor a process `PG_DUMP_BINARY_PATH` reaches, and the runner's `/usr/bin/pg_dump` wrapper picks an older version. (11) CD-11, the kit-repository Flux Pro guard (B108 = C35 = C119 = C135): a check-job step with `if: github.repository == 'frankcornet/skv3'` fails when the committed `composer.json` or `composer.lock` names `flux-pro` or `composer.fluxui.dev`, or `composer.json` carries `extra.skv`; generated apps skip it and may commit the mark (CD-13 of M7b). `tests.yml` already named the kit (`--using=frankcornet/skv3:dev-ci`), and the test derives the name from `composer.json`. The release-check job repeats the guard on the tag (M8b). (12) CD-12, a missing `APP_ENV` (C37, DEC-33's Consequence): `Bootstrap::isProduction()` treats a project where no source names an `APP_ENV` (no line in `.env`, a blank value, nothing in `getenv()` or `$_SERVER`) as production, as Laravel's own default does (`config/app.php`); `run()` copies `.env.example` (`APP_ENV=local`) before it asks, so a fresh install is unaffected and only a server `.env` written without `APP_ENV` changes behaviour: `skv:bootstrap` then only prepares `.env`, `APP_KEY` and the generated secrets. (13) CD-13, badge colours (A62 = C137 = D88): `App\Authorization\Role::color()` (super admin violet, organisation admin zinc) replaces the literal `color="violet"` at both super-admin badge sites (`users.index`, `users.edit`), next to the existing `UserStatus::color()` and `CheckStatus::color()`; nothing a user sees changes. `Permission` and `ActivityEvent` are shown as plain badges or text, never coloured, so they get no `color()`, and §6.5 is narrowed to the enums shown as a coloured badge. The dashboard's "Your roles" card still shows the super-admin label as a plain badge (post-v1). (14) CD-14, the shared documentation files: each behaviour task wrote the README section and the CHANGELOG line of its own change and regenerated `AGENTS.md` after its guideline edit (Tasks 1 and 3); Task 17 alone mirrored the changes into `docs/handleiding.html`, wrote this entry, amended the spec and `CLAUDE.md` and made one consistency pass over the CHANGELOG (see (26)); older decisions got only an inline pointer. (15) CD-15, the gate template (E6, E7): the `composer.lock` package check is `git diff <base> -- composer.lock | grep -E '^[-+] {12}"name": '`, which matches packages and not `authors[].name`. The browser suite's one warning without details in the agent JSON reporter is pest-plugin-browser's `Trace::cleanup()`, an `@rmdir()` of the missing `tests/Browser/Traces` (`vendor/pestphp/pest-plugin-browser/src/Support/Trace.php:139` in 5.1.2), which laravel/pao counts but cannot detail; a terminal or CI run shows no warning, so it is not a finding (won't fix, B58 = C128; creating the directory would only change the warning). Task 18 removes the two stale setup sandboxes of 2026-10-13 under `storage/framework/testing/setup` (E7). (16) CD-16, the test-database guard (A84a): `Tests\TestCase::setUp()` reads the environment (`Env::get()`) before `parent::setUp()` boots the application, because `RefreshDatabase` runs inside it, and refuses to run unless `DB_DATABASE` is `:memory:`, matches `/_test(_test_\d+)?$/` (a parallel worker's suffix included), is a path under `storage/framework/testing`, or equals `DB_TEST_DATABASE`; a non-empty `DB_URL` is refused too, because its database would win over `DB_DATABASE` (`phpunit.xml` sets `DB_URL=""`), and so is any configuration cache (`bootstrap/cache/config.php` or the file `APP_CONFIG_CACHE` names, resolved as `Application::getCachedConfigPath()` does), because `LoadConfiguration` then never reads `DB_DATABASE` and `RefreshDatabase` would wipe the database the cache was built with (the plan review's K0). `phpunit.xml` keeps no `force` on `DB_*`, because `composer test:pgsql` and CI pass their own. `TestDatabaseGuardTest` proves the order with a child Pest run on an SQLite path in a directory that does not exist, and a second child run under an empty configuration cache named through `APP_CONFIG_CACHE`. (17) CD-17, traceability (F54, success criterion 3, and F57, criterion 5): the 90 top-level bullets of spec §4 carry frozen ids `§4.0.1`…`§4.12.2`, never renumbered (a new bullet takes the next free number of its subsection, a removed id is never reused). Only the `covers` lines of a `*Test.php` file's first docblock count; `§4.x.n` cites a bullet and a plain `§4.x` cites none. `php scripts/traceability.php [--spec=…] [--tests=…]` lists the uncovered bullets, the cited ids §4 does not have and the bullets without a valid id, and exits 1 on any; `TraceabilityTest` runs it against the real spec and against planted projects. After Task 15 every bullet is cited (100 test files' `covers` lines name bullet ids). Read clause by clause, 21 bullets had a clause no test would catch: Task 15b closed 19 of them, Task 10 (A20) and Task 11 (A43) the other two. Four clauses kept no test of their own, each covered by another: a passkey surviving a slug rename and the origin reset on `TenantForgotten` (both follow from the fixed apex relying-party id that `PasskeyTest` pins), the recovery codes' show/hide toggle (client-side Alpine state), the System page and `/health-check` sharing one cache (both call `HealthReport::cached()`, which `HealthReportTest` covers) and the index name `users_email_unique` (`UserModelTest` runs the behaviour on both drivers). `DemoCredentialsExposureTest` is Appendix A R2's regression test: nothing under `public/` (the uploads behind `public/storage` aside) is a manual or an HTML page or names a demo account, and the manual never puts a demo address and the demo password on one line; with it every Appendix A finding has a regression test. (18) CD-18, "log out other devices" rotates this device's session (E21): inside the transaction, after `Auth::logoutOtherDevices()`, the action calls `session()->migrate()` and moves this device's `sessions` row to the new id (`UPDATE sessions SET id = <new> WHERE id = <old>`), then deletes the user's other rows and unused handoff tokens; the CSRF token stays, so the page's other components keep working. It was revised during planning from `migrate(true)`, which under the database driver deletes the row at once, so the list the same Livewire update renders lost "This device". A request with the old cookie finds no row and starts a guest session; with another session driver the old session stays stored, but it holds the old password hash, which `AuthenticateSession` refuses. `LockOrderTest` pins the write order users → sessions → handoff tokens → activity (E26). (19) CD-19, the developer database: Task 4's migration reaches the test databases through `RefreshDatabase`; the owner applies it to the developer database with `php artisan migrate`, which is not pre-approved. (20) CD-20, the licence: `LICENSE` is MIT, "Copyright (c) 2026 Frank Cornet", as `composer.json` and the README already declared (F59); reported to the owner afterwards. (21) CD-21, the manual's sources: every *Bronnen* block and source line of `docs/handleiding.html` names files without line numbers (E67), because line references went stale after every milestone; the spec's line numbers became section numbers and the decision log's became decision numbers. (22) CD-22, the deep link and release-check: the deep link `https://herd.laravel.com/new/frankcornet/skv3`, which already answers 200, is in the README and the manual (B30 = F46, C131's documentation half) and is verified in M8b; release-check is written in M8b, in its own `export-ignore`d workflow file guarded by `github.repository`, never in `tests.yml`, which generated apps ship unchanged (the e2e diff asserts it) and which must never run a kit-only Packagist check. (23) The other items each task closed (the triage ids of the planning run's reconciliation): Task 1 runs every RL-12 test (Setup, Console, Backups, Health, System) on `Tests\Fixtures\RecordingProcessFactory`, which records a stray before `PendingProcess` throws for it and, after the test, fails it on a stray (also one a `catch (Throwable)` swallowed) or on a fake pattern that matches a command nobody names (L7b-76, -77, -78); the recorder found two hidden strays, now faked by name (`DoctorStepTest`'s `node -v`, `InstallCommandTest`'s `herd services:list --json` and `herd tld`); `BackupRunTest` turns the guard back on right after its real `pg_dump --version` probe, in a `finally` (L7b-71, -80); two `HerdSiteStepTest` cases were strengthened (L7b-21, with a closure flag, because a fake that throws is never recorded; L7b-22, which also bans the quoted `'--site=<name>'` form). Task 2 pinned seven kit rules no test held: A5, the strict default re-read from `config/tenancy.php` with `TENANCY_STRICT` cleared everywhere `env()` reads; A6, the debug-call rule also catching `\dd()` and the `dd*`/`dump*` helpers, over Blade, the component classes and the route files; A8, a second `permissions:sync` (and the run after a drift repair) leaving every row as it was and issuing no INSERT or UPDATE; A25, `CentralContext` named only in `app/Tenancy/` and `TenancyServiceProvider`, an import included; D77, `users.is_super_admin` written only by `SetSuperAdmin` (factories and `InviteUser`'s `false` exempt); C110, the exec ban widened to `bootstrap/` (without `bootstrap/cache/`) and `scripts/`, plus shell-string commands (`fromShellCommandline()`, a string to `Process::run()`, `start()` or `command()`); C141, none of the eight Blaze-folded Flux keys in `lang/*.json`. Task 5 also lower-cased the platform slot mid-sentence ("Unknown browser on unknown platform", E17), strengthened the sessions tests (E19 an expired row, E23 the emptied password field) and rewrapped the action's docblock (E25). Task 6 hid the security page's second-factor callout during an impersonation (E35), made the recovery-code reader accept only a non-empty list of strings and catch the `unserialize()` warning (`DecryptException|ErrorException`, without an import in the namespace-less component, where `use ErrorException;` is itself a warning; D17, D18), and pinned E31, E34, E37, E40, E41 and E43. Task 7 also made the bulk page resolve the organisation before it validates the batch (E11; applied in `send()` too without a test, because the order cannot be observed there), catch any `Throwable` around the send loop, report it and skip the remaining rows as "Not sent: something went wrong." while the `finally` gives their attempts back (E12, E16), dropped its dead `<flux:error name="organisation" />` (E14; no failing test, because it rendered nothing), made `RemoveAvatar::handle()` return whether it removed a photo so the page confirms only then (E55), made `UpdateAvatar` refuse any header type but JPEG, PNG and WebP before decoding (E56) and moved the "no EXIF in the stored WebP" assertion into a test that runs without ext-exif (E59). Task 8 closed K9 (D85 = E2 = D55; DEC-34 (14) and DEC-35's Consequence): `HerdSiteStep::isComplete()` also requires `runsSupportedPhp()`, last and inside its `try`, so a re-run on a site Herd serves with PHP 8.3 reaches the isolate; only one existing test needed the `herd isolated` and `php -r` fakes, not the four files the triage expected. It closed D63: setup and the doctor accept `public/storage` only when it resolves to `storage/app/public`; a wrong or dangling link is replaced with `storage:link --force`, a directory or a file is never removed, and the doctor's `storage-link` row, which passed for anything in that place, now fails for anything but the link and still warns while it is missing. It closed E3 and DEC-35's GD note: the `gd` row warns when `imagetypes()` lacks `IMG_WEBP`. Task 9 kept the Herd stage's own error when `strand()` fails too, reporting the second one (L7b-28), refused a garbled step pid (`ctype_digit`, 1 < pid ≤ 2147483647; L7b-33), extended `DirectRequest`'s deny-list with `x-client-ip`, `client-ip`, `x-cluster-client-ip`, `fastly-client-ip`, `x-host`, `x-original-url`, `x-forwarded`, `forwarded-for` and the prefix `tailscale-` (D57, M7c T10 #5; it stays a deny-list, DEC-33's residual stays accepted), and strengthened L7b-10, -15, -49, -50, -55, -60, -67 and -74 and L-46 and L-49. Task 10 wrote the tests DEC-28 and DEC-29 left for protections that work but that no test would miss (A20 the two-factor and passkey limiters counting failures only; A21 a member's passkey refused on another organisation's host by the host rule alone; A22 the two-factor challenge re-applying the host rule; A23 a released worker job leaving no tenant bound; A24 `AuthenticateSession` on Livewire updates; A42 impersonating a member with confirmed two-factor authentication; A45 the lock-out guard deciding on the locked row), and made `PasswordResetHostTest`'s trusted-proxy case see the forwarded port and reset Symfony's static trusted proxies after each test (D13, D16). Task 11 pinned A43, A71, A72, A73, A74, A76, A84o, A84p, A84r (the window half), D34, D35, D36, D50 and E44, added `Role::color()` (see (13)) and made `LoginTrend` independent of `Date::use(CarbonImmutable::class)` (C138 = D89). Task 12 marked the app layout (`data-test="app-main"`), so `SmokeTest` tells a page from an error page at the same path (A77), waits for the sign-in redirect (A84s) and for the saved appearance with a bounded poll (A78), and covered the sessions modal, the free photo input and the bulk flow in Chromium (E69) and the Pro file items' escaping of a client-chosen name (E74, Pro only). Task 13 also widened the `phase1` and `e2e` path filter (B107 = F25), made *Phase 1 assertions* diff `tests/` on every row and count `boost:update` again after `skv:install` (B26 = C130 = F23), pinned the hardening and the passkeys matrix (F35, A80), gave `scripts/e2e-local.sh` the options `--flags=` and `--db=` (F56's script half; a `--db=pgsql` run's printed cleanup also names the two databases `skv:install` created, the plan review's K9) and made `CiWorkflowTest` read the parsed workflow. Task 16 ships `README.md` and `CHANGELOG.md` in dist installs (F50: `.gitattributes` export-ignored them, and a workflow that does not exist), added the Packagist metadata without `authors`, because every generated app keeps the kit's `composer.json` (F58), and the `LICENSE` (F59); the metadata keys are not part of Composer's content-hash, so `composer.lock` did not change. `PackageMetadataTest` checks only that no `export-ignore` pattern matches a shipped file, never that a pattern matches an existing path: a dist install drops an export-ignored file while `.gitattributes` still names it, so that check would fail in every generated app once M8b export-ignores release-check (the plan review's K6). (24) The deviations from the spec, each with its reason: (a) §10's `docs/handleiding.md` is `docs/handleiding.html` (CD-6). (b) §7.4's `pint --dirty` is `pint --test` on the staged files (CD-7). (c) §6.5's `color()` "on status, role, permission and activity enums" is narrowed to the enums shown as a coloured badge (CD-13). (d) §4.9's mail check "else info": `MailCheck` has no info status, and any mailer but `smtp` passes with a message that names it and opens no socket, which is what "info" meant; §4.9 and §5.4 are amended. (e) §8's table put release-check among the jobs of `tests.yml`; it gets its own `export-ignore`d workflow file in M8b (CD-22). (f) §12 (1)'s measurement from *Create* in the Herd GUI is approximated locally in M8a and measured as worded in M8b (CD-8). (g) §6.7's CI line "`composer config http-basic…` from `FLUX_USERNAME` / `FLUX_LICENSE_KEY`" became per-step `COMPOSER_AUTH` (CD-9). The access gate's header list (§5.3.4), the doctor's checks and repairs (§5.4), the schedule (§4.9) and the handoff (§6.4) grew as built and were amended without a deviation. (25) The deviations from the plan and the controller's rulings. While the plan was written, its writers re-verified every item on `5a621c3` and recorded these changes to the triage: the header's CD-3, CD-8, CD-9, CD-16 and CD-18 were revised (CD-8 keeps Herd Pro's services running for configuration B, CD-9 gained `skv:doctor`, CD-16 the `DB_URL` refusal, CD-18 the moved row instead of `migrate(true)`); the plan review (wf_562b61db-1b7, five dimensions with a skeptic each) confirmed 15 of 16 findings before execution and folded them in: CD-16's configuration-cache refusal (K0), CD-2's impersonation rule (K2), CD-4's clean-up opt-out (K3), CD-9's `FLUX_PRO_SECRETS` condition on e2e (K8), the `dropdb` cleanup lines (K9), the corrected configuration B (K10), `PackageMetadataTest` without its stale-pattern check (K6), (28) (K7), a copied-cookie check, a narrower grep and the Claude plugin cleanup in Task 18 (K11–K13), and three plan-text corrections (K1, K4 = K14, K5); E1's `addressProbe()` gave way to CD-2's `addressLookup()`, and the existing bulk test "counts nothing for a list larger than what is left…" starts its rate-limiter mock after the Check, whose lookup now increments; the K9 fakes needed one test, not four files; C134 reaches `BackupRunTest` through a `/usr/local/bin` link, not PATH or `PG_DUMP_BINARY_PATH`; Task 13 also created `Tests\Fixtures\RequiredPostgres` and `RequiredPostgresTest`, which the ownership table did not list, and pins the `e2e-local.sh` options in `CiWorkflowTest` rather than `ComposerScriptsTest`; Task 3 created the CHANGELOG's `### Security` heading, which `[Unreleased]` lacked; L7b-10's triage claim that a reordered gate passed today was wrong, so its mutation sets the header only on responses that are no client error; E44's mutation "throttle after `can:`" cannot be made, because Laravel's middleware priority runs `ThrottleRequests` before `Authorize` in any order (so a refused export uses a slot), and the mutation is a limiter that counts only users who may export; D50's mutation sits in `tests/Support/FluxProLint.php`, because the lint and the stripper share `FluxProBranches::branches()`; A43's old host stays at 404 through two guards (`OrganisationObserver::forgetSlugs()` and `SubdomainResolver`'s slug re-check), so its mutation removes both; A78's `html.dark` proves nothing about the save (Flux sets it before the request leaves), so a bounded database poll was added; E74's file name `<b>x</b>.csv` holds a `/` that no browser sends, so the test uses `<img src=x onerror=alert(1)>`; pest-plugin-browser 5.1.2's in-process server keeps a `files[]` multipart part under that flat key and turns bytes that are not UTF-8 into `?`, so the browser suite reads uploads again with `Tests\Fixtures\NestUploadedFiles` and fakes Livewire's `tmp-for-tests` disk (an upstream report is post-v1); E5's sweep also skips a file deleted between the listing and the read. The deviations from the task briefs during the run, the controller's rulings in the ledger, the final review, its fix rounds and the rulings after it: (filled in after execution). (26) The documentation (Task 17): the README's status line (M8a done, M8b after the owner's approval), the Herd deep link and the real clone URL without the "once it is published" caveat, the setup gate's full header list and the IPv4-mapped address, `skv:bootstrap` without any `APP_ENV` (also in the production checklist), the doctor's `storage-link` and `gd` rows and `storage:link --force`, the second factor during an impersonation, recovery codes in a form Fortify never writes, the CSV header rule (E66), the hourly upload clean-up and a bulk send that fails halfway, `UpdateAvatar`'s `DecoderException` (E61) and type check, an impersonation that ends with the session (A29), the folded Flux copy that stays English (A60), the photos outside the backups (E60, also in the production checklist), the kit skills and the Claude settings, the test-database guard, the focused browser-test command (D27), `REQUIRE_POSTGRES`, the traceability script and the licence; `docs/handleiding.html` says the same in Dutch, adds the address-lookup and sign-in limits, the password-bound handoff link, this device's new session id and the M8a row, and names M8b in its status, roadmap and known limitations; its source lines name files without line numbers (CD-21); `CLAUDE.md` names the focused browser-test command, the traceability script, the kit skills and the test-database guard; the kit guideline gained the `covers` and test-database rules, `RequiredPostgres`, the central-context and super-admin-write rules, the password-bound handoff, the folded Flux keys, the upload clean-up as a backstop, the browser-test marker, command and upload pattern, the widened exec ban, and scoped two rules E68 found worded kit-wide (`X-Livewire` decides no access; audit and log downloads, not every download, are GET routes), and `AGENTS.md` was regenerated from it; `config/trustedproxy.php`'s docblock names the hosts Laravel trusts by itself (A27); the spec's header (accepted), §4.5, §4.9, §5.1, §5.2, §5.3.3, §5.3.4, §5.4 (B21), §6.4, §6.5, §6.6, §6.7, §7.2, §7.4, §8, §9, §10, §11.2 and §12 were amended, and §6.6's avatar rule, overwritten in place in M7d, was restored to `image|max:2048` with the as-built rule behind the → marker (E65); the CHANGELOG pass folded the two lines on `skv:bootstrap` in production into one, added the test suite's guards, the traceability script with the R2 test and the sign-in trend fix (Tasks 1, 11 and 15 add no line of their own), and points the old header list at the Security line that extends it. Amended in place: DEC-27 (2) (the custom `fortify.prefix` is stale since 661e707, A86), DEC-33's Consequence (the missing `APP_ENV`), DEC-34 (14) (K9) and (16) (FM-18), DEC-35 (1) (`DecoderException`, E61), (11) ((f), the avatar rule, E65), (12) (a) (the handoff after a password change) and its Consequence. (27) The controller's success-criteria evidence run (Task 18): (filled in after execution). (28) DEC-25's M8 list (M0–M1), which the triage had picked up only as B27, ruled by the controller (non-destructive): (a) the `sqlite-free` matrix label is kept on purpose, because M8b's branch protection requires the check rows by their current names (`main (PHP 8.4, PostgreSQL)`, `sqlite-free (PHP 8.4, SQLite)`, `php85 (PHP 8.5, SQLite)`); a later rename goes into `tests.yml` together with `CiWorkflowTest`'s `Str::between` anchors and the A80 keys, before protection is set. (b) Pinning the `postgres` service image by digest is post-v1: Dependabot does not bump service-image digests, so a pin would freeze the image. (c) Raising `composer.json`'s version floors to the tested versions is post-v1: it changes the lock's content-hash and needs `composer update --lock` with the owner's approval (M8a changes no dependency). (d) `NameLeakTest`'s `File::allFiles` skipping dotfiles is post-v1 (a one-line `File::allFiles($dir, true)` in a task that owns the test). (e) The linux npm `optionalDependencies` were re-checked and are kept: the ubuntu CI build's `npm ci` needs the linux-x64 native packages, which a lock written on macOS can lack; M8b's first CI run confirms it. (f) `audit.abandoned = report` stays while `driftingly/rector-laravel` still pulls in the abandoned `symplify/rule-doc-generator-contracts`. (g) The "PostgreSQL job really uses Postgres" guard is covered by `REQUIRE_POSTGRES` (CD-10): `BackupRunTest` and `WizardPageTest`'s PostgreSQL test fail instead of skipping on the pgsql row. (h) `composer audit` stays in every check row (*Audit dependencies*, before Flux Pro; CD-9): it takes seconds and a failing row names its cause; running it once is post-v1. (i) The `tests/`-unchanged check is the e2e job's *Phase 1 assertions* diff (Task 13, g1-24), and the `LICENSE` is Task 16's (F59).
 **Evidence:** `tests/Feature/Tooling/{TestDatabaseGuard,Traceability,DemoCredentialsExposure,RequiredPostgres,PackageMetadata,AiConfig,CiWorkflow}Test.php`, `tests/Feature/Setup/StrayProcessGuardTest.php`, `tests/Arch/{KitRules,TenancyRules,AuthorizationRules,MigrationRules}Test.php`, `tests/Feature/{LangCoverage,ConfigDefaults,AppDefaults}Test.php`, `tests/Feature/Auth/{ActionLimits,Handoff,EnsureSecondFactor,LoginThrottle,Passkey,HostScopedLogin,AuthenticateSession,PasswordResetHost}Test.php`, `tests/Feature/Invitations/BulkInvitationsTest.php`, `tests/Feature/Settings/{Sessions,RecoveryCodes,Avatar}Test.php`, `tests/Feature/Authorization/{LockOrder,SyncPermissions}Test.php`, `tests/Feature/Uploads/StaleTemporaryUploadsTest.php`, `tests/Feature/Scheduler/{Schedule,ScheduledTasks}Test.php`, `tests/Feature/Setup/Steps/{HerdSiteStep,EnvironmentStep}Test.php`, `tests/Feature/Setup/Doctor/ChecksTest.php`, `tests/Feature/Console/ProductionGuardsTest.php`, `tests/Feature/Setup/Wizard/{WizardRunner,SetupAccess,HerdStage}Test.php`, `tests/Feature/Setup/SetupModeTest.php`, `tests/Unit/RoleTest.php`, `tests/Feature/Users/RoleBadgeTest.php`, `tests/Feature/Dashboard/LoginTrendTest.php`, `tests/Browser/{AccountExtras,Smoke,Login,Appearance}Test.php`, the mutation tables of every task, and `php scripts/traceability.php` (90 bullets, 90 cited, 0 uncovered, 0 problems); the whole suite on SQLite, on PostgreSQL and with `MODULE_IMPERSONATION=false MODULE_PASSKEYS=false`, the browser suite and `npm run build:setup && git diff --exit-code resources/setup/setup.css` per task, and the run's task reports, review reports and progress ledger: (filled in after execution).
 **Consequence:** FM-18, the handoff after a password change or reset, K9, the GD note, the upload clean-up and the carried M2–M7d follow-ups triaged for M8a are closed; criteria 2, 3 and 5 are met locally, criteria 1 and 4 have their local half (see (27)). M8b, in this order and only after the owner's explicit approval of each marked step: (1) the owner approves publication [approval]; (2) the public GitHub repository `frankcornet/skv3`, marked as a template for §5.1's fourth entry [approval]; (3) push `main`, no tag yet [approval]; (4) the optional repository secrets `FLUX_USERNAME` and `FLUX_LICENSE_KEY`, entered by the owner [approval]; (5) the first CI run and a fix-forward loop through pull requests until it is green: the workflow is valid, the check matrix with the PostgreSQL service, the PostgreSQL 18 `pg_dump` and the scoped credentials (and `BackupRunTest` and the PostgreSQL wizard test running, not skipping), the browser job including `*.localhost` on ubuntu (A82's `/etc/hosts` fallback only if it fails), `phase1` ×4 and `e2e` ×3 through `workflow_dispatch`, the Pro steps with the secrets, the kit guard's `if` and the widened path filter on a real pull request; (6) a branch-protection ruleset on `main`: pull requests only, no force push or delete, the three check rows, the browser job, `phase1` ×4 and `e2e` ×3 required and up to date with the base [approval]; (7) the package on Packagist with GitHub's auto-update hook [approval]; (8) `laravel new --using=frankcornet/skv3` from Packagist (a dist install: README, CHANGELOG and LICENSE present) reaches the wizard; (9) the Herd deep link opened, and *Create* → wizard → dashboard timed in both configurations through the Herd GUI (criterion 1 as worded, an owner action); (10) the release-check job in its own `export-ignore`d workflow file guarded by `github.repository`, on a release or tag push and `workflow_dispatch`: `laravel new --using=frankcornet/skv3` from Packagist, the installed reference equal to `git ls-remote origin main`, and the tagged `composer.json` and `composer.lock` free of `flux-pro` and `composer.fluxui.dev` (D115), green on dispatch, through a pull request; (11) the CHANGELOG cut (`## [1.0.0] - <date>`, a new empty `[Unreleased]`, compare and release links; F49), and the README status line, the manual's status, roadmap and known limitations updated for the release, through a pull request; (12) the tag `v1.0.0`, and a GitHub release if wanted [approval]; (13) release-check green after the tag (criterion 4), recorded in an addendum to this entry. Post-v1, each with why it can wait: tests and test ergonomics: namespaced test helpers (A26: a rename that touches hundreds of files), the browser wrong-host test showing valid credentials (A84b: HTTP tests guard the rule), `usePasskeysModule(false)` leaving the listener (A84c: CI also boots with the module off), the appearance "no audit entry" claim (A84d: cosmetic), the banner on the auth pages found by grep (A84g: low value), element-level branding asserts (A84h: cosmetic), the partial-permission navigation actor (A84i: the routes still answer 403), the settings link in the user menu (A84j: low value), the duplicate `LangFilesTest` basename (A84l: cosmetic), error-page dataset rows for tenant-not-found and invitation-invalid (A84m: low value), the 403 locale before `SetLocale` (A84n: A76 covers the related half), the Fortify logout URI under a custom prefix (A84q: only under a non-default prefix), the Pro-branch comment case and listbox asserts (A84r's other half: cosmetic), the browser reset-link host (A84t: `PasswordResetHostTest` covers it), a lang sort-order and "je" lint (A84v: style), `PasskeysModuleTest`'s vacuous `fresh()` (D20: the 404 already pins it), branding on the apex login (D51: one code path), route coverage for `Authenticate::class` (E38: no route uses it); setup and wizard code: `TestDatabaseCheck` after a hand-edited `DB_DATABASE` (B109: no setup path produces it), a mailbox clean-up line in the e2e script (C40: a development leftover that only Herd's UI removes), a `useHerdStub()` helper (C52 = D93: duplication only), `HerdState::underLock()` (C59 = D95: duplication, every copy tested), computing `manualCommand()` once (C60 = D96: extra Herd calls on error paths only), the `SetupLock` inode re-check (C66 = D99: no race today), `HerdSiteStep::resultFor()` (C71 = D101: duplication), a pty test for `StreamTerminal::isTerminal()` (C83 = D103: the binding and the non-TTY branch are pinned, a pty would be a third real-process exception and is unreliable on CI runners), host normalisation in `WizardState` and `HerdState` (D58: fails closed), the step umask (D62: Herd's FPM uses 022, local only), `EnvFile` messages with the absolute path (D64: local, the developer's own path); rate limits, sign-in and security: `ThrottleKey` versus `shouldHashKeys(false)` (D2: the kit never turns hashing off), two-factor routes conditional on the Fortify feature (D3: two-factor is a fixed kit feature), Livewire limits for disabling 2FA, deleting a passkey and starting the 2FA setup (D9: the user's own account, behind password confirmation), an `AppUrlHttpsCheck` (D15: a new check is a feature; the README checklist names it), the rawId padding in the log (D21: cosmetic), `SetSuperAdmin`'s stored-organisation comparison (D39: theoretical, no action moves users between organisations), the HIBP request before the hash refusal (D73: one pointless k-anonymity request), a purpose label in the session row HMAC (E22: no collision possible), a separate current-password bucket (E24: a design change that needs a session already), `SecondFactor::mustOwnBeforeRequiring()` (E28: the action decides on the locked row), the organisation save race (E32: a millisecond window an attacker cannot force), `requiredFor()` reusing `Tenant::current()` (E42: one primary-key lookup); performance and the admin UI: caching the audit viewer's DISTINCT lists (A31 = C136 = D87: performance only, the log is bounded by retention), a PCRE failure in `BladeDirectives` (D52: production fails closed), the export running `applied()` twice (E45: CPU only), the filter names spelled out three times (E46: a refactor), an export memory probe (E47: the review's claim is acceptable), a mid-stream export error marker (E48: the known trigger is gone), the cross-site export GET (E49: no disclosure), the purge modal's hidden label (E71: invisible), the dashboard's plain super-admin badge (CD-13: one more site, no colour shown today); uploads, sessions and backups: the as-root accepting branch of `PrivateBackupTemp` (D66: fails closed), the root stray directory (D67: a root crontab is documented as unsupported), the free CSV input's remove button (E13: choosing again or reloading drops the file), refreshing the sessions list after a database failure (E18: database failures only), the `HeadlessChrome` user agent (E27: headless browsers only), an orphan-avatar sweep (E58: unguessable names, leftover data only); and, optional, upstream reports to pest-plugin-browser for the Trace warning and the multipart upload handling. Won't fix, each with its reason: process, history and vendor: the reused FU ids (A79: historical tags whose ledgers are gone; whether shipped code keeps internal tags is an owner question, by default kept), the model default that hides the migration default (A84e: needed under `shouldBeStrict()`), the Trace warning (A85 = B58 = B105 = C128 = D7 = E70, with D14, D22, D26, D31, D40, D56, D61, D68, D75: vendor code, agent JSON only, recorded in (15)), the M7c Task 15 observations (D86: no kit defects; the hints went to Task 18); the setup gate and wizard: `?secret=` in the Herd-stage URLs (B56: DEC-33 (2), single use, 30 minutes, local, no-referrer), the Claude plugin registry entry (B57: Claude Code's machine state), the exact compare in `appUrlIsSecured()` (C76: RL-16), the echo of `--answers=-` on a terminal (C84: DEC-33 (32) (e)), `$wizardCommands` three times (C115: test data), a `DatabaseStep` read-failure test (D59: `EnvFile::contents()` is tested), the environment step's toolchain at build time (D60: fresh steps per call, DEC-34 (16) (d)), `ProcessAccount::home()` (D84, FM-17: correct as it is); health, ops and backups: `/health-check` outside the web group (C30: by design, behind the key), ACLs on the System page (C92: they need a process), the health report's detail for key holders (C99: L-30), the System page's limiter failing open (C101 = C103: CD-16 of M7b, super admins only), the non-atomic `tooManyAttempts` plus `hit` (C102: a harmless burst), a general guard against vendor exec (C104's residual: impossible in-process), the root symlink-swap race (D69's residual: root backups are unsupported, README); sign-in, tests and UI: a `fortify.domain` test (C142: the kit never sets it, and it would break per-host sign-in), the guest passkey bucket per IP (D10: G1-05's design), HEAD bodies (D35's HEAD half: Symfony drops them), `lockOrganisation()` outside a transaction (D41: unreachable under `RefreshDatabase`), `FluxProLint` tokenising twice (D49: test-support speed only), bulk tests tied to the RateLimiter API (E15: they fail loudly on a rewrite), the unreachable 403 in the sessions `mount()` (E20: defence in depth), the second-factor rule gated on `organisations.update` (E33: deliberate, DEC-35 (3)), the `tmp-for-tests*` directories (E72: git-ignored, wiped by Livewire), `ensureMemoryFor()` keeping the raised limit (E73: DEC-35 (7)). The deferred minors of the M8a reviews: (filled in after execution).
 ````
@@ -12621,7 +12789,7 @@ git status --short
 git show HEAD:composer.json | grep -c flux-pro; git show HEAD:composer.lock | grep -c flux-pro
 git diff main -- composer.lock | grep -E '^[-+] {12}"name": '
 git diff main --stat -- composer.json composer.lock package.json package-lock.json
-grep -rnE "(^|[[ ,(])['\"]\*['\"] *=>|Process::fake\(\)" tests/ | grep -v KitRulesTest
+grep -rnE "(^|[[ ,(])['\"]\*['\"] *=>|Process::fake\(\)" tests/ | grep -v -e KitRulesTest -e StrayProcessGuardTest
 grep -L "covers §" $(git diff --name-only --diff-filter=A main -- 'tests/**/*.php' | grep -v -e Fixtures -e Support)
 git diff --name-only --diff-filter=D main -- tests/
 ```
@@ -12632,7 +12800,7 @@ Expected:
 - the stylesheet as committed; `traceability.php` prints `90 bullets, 90 cited by a test, 0 uncovered, 0 problems`; `composer validate --strict` valid
 - a clean tree; `0` and `0`; the lock-name grep prints nothing (M8a adds no package, CD-15's pattern)
 - `composer.json` changes only in `keywords`, `homepage` and `support` (Task 16); no lock, npm or package-lock change
-- no catch-all fake; an empty `grep -L`; no deleted test file
+- no catch-all fake (`StrayProcessGuardTest`'s 'a single star' dataset row is the recorder's own planted catch-all and is excluded on purpose); an empty `grep -L`; no deleted test file
 
 - [ ] **Step 2: The real runs (PostgreSQL + Herd Pro + HTTPS; criterion 1 and 2 evidence)**
 
@@ -12640,7 +12808,7 @@ Every command names the throwaway site by its absolute path; artisan runs from i
 
 1. **Configuration A: Herd Pro + PostgreSQL, the default answers.**
    - `scripts/e2e-local.sh "$HOME/Herd/m8a-e2e-a" --entry=herd --phase1-only`: every phase-1 check passes, and the site is not the repository.
-   - The wizard through Playwright (M7d's `drive.cjs`, adapted): only the app name is typed; every other answer keeps its pre-filled default (PostgreSQL is detected, so it is the default; the default start and modules; HTTPS as pre-filled; Claude Code as pre-filled). It reaches its summary with no JavaScript errors and lands on the dashboard after the quick login (demo) or the super-admin sign-in.
+   - The wizard through Playwright (M7d's `drive.cjs`, adapted): only the app name is typed; every other answer keeps its pre-filled default (PostgreSQL is detected, so it is the default; the default start and modules; HTTPS as pre-filled; Claude Code as pre-filled, which is on on this machine: `Answers` pre-fills `claude` from `Detector`, which finds `~/.local/bin/claude` on the toolchain PATH, so the Claude step runs `claude plugin install superpowers@superpowers-marketplace --scope project` in the site; the cleanup below removes that entry). It reaches its summary with no JavaScript errors and lands on the dashboard after the quick login (demo) or the super-admin sign-in.
    - Record: phase-1 seconds, wizard seconds, total, and the answers the wizard pre-filled.
    - `php artisan skv:doctor --json` inside the site: no row with status `fail` (criterion 2). Record every `warn`.
 2. **Configuration B: SQLite (free-Herd approximation).** The same in `"$HOME/Herd/m8a-e2e-b"`, answering SQLite and leaving every other answer at its default. Record the same numbers and the doctor result.
@@ -12650,7 +12818,7 @@ Every command names the throwaway site by its absolute path; artisan runs from i
 4. **M8a's behaviour on site A** (Playwright, demo data, log mailer: switch `MAIL_MAILER` to `log` without reading `.env`, `perl -i -pe 's/^MAIL_MAILER=.*/MAIL_MAILER=log/'` followed by `chmod 600`):
    - **Address lookups (Task 3):** as `admin@demo1…`, five bulk "Check" runs of 100 new addresses each pass; the sixth list is refused with "Too many attempts" on the addresses field; another member's profile address change still works.
    - **Handoff bound to the password (Task 4):** as `superadmin@…` on the admin host, capture the handoff URL that "Open" on demo1 issues (do not follow it), change the super admin's password in a second context, then open the captured URL: it lands on the login page, not on the dashboard. A fresh "Open" after the change works.
-   - **Session rotation (Task 5):** `user@demo1…` signed in twice; "Log out other devices" in context A changes A's session cookie value, the security page still shows one row with "This device", and context B lands on the login page.
+   - **Session rotation (Task 5):** `user@demo1…` signed in in contexts A and B. Before the click, copy A's session cookie (the name `config('session.cookie')` gives) into a fresh context C with `context.addCookies()`, without printing it; C's `GET /dashboard` shows the dashboard. Then click "Log out other devices" in A: A stays on the security page with one row and "This device", and its next `GET /dashboard` works; C (the copied cookie) and B both land on `/login`. Optionally, a PDO script in the scratchpad checks that `sessions` holds one row for the user and that its id differs from the row before the click (compare inside the script, never print an id). (A's cookie value alone proves nothing: Laravel encrypts the session cookie with a fresh IV on every response.)
    - **Upload clean-up (Task 7):** `php artisan schedule:list` inside the site lists `livewire-tmp-cleanup` hourly at :45; a file older than 24 h placed under the site's `storage/app/private/livewire-tmp/` is gone after `php artisan schedule:test --name=livewire-tmp-cleanup` (the throwaway site only).
    - **Storage link (Task 8):** the doctor's `storage-link` row passes on the fresh site.
    - **Impersonation as an organisation admin on a tenant host (D86):** `admin@demo1…` impersonates `user@demo1…` from the users page, lands on demo1's dashboard as the user, sees the impersonation banner, and stops back to the admin; the activity log shows both entries.
@@ -12660,6 +12828,7 @@ Every command names the throwaway site by its absolute path; artisan runs from i
 7. **Record** every output in the ledger, never a password, secret, token, session id, handoff URL or accept URL.
 
 Clean up as M7d's Task 9 did, for each of `m8a-e2e-a`, `m8a-e2e-b`, `m8a-e2e-phpunit` and `m8a-e2e-pgsql`:
+- for `m8a-e2e-a` and `m8a-e2e-b` (the two wizard runs with Claude Code on), before the `rm -rf`, run `(cd "$HOME/Herd/<site>" && claude plugin uninstall superpowers@superpowers-marketplace --scope project --keep-data)`. Never without `--keep-data`, because the plugin's data directory is shared with the owner's user-scope install. If it fails, name the two leftover project entries in the hand-off for the owner (DEC-33 g3-04). The CLI runs answer `"claude": false` (`tests/Fixtures/e2e-answers.json`) and install no plugin.
 - `herd unsecure <site>` where it was secured, and `herd unisolate --site=<site>` only if `herd isolated` lists it
 - `rm -rf "$HOME/Herd/<site>"` and each script's temp directory (the script prints them)
 - drop the PostgreSQL databases with a PDO script in the scratchpad that first checks that `pg_database` lists exactly the expected names (`m8a_e2e_a`, `m8a_e2e_a_test`, `m8a_e2e_pgsql`, `m8a_e2e_pgsql_test`, and any other the summaries name), then drops them by literal name
