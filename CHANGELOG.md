@@ -146,7 +146,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The backups' source connection defaults to the app's default database (`sqlite`), like `config/database.php`.
 - The test suite flushes Livewire's per-request state before every test, so an asset one test's page registers no longer shows up in the next test's page.
 - A successful sign-in, also with a second factor or a passkey, clears the failed attempts of that address from that IP address.
-- An array sent as the address to the sign-in, reset-link and reset routes, or as the credential id to the passkey sign-in, answers with a validation error instead of a server error.
+- An array sent as the address to the sign-in, reset-link and reset routes, as the token to the reset route, or as the credential id to the passkey sign-in, answers with a validation error instead of a server error.
 - Failed passkey sign-ins are limited per IP address and failed passkey confirmations per user, whatever credential id the client sends.
 - A throttled sign-in returns to the login page, never to the page the Referer names.
 - With the passkeys module off, the security page refuses its passkey actions (404) even when a Livewire request calls them directly.

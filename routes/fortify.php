@@ -28,7 +28,7 @@ Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.
         ->middleware(['guest:web', 'throttle:password-email'])
         ->name('password.email');
 
-    // §4.2 / R1: throttled, so reset tokens and addresses cannot be probed; G1-02: an array address is a validation error.
+    // §4.2 / R1: throttled, so reset tokens and addresses cannot be probed; G1-02: an array address or token is a validation error.
     Route::post(RoutePath::for('password.update', '/reset-password'), [ResetPasswordController::class, 'store'])
         ->middleware(['guest:web', 'throttle:password-reset'])
         ->name('password.update');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.2 */
 
+use App\Enums\ActivityEvent;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -11,6 +12,7 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Sleep;
 use PragmaRX\Google2FA\Google2FA;
 
@@ -180,15 +182,18 @@ it('keeps another address\'s failures when an account signs in from the same IP 
     expect(session('errors')?->first('email'))->toStartWith('Too many login attempts');
 });
 
-it('answers array input to the throttled auth routes with a validation error, not a server error (G1-02)', function (string $route, array $input): void {
+it('answers array input to the throttled auth routes with a validation error, not a server error (G1-02)', function (string $route, array $input, string $field): void {
     $organisation = Organisation::factory()->create();
+    // A live reset record for the address, so an array token would reach the broker's token check.
+    Password::broker()->createToken(User::factory()->for($organisation)->create(['email' => 'member@example.com']));
     onTenant($organisation);
 
-    $this->from(route('login'))->post(route($route), $input)->assertRedirect()->assertSessionHasErrors('email');
+    $this->from(route('login'))->post(route($route), $input)->assertRedirect()->assertSessionHasErrors($field);
 })->with([
-    'sign in' => ['login.store', ['email' => ['member@example.com'], 'password' => 'secret']],
-    'request a reset link' => ['password.email', ['email' => ['member@example.com']]],
-    'reset the password' => ['password.update', ['token' => 'x', 'email' => ['member@example.com'], 'password' => 'new-password', 'password_confirmation' => 'new-password']],
+    'sign in' => ['login.store', ['email' => ['member@example.com'], 'password' => 'secret'], 'email'],
+    'request a reset link' => ['password.email', ['email' => ['member@example.com']], 'email'],
+    'reset the password' => ['password.update', ['token' => 'x', 'email' => ['member@example.com'], 'password' => 'new-password', 'password_confirmation' => 'new-password'], 'email'],
+    'reset the password (token)' => ['password.update', ['token' => ['x'], 'email' => 'member@example.com', 'password' => 'new-password', 'password_confirmation' => 'new-password'], 'token'],
 ]);
 
 it('answers an array credential id to the passkey sign-in with a validation error, not a server error (G1-02)', function (): void {
@@ -288,6 +293,9 @@ it('limits failed passkey sign-ins per IP, whatever credential id the client sen
     }
 
     $this->postJson(route('passkey.login'), ['credential' => ['id' => 'credential-11']])->assertTooManyRequests();
+
+    // CD-6: a throttled request is not a sign-in attempt, so the 429 adds no audit entry.
+    expect(recordedActivity(ActivityEvent::LoginFailed))->toHaveCount(10);
 });
 
 it('limits failed passkey confirmations per user, not per IP (G1-05)', function (): void {
