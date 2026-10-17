@@ -62,6 +62,25 @@ it('activates the account with the chosen name and signs the invitee in (W14)', 
     $this->assertAuthenticatedAs($invitee);
 });
 
+it('shows why an accept that waited on an archive is refused (CD-5, G4-07)', function () use ($tokenOf): void {
+    // The archive commits while the accept waits for the organisation lock; HostScope::lockForWrite() then refuses on
+    // the "organisation" key, which the page did not render, so the button did nothing visible.
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $invitation = inviteMember($organisation);
+    onTenant($organisation);
+    $page = Livewire::test('pages::invitations.accept', ['token' => $tokenOf($invitation)])
+        ->set('name', 'Ann Invitee')
+        ->set('password', 'secret-password')
+        ->set('password_confirmation', 'secret-password');
+    DB::table('organisations')->where('id', $organisation->id)->update(['deleted_at' => now()]);
+
+    $page->call('accept')
+        ->assertHasErrors(['organisation'])
+        ->assertSee(__('This organisation is archived.'));
+
+    expect(DB::table('users')->where('id', $invitation->user_id)->value('status'))->toBe(UserStatus::PendingActivation->value);
+});
+
 it('shows the expired page after the domain expiry and answers 403 after the signature grace (INV-4)', function (): void {
     $link = acceptLinkFor(inviteMember(Organisation::factory()->create(['slug' => 'acme'])));
 

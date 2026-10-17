@@ -202,6 +202,21 @@ it('refuses a forged resend on the accept page from a guest or a member (INV-11)
         ->and($queuedReminders())->toBe(0);
 })->with(['guest', 'member']);
 
+it('shows why a resend on the accept page that waited on an archive is refused (CD-5)', function () use ($queuedReminders): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    $token = $invitation->token ?? throw new LogicException('The invitation keeps no token.');
+    $this->travel(8)->days();
+    $page = Livewire::test('pages::invitations.accept', ['token' => $token])->assertSee(__('Resend invitation'));
+    DB::table('organisations')->where('id', $organisation->id)->update(['deleted_at' => now()]);
+
+    $page->call('resend')->assertSee(__('This organisation is archived.'));
+
+    expect($invitation->refresh()->reminder_sent_at)->toBeNull()
+        ->and($queuedReminders())->toBe(0);
+});
+
 it('records invitation.reminder_sent', function (): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($organisation);

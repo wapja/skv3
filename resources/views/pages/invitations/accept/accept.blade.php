@@ -17,6 +17,8 @@
                 </flux:button>
 
                 <flux:error name="invitation" />
+                {{-- HostScope::lockForWrite() refuses an organisation archived while the request waited on this key. --}}
+                <flux:error name="organisation" />
             @endif
             @break
 
@@ -44,6 +46,7 @@
                 <flux:input wire:model="password_confirmation" :label="__('Confirm password')" type="password" required autocomplete="new-password" viewable />
 
                 <flux:error name="invitation" />
+                <flux:error name="organisation" />
 
                 <flux:button variant="primary" type="submit" class="w-full" data-test="accept-invitation-button">
                     {{ __('Activate account') }}
