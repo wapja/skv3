@@ -98,7 +98,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The last-backup health check names why backups would not be encrypted (no `BACKUP_ARCHIVE_PASSWORD`, encryption switched off in `config/backup.php`, or a PHP zip without AES-256), each with its own fix.
 - Without the PHP posix extension the backups trust no directory as this account's: `backup:run` refuses to start, Herd's `pg_dump` counts only when root owns it, and the doctor's `pg-dump` row says why. Running as root, `backup:run` accepts only a temporary directory inside `storage/`.
 - Every environment except `local` and `testing` uses the strict password rule (12 characters, mixed case, letters, numbers, symbols, not in a known breach), so a staging install's super admin gets it too.
-- `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout.
+- `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout. It removes only the keys it added, so your own `repositories.flux-pro` entry or other `extra.skv` keys stay.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.

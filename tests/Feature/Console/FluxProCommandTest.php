@@ -45,6 +45,8 @@ it('adds the repository, requires Flux Pro and clears compiled views (§6.7, DEC
         "*composer' 'config' 'extra.skv.flux-pro' 'true' '--json'*" => $recorded('mark', Process::result('')),
         "*composer' 'config' 'repositories.flux-pro' 'composer' 'https://composer.fluxui.dev'*" => $recorded('repository', Process::result('')),
         "*composer' 'require' 'livewire/flux-pro'*" => $recorded('require', Process::result('Installed')),
+        "*composer' 'config' 'extra.skv'" => Process::result(errorOutput: 'extra.skv is not defined.', exitCode: 1),
+        "*composer' 'config' 'repositories.flux-pro'" => Process::result(errorOutput: 'There is no flux-pro repository defined', exitCode: 1),
     ]);
 
     expect(Artisan::call('skv:flux-pro', ['--no-interaction' => true]))->toBe(0)
@@ -80,10 +82,12 @@ it('stops with the README one-liner when no credentials are configured (RL-12)',
 it('fails with the last line Composer printed when the require fails (RL-12)', function (): void {
     Process::fake([
         "*composer' 'config' 'http-basic.composer.fluxui.dev'*" => Process::result('{"username":"me@example.com","password":"secret-key"}'),
-        "*composer' 'config' 'repositories.flux-pro'*" => Process::result(''),
+        "*composer' 'config' 'extra.skv'" => Process::result(errorOutput: 'extra.skv is not defined.', exitCode: 1),
+        "*composer' 'config' 'repositories.flux-pro'" => Process::result(errorOutput: 'There is no flux-pro repository defined', exitCode: 1),
+        "*composer' 'config' 'repositories.flux-pro' 'composer' 'https://composer.fluxui.dev'*" => Process::result(''),
         "*composer' 'config' 'extra.skv.flux-pro' 'true' '--json'*" => Process::result(''),
-        "*composer' 'config' '--unset' 'extra.skv'*" => Process::result(''),
-        "*composer' 'config' '--unset' 'repositories.flux-pro'*" => Process::result(''),
+        "*composer' 'config' '--unset' 'extra.skv'" => Process::result(''),
+        "*composer' 'config' '--unset' 'repositories.flux-pro'" => Process::result(''),
         "*composer' 'require' 'livewire/flux-pro'*" => Process::result(errorOutput: "Updating dependencies\nYour requirements could not be resolved.\n", exitCode: 2),
     ]);
 
@@ -102,10 +106,18 @@ $composerSteps = function (array $results = []): void {
         "*composer' 'config' 'extra.skv.flux-pro' 'true' '--json'*" => $results['mark'] ?? Process::result(''),
         "*composer' 'config' 'repositories.flux-pro' 'composer' 'https://composer.fluxui.dev'*" => $results['repository'] ?? Process::result(''),
         "*composer' 'require' 'livewire/flux-pro'*" => $results['require'] ?? Process::result('Installed'),
-        "*composer' 'config' '--unset' 'extra.skv'*" => $results['unset mark'] ?? Process::result(''),
-        "*composer' 'config' '--unset' 'repositories.flux-pro'*" => $results['unset repository'] ?? Process::result(''),
+        "*composer' 'config' '--unset' 'extra.skv'" => $results['unset mark'] ?? Process::result(''),
+        "*composer' 'config' '--unset' 'extra.skv.flux-pro'" => $results['unset mark key'] ?? Process::result(''),
+        "*composer' 'config' '--unset' 'repositories.flux-pro'" => $results['unset repository'] ?? Process::result(''),
+        // What composer.json held before: by default neither extra.skv nor the repository.
+        "*composer' 'config' 'extra.skv'" => $results['probe mark'] ?? Process::result(errorOutput: 'extra.skv is not defined.', exitCode: 1),
+        "*composer' 'config' 'extra.skv.flux-pro'" => $results['probe mark key'] ?? Process::result(errorOutput: 'extra.skv.flux-pro is not defined.', exitCode: 1),
+        "*composer' 'config' 'repositories.flux-pro'" => $results['probe repository'] ?? Process::result(errorOutput: 'There is no flux-pro repository defined', exitCode: 1),
     ]);
 };
+
+/** A Composer call whose command line ends with $command, so `--unset extra.skv` never matches `extra.skv.flux-pro`. */
+$ranExactly = fn (string $command): Closure => fn ($process): bool => str_ends_with(implode(' ', (array) $process->command), ' '.$command);
 
 $ran = fn (string $command): Closure => fn ($process): bool => str_contains(implode(' ', (array) $process->command), $command);
 
@@ -125,10 +137,38 @@ it('undoes what a failed step added to composer.json and starts no later step (C
 
     expect(is_file($this->probe))->toBeTrue();
 })->with([
-    'the mark' => ['mark', ['config --unset extra.skv'], ['config repositories.flux-pro', 'config --unset repositories.flux-pro', 'require livewire/flux-pro']],
+    'the mark' => ['mark', ['config --unset extra.skv'], ['config repositories.flux-pro composer', 'config --unset repositories.flux-pro', 'require livewire/flux-pro']],
     'the repository' => ['repository', ['config --unset repositories.flux-pro', 'config --unset extra.skv'], ['require livewire/flux-pro']],
     'the require' => ['require', ['config --unset repositories.flux-pro', 'config --unset extra.skv'], []],
 ]);
+
+it('undoes only the keys the install added, never ones composer.json held before (CD-13, L7b-72)', function () use ($composerSteps, $ranExactly): void {
+    // extra.skv held another key and the repository was the developer's own: a failed require used to unset both.
+    $composerSteps([
+        'probe mark' => Process::result('{"other":true}'),
+        'probe repository' => Process::result('{"type":"composer","url":"https://composer.fluxui.dev"}'),
+        'require' => Process::result(errorOutput: "Your requirements could not be resolved.\n", exitCode: 2),
+    ]);
+
+    expect(Artisan::call('skv:flux-pro', ['--no-interaction' => true]))->toBe(1);
+
+    Process::assertRan($ranExactly('config --unset extra.skv.flux-pro'));
+    Process::assertDidntRun($ranExactly('config --unset extra.skv'));
+    Process::assertDidntRun($ranExactly('config --unset repositories.flux-pro'));
+});
+
+it('leaves a mark composer.json already held (CD-13, L7b-72)', function () use ($composerSteps, $ran): void {
+    $composerSteps([
+        'probe mark' => Process::result('{"flux-pro":true}'),
+        'probe mark key' => Process::result('true'),
+        'require' => Process::result(errorOutput: "Your requirements could not be resolved.\n", exitCode: 2),
+    ]);
+
+    expect(Artisan::call('skv:flux-pro', ['--no-interaction' => true]))->toBe(1);
+
+    Process::assertDidntRun($ran('config --unset extra.skv'));
+    Process::assertRan($ran('config --unset repositories.flux-pro'));
+});
 
 it('names the manual command for a key Composer would not remove (CD-13, L7b-72)', function () use ($composerSteps): void {
     $composerSteps([
@@ -149,6 +189,10 @@ it('undoes the mark and the repository and skips the require after Ctrl-C or SIG
     // repository step "runs", as a terminal's Ctrl-C reaches the command while Composer works.
     // A handler of the test's own catches the signal should the command trap none, so a regression fails this test
     // instead of terminating the test process; the command's handler runs before it (Signals::register()).
+    // The process's own SIGTERM handler and async-signal mode are put back afterwards, so a handler installed earlier
+    // in this worker (a daemon-mode queue:work test, for one) survives this test.
+    $previousHandler = pcntl_signal_get_handler(SIGTERM);
+    $previousAsync = pcntl_async_signals();
     Signals::resolveAvailabilityUsing(fn (): bool => true);
     pcntl_async_signals(true);
     pcntl_signal(SIGTERM, function (): void {});
@@ -161,7 +205,8 @@ it('undoes the mark and the repository and skips the require after Ctrl-C or SIG
     try {
         $exit = Artisan::call('skv:flux-pro', ['--no-interaction' => true]);
     } finally {
-        pcntl_signal(SIGTERM, SIG_DFL);
+        pcntl_signal(SIGTERM, $previousHandler);
+        pcntl_async_signals($previousAsync);
         Signals::resolveAvailabilityUsing(fn (): bool => false);
     }
 

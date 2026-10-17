@@ -205,7 +205,7 @@ The kit works fully on free Flux. To switch on the Pro components in your app, a
 composer config --global http-basic.composer.fluxui.dev <email> <license-key> && php artisan skv:flux-pro
 ```
 
-`skv:flux-pro` never writes or prints your credentials, and runs `view:clear` after it installs the package. Before it requires the package it marks `composer.json` with `"extra": {"skv": {"flux-pro": true}}`, so the lock stays current, and it removes the mark and the `repositories.flux-pro` entry again when the install fails or is interrupted (Ctrl-C or a Composer timeout included); when a removal fails, it prints the `composer config --unset` command to run. Commit both Composer files to keep Pro in your app: the kit's test "never references Flux Pro in the committed composer files" then skips, because your commit carries the mark.
+`skv:flux-pro` never writes or prints your credentials, and runs `view:clear` after it installs the package. Before it requires the package it marks `composer.json` with `"extra": {"skv": {"flux-pro": true}}`, so the lock stays current, and it removes the mark and the `repositories.flux-pro` entry again when the install fails or is interrupted (Ctrl-C or a Composer timeout included), but only what it added: a `repositories.flux-pro` entry or other `extra.skv` keys that `composer.json` already held stay; when a removal fails, it prints the `composer config --unset` command to run. Commit both Composer files to keep Pro in your app: the kit's test "never references Flux Pro in the committed composer files" then skips, because your commit carries the mark.
 
 ## Local subdomains without Herd
 

@@ -24,7 +24,9 @@ use Symfony\Component\Process\Exception\ProcessSignaledException;
  * so the mark goes in before the require. It never writes credentials and never prints them.
  *
  * An install that does not finish undoes what it added to composer.json, the mark and the repository (L7b-72), and
- * names the manual command for a key Composer would not remove. Ctrl-C or SIGTERM is trapped while pcntl is loaded
+ * names the manual command for a key Composer would not remove. It reads first which of those keys composer.json
+ * already holds and undoes only the ones it added: a developer's own `repositories.flux-pro` or other `extra.skv`
+ * keys survive a failed install (an existing value it overwrote stays overwritten). Ctrl-C or SIGTERM is trapped while pcntl is loaded
  * (L7b-81): Composer, in the same process group, reverts its own change and re-raises the signal, so Symfony throws
  * ProcessSignaledException instead of returning a failed result; that and a timeout are caught and the same undo
  * runs; no later step starts.
@@ -61,12 +63,22 @@ final class FluxProCommand extends Command
             $this->interrupted = true;
         });
 
+        try {
+            // The outermost key each step would create, or null when composer.json holds it already.
+            $markKey = $this->absentKey($toolchain, $composer, ['extra.skv', 'extra.skv.flux-pro']);
+            $repositoryKey = $this->absentKey($toolchain, $composer, ['repositories.flux-pro']);
+        } catch (ProcessSignaledException|ProcessTimedOutException) {
+            $this->components->error(__('Composer could not install Flux Pro.'));
+
+            return self::FAILURE;
+        }
+
         /** @var list<string> $added the composer.json keys the steps so far have written, undone in reverse */
         $added = [];
 
         foreach ([
-            ['extra.skv', [$composer, 'config', 'extra.skv.flux-pro', 'true', '--json']],
-            ['repositories.flux-pro', [$composer, 'config', 'repositories.flux-pro', 'composer', 'https://composer.fluxui.dev']],
+            [$markKey, [$composer, 'config', 'extra.skv.flux-pro', 'true', '--json']],
+            [$repositoryKey, [$composer, 'config', 'repositories.flux-pro', 'composer', 'https://composer.fluxui.dev']],
             [null, [$composer, 'require', 'livewire/flux-pro', '--no-interaction']],
         ] as [$key, $command]) {
             if ($this->interrupted) {
@@ -128,6 +140,23 @@ final class FluxProCommand extends Command
                 $this->components->warn(__('Could not remove :key from composer.json. Run: composer config --unset :key', ['key' => $key]));
             }
         }
+    }
+
+    /**
+     * The first of $keys, outermost first, that composer.json does not hold (`composer config <key>` fails for a key it
+     * does not define), or null when it holds them all: the key an undo may remove without touching anything older.
+     *
+     * @param  non-empty-list<string>  $keys
+     */
+    private function absentKey(Toolchain $toolchain, string $composer, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if ($this->process($toolchain, 60)->run([$composer, 'config', $key])->failed()) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /** The last line Composer printed (it prints no credentials), or a generic message when it printed nothing. */
