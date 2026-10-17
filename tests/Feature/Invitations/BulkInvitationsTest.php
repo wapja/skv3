@@ -98,7 +98,7 @@ it('reviews every row: ready, invalid, listed twice, an unknown language and add
         ->and(Tenant::run($acme, fn (): int => Invitation::query()->count()))->toBe(1);
 });
 
-it('refuses an empty list, a list of more than 100 rows, no role and a file that is not a CSV (CD-6)', function (string $input) use ($templateRoleId): void {
+it('refuses an empty list, a list of more than 100 rows, no role, a file that is not a CSV and an input that is too large (CD-6)', function (string $input) use ($templateRoleId): void {
     asOrgAdmin(Organisation::factory()->create(['slug' => 'acme']));
     $page = Livewire::test('pages::invitations.bulk')->set('roles', [$templateRoleId()]);
 
@@ -106,7 +106,9 @@ it('refuses an empty list, a list of more than 100 rows, no role and a file that
         'nothing' => $page->set('addresses', " \n;"),
         '101 rows' => $page->set('addresses', implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 101)))),
         'no role' => $page->set('addresses', 'ada@example.com')->set('roles', []),
-        default => $page->set('csv', UploadedFile::fake()->createWithContent('list.pdf', "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")), // 'not a CSV'
+        'not a CSV' => $page->set('csv', UploadedFile::fake()->createWithContent('list.pdf', "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")),
+        'a pasted list over 30,000 characters' => $page->set('addresses', 'ada@example.com'.str_repeat(' ', 30000)),
+        default => $page->set('csv', UploadedFile::fake()->createWithContent('list.csv', 'ada@example.com'.str_repeat("\n", 513 * 1024))), // 'a CSV file over 512 KB'
     };
 
     $page->call('check')
@@ -114,10 +116,13 @@ it('refuses an empty list, a list of more than 100 rows, no role and a file that
             'nothing' => ['addresses' => __('Paste addresses or choose a CSV file.')],
             '101 rows' => ['addresses' => __('Add at most :max addresses at a time.', ['max' => 100])],
             'no role' => ['roles' => __('Choose at least one role.')],
-            default => ['csv' => 'mimes'], // the rule: Livewire reads a message with a colon as a rule and its parameters
+            // the rules: Livewire reads a message with a colon as a rule and its parameters
+            'not a CSV' => ['csv' => 'mimes'],
+            'a pasted list over 30,000 characters' => ['addresses' => 'max'],
+            default => ['csv' => 'max'],
         })
         ->assertSet('rows', []);
-})->with(['nothing', '101 rows', 'no role', 'not a CSV']);
+})->with(['nothing', '101 rows', 'no role', 'not a CSV', 'a pasted list over 30,000 characters', 'a CSV file over 512 KB']);
 
 it('drops the preview when the input changes, so only a checked list is sent (CD-6)', function (string $change) use ($templateRoleId): void {
     asOrgAdmin(Organisation::factory()->create(['slug' => 'acme']));

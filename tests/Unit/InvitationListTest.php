@@ -78,3 +78,34 @@ it('keeps every row, so the page can refuse a list longer than the maximum (CD-6
         ->and(InvitationList::fromCsv($text))->toHaveCount(101)
         ->and(InvitationList::MAX_ROWS)->toBe(100);
 });
+
+it('stops at the limit, which defaults to one row past the maximum, so a long list costs no more than that (CD-6)', function (): void {
+    $text = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 10000)));
+    $firstThree = [
+        ['email' => 'person1@example.com', 'locale' => null],
+        ['email' => 'person2@example.com', 'locale' => null],
+        ['email' => 'person3@example.com', 'locale' => null],
+    ];
+
+    expect(InvitationList::fromText($text))->toHaveCount(101)
+        ->and(InvitationList::fromCsv($text))->toHaveCount(101)
+        ->and(InvitationList::fromText($text, 101))->toHaveCount(101)
+        ->and(InvitationList::fromCsv($text, 101))->toHaveCount(101)
+        ->and(InvitationList::fromCsv($text, 101)[100])->toBe(['email' => 'person101@example.com', 'locale' => null])
+        ->and(InvitationList::fromText($text, 3))->toBe($firstThree)
+        ->and(InvitationList::fromCsv($text, 3))->toBe($firstThree);
+});
+
+it('reads a CSV file of the largest allowed size line by line, rows or not (CD-6)', function (string $line): void {
+    $contents = str_repeat($line, intdiv(512 * 1024, strlen($line)));
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+
+    InvitationList::fromCsv($contents);
+
+    // Splitting the whole file into lines and records first took about 175 MB for this input.
+    expect(memory_get_peak_usage() - $before)->toBeLessThan(4 * 1024 * 1024);
+})->with([
+    'one short address per line' => ["a\n"],
+    'a line without an address' => [",x\n"],
+]);
