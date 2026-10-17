@@ -7,6 +7,7 @@ declare(strict_types=1);
 use App\Actions\Auth\IssueHandoff;
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
+use App\Enums\Locale;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
 use App\Models\User;
@@ -53,15 +54,12 @@ $newProcess = function (): void {
 };
 
 /**
- * Signs $user in through the login form in a new browser and returns the cookies that browser then holds, encrypted
- * as the response set them: the session and, with $remember, the "remember me" cookie.
+ * The cookies a response set, encrypted as it set them: what the browser holds from then on.
  *
+ * @param  TestResponse<Response>  $response
  * @return array<string, string>
  */
-$signIn = function (User $user, bool $remember = false) use ($newProcess): array {
-    $newProcess();
-    $response = post(route('login.store'), ['email' => $user->email, 'password' => 'password', 'remember' => $remember])->assertRedirect();
-
+$cookiesOf = function (TestResponse $response): array {
     $cookies = [];
 
     foreach ($response->headers->getCookies() as $cookie) {
@@ -69,6 +67,18 @@ $signIn = function (User $user, bool $remember = false) use ($newProcess): array
     }
 
     return $cookies;
+};
+
+/**
+ * Signs $user in through the login form in a new browser and returns the cookies that browser then holds, encrypted
+ * as the response set them: the session and, with $remember, the "remember me" cookie.
+ *
+ * @return array<string, string>
+ */
+$signIn = function (User $user, bool $remember = false) use ($newProcess, $cookiesOf): array {
+    $newProcess();
+
+    return $cookiesOf(post(route('login.store'), ['email' => $user->email, 'password' => 'password', 'remember' => $remember])->assertRedirect());
 };
 
 /**
@@ -140,7 +150,21 @@ it('lists the user\'s live sessions with browser, platform, IP and last activity
         ->and($html)->not->toContain($thisDevice[0]);
 });
 
-it('signs a second "remember me" browser out on its next request and keeps this device signed in (§6.6)', function () use ($newProcess, $signIn, $useBrowser, $errorsOf): void {
+it('names an unknown browser and platform in one sentence, the platform in lower case (§6.6)', function (Locale $locale, string $expected): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create(['locale' => $locale]);
+    onTenant($organisation);
+    sessionRowFor($member, ['user_agent' => null]);
+    $this->actingAs($member);
+    withSession(['auth.password_confirmed_at' => time()]);
+
+    $this->get(route('security.edit'))->assertOk()->assertSee($expected);
+})->with([
+    'English' => [Locale::English, 'Unknown browser on unknown platform'],
+    'Dutch' => [Locale::Dutch, 'Onbekende browser op onbekend platform'],
+]);
+
+it('signs a second "remember me" browser out on its next request and keeps this device signed in (§6.6)', function () use ($newProcess, $signIn, $useBrowser, $errorsOf, $cookiesOf): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();
     onTenant($organisation);
@@ -155,18 +179,49 @@ it('signs a second "remember me" browser out on its next request and keeps this 
     $this->assertAuthenticatedAs($member);
 
     $useBrowser($thisDevice);
-    expect($errorsOf(callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password'])))->toBe([]);
+    $response = callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password']);
+    expect($errorsOf($response))->toBe([]);
 
     // Its session row is gone, and its remember cookie holds the old password hash, which AuthenticateSession refuses.
     $newProcess();
     call('GET', route('dashboard'), [], $laptop)->assertRedirect(route('login'));
     $this->assertGuest();
 
+    // This device goes on with the session cookie the update set (CD-18).
     $newProcess();
-    call('GET', route('dashboard'), [], $thisDevice)->assertOk();
+    call('GET', route('dashboard'), [], [...$thisDevice, ...$cookiesOf($response)])->assertOk();
     $this->assertAuthenticatedAs($member);
 });
 
+it('gives this device a new session id, so a copy of its old cookie is signed out with the other devices (§6.6, CD-18)', function () use ($newProcess, $signIn, $useBrowser, $errorsOf, $cookiesOf, $rowsOf): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    // The cookies a thief copied from this browser before the member pressed the button.
+    $thisDevice = $signIn($member);
+    $useBrowser($thisDevice);
+    $before = $rowsOf($member);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.sessions');
+
+    $response = callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password']);
+
+    $after = $rowsOf($member);
+    expect($errorsOf($response))->toBe([])
+        ->and($before)->toHaveCount(1)
+        ->and($after)->toHaveCount(1)
+        ->and($after)->not->toBe($before)
+        // The list the update renders still marks this device: its row moved to the new id.
+        ->and(substr_count((string) $response->json('components.0.effects.html'), 'This device'))->toBe(1);
+
+    $newProcess();
+    call('GET', route('dashboard'), [], $thisDevice)->assertRedirect(route('login'));
+    $this->assertGuest();
+
+    $newProcess();
+    call('GET', route('dashboard'), [], [...$thisDevice, ...$cookiesOf($response)])->assertOk();
+    $this->assertAuthenticatedAs($member);
+    expect($rowsOf($member))->toBe($after);
+});
 it('ends only the user\'s other sessions and records how many (§4.8, CD-9)', function () use ($signIn, $useBrowser, $errorsOf, $rowsOf): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();
@@ -174,20 +229,27 @@ it('ends only the user\'s other sessions and records how many (§4.8, CD-9)', fu
     onTenant($organisation);
     $useBrowser($signIn($member));
     $thisDevice = $rowsOf($member);
-    sessionRowFor($member);
-    sessionRowFor($member, ['user_agent' => null, 'ip_address' => null]);
+    $others = [
+        sessionRowFor($member),
+        sessionRowFor($member, ['user_agent' => null, 'ip_address' => null]),
+        // Expired: not listed, but ended and counted all the same.
+        sessionRowFor($member, ['last_activity' => now()->subDay()->getTimestamp()]),
+    ];
     $colleagueRow = sessionRowFor($colleague);
     $passwordHash = (string) $member->fresh()?->password;
     $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.sessions');
 
     expect($errorsOf(callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password'])))->toBe([]);
 
-    expect($rowsOf($member))->toBe($thisDevice)
+    $remaining = $rowsOf($member);
+    // One row is left: this device's, under its new id (CD-18).
+    expect($remaining)->toHaveCount(1)
+        ->and(array_intersect($remaining, [...$others, ...$thisDevice]))->toBe([])
         ->and($rowsOf($colleague))->toBe([$colleagueRow])
         ->and((string) $member->fresh()?->password)->not->toBe($passwordHash);
     $entry = recordedActivity(ActivityEvent::OtherSessionsEnded)->sole();
     expect([$entry->subject_id, $entry->causer_id, $entry->organisation_id])->toBe([$member->id, $member->id, $organisation->id])
-        ->and($entry->properties?->all())->toBe(['count' => 2]);
+        ->and($entry->properties?->all())->toBe(['count' => 3]);
 });
 
 it('refuses a handoff link issued before the other devices were logged out (§6.4, §6.6)', function () use ($newProcess, $signIn, $useBrowser, $errorsOf): void {
@@ -219,7 +281,13 @@ it('refuses a wrong password on the password field and ends nothing (CD-2)', fun
     $passwordHash = (string) $member->fresh()?->password;
     $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.sessions');
 
-    expect($errorsOf(callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'wrong-password'])))->toHaveKey('password');
+    $response = callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'wrong-password']);
+
+    /** @var array{data: array{password: string}} $after */
+    $after = json_decode((string) $response->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+    expect($errorsOf($response))->toHaveKey('password')
+        // The modal stays open with an empty field, not the password just refused.
+        ->and($after['data']['password'])->toBe('');
 
     expect($rowsOf($member))->toBe($rows)
         ->and((string) $member->fresh()?->password)->toBe($passwordHash)

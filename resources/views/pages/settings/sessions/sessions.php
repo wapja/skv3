@@ -84,7 +84,9 @@ new class extends Component
     /**
      * Logs out every other device (§6.6): the password is rehashed, so AuthenticateSession signs out every other
      * session and "remember me" cookie on its next request, and this device gets a fresh remember cookie
-     * (Auth::logoutOtherDevices()); then the user's other rows and their unused handoff links are deleted. Every attempt counts against the
+     * (Auth::logoutOtherDevices()). This device also gets a new session id (CD-18): its row moves to the new id, so
+     * a copy of its old cookie finds no session, while the list rendered by this update still marks this device.
+     * Then the user's other rows and their unused handoff links are deleted. Every attempt counts against the
      * user's limit before the password is checked (CD-2), so the form cannot be used to guess it. One transaction
      * in DEC-34's lock order: users, then sessions and handoff tokens, then the activity insert.
      */
@@ -104,6 +106,11 @@ new class extends Component
 
         DB::transaction(function () use ($user, $recordActivity): void {
             Auth::logoutOtherDevices($this->password);
+
+            // The response sets the new id's cookie; the session keeps its data and its CSRF token.
+            $previousId = session()->getId();
+            session()->migrate();
+            DB::table('sessions')->where('id', $previousId)->update(['id' => session()->getId()]);
 
             $ended = DB::table('sessions')
                 ->where('user_id', $user->id)

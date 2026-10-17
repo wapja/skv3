@@ -843,6 +843,7 @@
     "skipped": "skipped",
     "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).": "skv:install runs only in the local, testing and staging environments (APP_ENV=:env).",
     "to": "to",
+    "unknown platform": "unknown platform",
     "waiting": "waiting",
     "warning": "warning"
 }
