@@ -48,7 +48,7 @@ final readonly class Detector
             claude: $this->toolchain->which('claude') !== null,
             host: ($requestHost !== null ? SetupHost::normalise($requestHost) : null) ?? $this->cliHost(),
             scheme: $scheme,
-            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) && $this->isPort($requestPort) ? $requestPort : null,
+            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) && Detection::isPort($requestPort) ? $requestPort : null,
         );
     }
 
@@ -99,17 +99,11 @@ final readonly class Detector
         $path = $this->toolchain->herdConfigPath();
         $config = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
 
-        if (! is_array($config) || ! $this->isPort($config['smtpPort'] ?? null) || ! (bool) ($config['mails'] ?? false)) {
+        if (! is_array($config) || ! Detection::isPort($config['smtpPort'] ?? null) || ! (bool) ($config['mails'] ?? false)) {
             return [false, null];
         }
 
         return [true, $config['smtpPort']];
-    }
-
-    /** @phpstan-assert-if-true int $value */
-    private function isPort(mixed $value): bool
-    {
-        return is_int($value) && $value >= 1 && $value <= 65535;
     }
 
     /** The folder plus `herd tld` under Herd, else the APP_URL host, else localhost (RL-4, A5). */

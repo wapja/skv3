@@ -105,6 +105,17 @@ final readonly class Detection
     }
 
     /**
+     * A TCP port number (1-65535): the one rule the Detector writes and fromArray() reads back, so a snapshot the
+     * Detector takes is never one this class refuses.
+     *
+     * @phpstan-assert-if-true int $value
+     */
+    public static function isPort(mixed $value): bool
+    {
+        return is_int($value) && $value >= 1 && $value <= 65535;
+    }
+
+    /**
      * @param  array<array-key, mixed>  $data
      *
      * @throws InvalidArgumentException when $key is missing
@@ -135,7 +146,7 @@ final readonly class Detection
     {
         $value = self::field($data, $key);
 
-        return $value === null || (is_int($value) && $value >= 1 && $value <= 65535)
+        return $value === null || self::isPort($value)
             ? $value
             : throw new InvalidArgumentException("Detection: {$key} must be a port number or null.");
     }

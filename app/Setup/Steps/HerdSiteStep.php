@@ -142,7 +142,7 @@ final readonly class HerdSiteStep implements SetupStep
                 $linked = true;
             }
 
-            $pending = 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
+            $pending = $this->isolateCommand($name);
 
             if (! $this->runsSupportedPhp($context, $herd)) {
                 $this->herd($context, $herd, ['isolate', self::PHP_VERSION, '--site='.$name]);
@@ -242,7 +242,7 @@ final readonly class HerdSiteStep implements SetupStep
         }
 
         if (! $supported) {
-            return 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
+            return $this->isolateCommand($name);
         }
 
         return $context->answers->https ? 'herd secure '.$quoted : null;
@@ -419,5 +419,11 @@ final readonly class HerdSiteStep implements SetupStep
             ->env($this->toolchain->environment())
             ->timeout(self::TIMEOUT)
             ->run([$herd, ...$arguments]);
+    }
+
+    /** The `herd isolate` command the step prints for a site that runs an older PHP, built in one place. */
+    private function isolateCommand(string $name): string
+    {
+        return 'herd isolate '.self::PHP_VERSION.' '.ShellArgument::quote('--site='.$name);
     }
 }
