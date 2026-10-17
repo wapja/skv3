@@ -59,7 +59,13 @@ arch('only the super-admin action, setup, the CLI and the demo seeder call SetSu
     ->expect(SetSuperAdmin::class)
     ->toOnlyBeUsedIn([UpdateSuperAdmin::class, DatabaseStep::class, CreateSuperAdminCommand::class, DemoSeeder::class]);
 
-it('never calls SetSuperAdmin from a page, a component or a route file (L7b-39)', function (): void {
-    // The arch rule sees autoloaded classes only; Livewire's multi-file classes and route closures are scanned as text.
-    expect(filesMatching(kitSourceFiles('resources/views', 'routes'), '/\bSetSuperAdmin\b/'))->toBe([]);
+it('never calls SetSuperAdmin from a page, a component, a route file, the bootstrap, the config or a migration (L7b-39)', function (): void {
+    // The arch rule sees autoloaded classes only; Livewire's multi-file classes, route closures, bootstrap/app.php's
+    // callbacks, config files and anonymous migration classes are scanned as text.
+    $files = array_values(array_filter(
+        kitSourceFiles('resources/views', 'routes', 'bootstrap', 'config', 'database/migrations'),
+        fn (string $path): bool => ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(filesMatching($files, '/\bSetSuperAdmin\b/'))->toBe([]);
 });

@@ -29,8 +29,15 @@ it('formats sizes without ext-intl: no Illuminate\Support\Number in app code or 
 it('constrains routes by domain only in the Fortify groups (G5-07)', function (): void {
     // Route::tenant() / Route::central() attach host middleware instead (§6.2). routes/fortify.php and
     // routes/passkeys.php keep Fortify's own domain + prefix group, so their replacements match the vendor routes
-    // (FU3-3, CD-3). An empty Route::domain() in a comment does not match.
-    expect(filesMatching(kitSourceFiles('routes', 'app'), "/Route::domain\\s*\\(\\s*[^)\\s]|'domain'\\s*=>/"))->toBe(['routes/fortify.php', 'routes/passkeys.php']);
+    // (FU3-3, CD-3). An empty Route::domain() in a comment does not match. bootstrap/app.php registers routes too
+    // (withRouting(then:)); a chained ->domain(...) and a double-quoted "domain" key count, $this->domain() does not.
+    $files = array_values(array_filter(
+        kitSourceFiles('routes', 'app', 'bootstrap'),
+        fn (string $path): bool => ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(filesMatching($files, '/(?:Route::|(?<!\$this)->)domain\s*\(\s*[^)\s]|[\'"]domain[\'"]\s*=>/'))
+        ->toBe(['routes/fortify.php', 'routes/passkeys.php']);
 });
 
 it('starts external commands only through Process: no exec() and friends, no backticks (F19)', function (): void {
