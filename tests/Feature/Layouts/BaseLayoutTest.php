@@ -56,6 +56,17 @@ it('renders the same stored appearance on the admin host and on an organisation\
     }
 });
 
+it('marks the main area of the app layout, which an error page at an app path never has (A77)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $this->actingAs(User::factory()->for($organisation)->create());
+    onTenant($organisation);
+
+    expect(substr_count((string) $this->get(route('dashboard'))->assertOk()->getContent(), 'data-test="app-main"'))->toBe(1);
+
+    // A member without users.view: the 403 page renders through errors.layout at /users.
+    $this->get(route('users.index'))->assertForbidden()->assertDontSee('data-test="app-main"', false);
+});
+
 it('lets guests follow the system preference', function (): void {
     onTenant(Organisation::factory()->create(['slug' => 'acme']));
 

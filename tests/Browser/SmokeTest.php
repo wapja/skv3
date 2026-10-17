@@ -18,10 +18,15 @@ it('renders the main pages without JavaScript errors, in light and dark', functi
         $page = $page->inDarkMode();
     }
 
-    $page->fill('email', $admin->email)->fill('password', 'password')->press('@login-button');
+    // assertPathIs retries until the sign-in has landed, so the first navigate() never races the login POST (A84s).
+    $page->fill('email', $admin->email)->fill('password', 'password')->press('@login-button')->assertPathIs('/dashboard');
 
     foreach (['/dashboard', '/users', '/invitations/pending', '/roles', '/activity', '/settings/profile', '/settings/appearance'] as $path) {
-        // assertPathIs proves the page rendered on this host, not a login redirect or a 404 on 127.0.0.1.
-        $page->navigate(sameOrigin($page->url(), $path))->assertPathIs($path)->assertNoJavaScriptErrors();
+        // assertPathIs proves the page rendered on this host, not a login redirect or a 404 on 127.0.0.1; the app
+        // layout's marker proves it is the page itself, not an error page at the same path (A77).
+        $page->navigate(sameOrigin($page->url(), $path))
+            ->assertPathIs($path)
+            ->assertPresent('@app-main')
+            ->assertNoJavaScriptErrors();
     }
 })->with(['light' => false, 'dark' => true]);
