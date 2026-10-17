@@ -22,7 +22,8 @@ use Throwable;
 
 /**
  * Stores a user's own profile photo (§6.6). The upload is never stored as sent: an image whose header declares more
- * than 4096 pixels on a side is refused before decoding; the rest goes through Laravel's image API on the GD driver
+ * than 4096 pixels on a side, or another type than JPEG, PNG or WebP (E56: an animated GIF would have every frame
+ * decoded), is refused before decoding; the rest goes through Laravel's image API on the GD driver
  * (intervention/image ^4), which turns it by its EXIF orientation (ext-exif; without it the photo keeps its stored
  * orientation), crops it to a 512 × 512 square from the centre and encodes it as WebP, which carries no metadata.
  * The file goes to the public disk under avatars/{organisation id or "platform"}/{user id}-{random}.webp before the
@@ -48,6 +49,9 @@ final readonly class UpdateAvatar
     public const int BYTES_PER_PIXEL = 16;
 
     private const int MEMORY_HEADROOM = 64 * 1024 * 1024;
+
+    /** The types the page accepts (mimes:jpeg,png,webp), checked again on the header before anything is decoded. */
+    private const array TYPES = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP];
 
     public function __construct(
         private RecordActivity $recordActivity,
@@ -103,7 +107,7 @@ final readonly class UpdateAvatar
         // The header alone, before decoding: a small file can declare a huge canvas (a decompression bomb).
         $size = @getimagesizefromstring($contents);
 
-        if ($size === false || $size[0] < 1 || $size[1] < 1 || $size[0] > self::MAX_SIDE || $size[1] > self::MAX_SIDE) {
+        if ($size === false || ! in_array($size[2], self::TYPES, true) || $size[0] < 1 || $size[1] < 1 || $size[0] > self::MAX_SIDE || $size[1] > self::MAX_SIDE) {
             throw $this->unreadable();
         }
 

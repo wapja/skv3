@@ -175,15 +175,23 @@ new #[Title('Profile settings')] class extends Component
         Flux::toast(variant: 'success', text: __('Profile photo saved.'));
     }
 
-    /** Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. */
+    /**
+     * Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. Only a
+     * photo that was there is confirmed and re-renders the user menu (E55).
+     */
     public function removeAvatar(RemoveAvatar $removeAvatar): void
     {
         $this->ensureAvatarManageable();
 
-        $removeAvatar->handle($this->currentUser());
+        $removed = $removeAvatar->handle($this->currentUser());
 
         $this->avatar?->delete();
         $this->reset('avatar');
+
+        if (! $removed) {
+            return;
+        }
+
         unset($this->avatarUrl);
         $this->dispatch('avatar-updated');
         Flux::toast(variant: 'success', text: __('Profile photo removed.'));
