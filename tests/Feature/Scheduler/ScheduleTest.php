@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9 */
+/** covers §4.9.4 */
 
 use App\Support\Scheduler\Heartbeat;
 use App\Support\Scheduler\ScheduledTasks;

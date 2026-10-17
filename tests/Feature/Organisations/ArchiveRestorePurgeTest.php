@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.8 */
+/** covers §4.1.9, §4.3.3, §4.8.5, §4.8.7 */
 
 use App\Actions\Invitations\InviteUser;
 use App\Actions\Organisations\ArchiveOrganisation;

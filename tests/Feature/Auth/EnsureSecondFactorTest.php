@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §6.8 */
+/** covers §4.2.4, §6.6, §6.8 */
 
 use App\Authorization\Role;
 use App\Enums\Appearance;

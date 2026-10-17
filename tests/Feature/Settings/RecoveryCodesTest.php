@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.4 */
 
 use App\Models\User;
 use Illuminate\Encryption\Encrypter;

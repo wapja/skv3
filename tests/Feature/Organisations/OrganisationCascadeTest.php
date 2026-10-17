@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1 */
+/** covers §4.1.9 */
 
 use App\Authorization\SetSuperAdmin;
 use App\Models\Activity;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §4.6 */
+/** covers §4.4.3, §4.4.4, §4.6.11, §4.10.3 */
 
 use App\Actions\Users\DeleteUser;
 use App\Actions\Users\RestoreUser;

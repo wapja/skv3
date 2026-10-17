@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9 */
+/** covers §4.9.3 */
 
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.5 */
+/** covers §4.10.1, §4.10.5, §6.5 */
 
 use App\Enums\Appearance;
 use App\Enums\Locale;

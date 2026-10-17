@@ -13,6 +13,8 @@ The helpers live in `tests/Pest.php`; the rules are in `AGENTS.md` (kit rules an
 - Create it with `php artisan make:test --pest <Name>Test --no-interaction` in the folder of its area under
   `tests/Feature`. It starts with `declare(strict_types=1);` and a `/** covers §x.y */` docblock that names the spec
   sections it covers.
+- For spec §4, the covers line cites the bullet ids (`/** covers §4.5.2, §4.5.8, §6.2 */`); a plain `§4.5` cites
+  no bullet. `php scripts/traceability.php` fails while a §4 bullet has no test that cites it.
 - `it(...)` functions with typed closures. No class declarations, anonymous ones included, and no qualified class name
   outside the imports (`tests/Arch/TestFileClassesTest.php`): fixtures go into `tests/Fixtures`. File-local helpers
   are closures; never redeclare a global helper.

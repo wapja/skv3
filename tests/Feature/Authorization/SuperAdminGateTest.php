@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.6, §6.3 */
+/** covers §4.4.2, §4.6.4, §6.3 */
 
 use App\Authorization\Permission;
 use App\Authorization\SuperAdminGate;

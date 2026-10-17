@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.10, §4.11 */
+/** covers §4.2.8, §4.10.2, §4.11 */
 
 use App\Authorization\SetSuperAdmin;
 use App\Enums\Locale;

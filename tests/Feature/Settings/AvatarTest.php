@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §4.3, §4.8, §6.7 */
+/** covers §6.6, §4.3.3, §4.4.8, §4.8, §6.7 */
 
 use App\Actions\Organisations\ArchiveOrganisation;
 use App\Actions\Organisations\PurgeOrganisation;

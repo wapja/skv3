@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §4.7, §6.2 */
+/** covers §4.4, §4.7.2, §4.7.4, §6.2 */
 
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;

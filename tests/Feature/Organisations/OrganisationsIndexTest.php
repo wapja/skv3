@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2 */
+/** covers §4.3.2, §4.3.3, §4.3.7, §6.2 */
 
 use App\Models\HandoffToken;
 use App\Models\Organisation;

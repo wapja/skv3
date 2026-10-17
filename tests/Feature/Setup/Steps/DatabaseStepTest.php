@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §5.3.3, §7.3 */
+/** covers §4.12.1, §5.3.3, §7.3 */
 
 use App\Enums\UserStatus;
 use App\Setup\Answers;

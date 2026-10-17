@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2, §4.10 */
+/** covers §4.2.2, §4.4.6, §4.10.3 */
 
 use App\Http\Controllers\ImpersonationController;
 use App\Models\User;

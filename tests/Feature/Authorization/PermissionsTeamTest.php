@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.3 */
+/** covers §4.5.4, §6.3 */
 
 use App\Authorization\PermissionsTeam;
 use App\Models\Organisation;

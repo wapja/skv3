@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2, §6.4, §6.6 */
+/** covers §4.3.1, §4.3.2, §4.3.5, §6.2, §6.4, §6.6 */
 
 use App\Actions\Organisations\CreateOrganisation;
 use App\Enums\Locale;

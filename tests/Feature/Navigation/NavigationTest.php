@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.5, §6.8 */
+/** covers §4.6.7, §4.10.1, §6.5, §6.8 */
 
 use App\Authorization\Permission;
 use App\Enums\NavigationGroup;

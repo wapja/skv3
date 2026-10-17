@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.4 */
+/** covers §4.9.4, §6.4 */
 
 use App\Actions\Auth\IssueHandoff;
 use App\Enums\ActivityEvent;

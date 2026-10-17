@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.6, §4.2.7 */
 
 use App\Enums\ActivityEvent;
 use App\Models\Organisation;

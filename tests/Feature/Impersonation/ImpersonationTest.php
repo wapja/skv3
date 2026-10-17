@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.7, §6.4, §6.8 */
+/** covers §4.7.1, §4.7.3, §4.8.1, §6.4, §6.8 */
 
 use App\Actions\Audit\RecordActivity;
 use App\Actions\Auth\IssueHandoff;

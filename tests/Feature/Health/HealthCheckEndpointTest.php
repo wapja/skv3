@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9 */
+/** covers §4.9.1, §4.9.2 */
 
 use App\Enums\CheckStatus;
 use App\Http\Middleware\ThrottleHealthChecks;

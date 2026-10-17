@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.11, §6.5 */
+/** covers §4.11.1, §4.11.2, §6.5 */
 
 use App\Actions\Settings\UpdateLocale;
 use App\Enums\Locale;

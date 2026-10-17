@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §6.2, Appendix A W10, X11 */
+/** covers §4.5.1, §4.5.3, §4.5.5, §6.2, Appendix A W10, X11 */
 
 use App\Actions\Invitations\AcceptInvitation;
 use App\Actions\Invitations\CancelInvitation;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.0, §6.2 */
+/** covers §4.0, §4.1.5, §4.2.5, §6.2 */
 
 use App\Models\User;
 use App\Tenancy\Auth\UnscopedPasskey;

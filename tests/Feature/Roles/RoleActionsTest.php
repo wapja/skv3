@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.6, §4.8, §6.8 */
+/** covers §4.6.2, §4.6.5, §4.8.7, §6.8 */
 
 use App\Actions\Roles\CreateRole;
 use App\Actions\Roles\DeleteRole;

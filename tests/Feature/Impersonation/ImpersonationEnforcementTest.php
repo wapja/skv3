@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1, §4.7, §6.4 */
+/** covers §4.1.6, §4.7.2, §6.4 */
 
 use App\Actions\Auth\IssueHandoff;
 use App\Actions\Users\UpdateUserStatus;

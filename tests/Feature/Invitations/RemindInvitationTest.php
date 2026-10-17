@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §6.2, Appendix A W5, X11 */
+/** covers §4.5.2, §4.5.6, §4.5.8, §6.2, Appendix A W5, X11 */
 
 use App\Actions\Invitations\RemindInvitation;
 use App\Enums\ActivityEvent;

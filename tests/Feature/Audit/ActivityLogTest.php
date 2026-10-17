@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.8, §6.2 */
+/** covers §4.8.1, §4.8.5, §4.8.6, §6.2 */
 
 use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.10 */
+/** covers §4.2.6, §4.10.2 */
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;

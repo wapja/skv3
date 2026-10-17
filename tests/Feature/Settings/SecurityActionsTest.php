@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.4, §4.2.6 */
 
 use App\Models\User;
 use Illuminate\Testing\TestResponse;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.0 */
+/** covers §4.0.1, §4.0.2 */
 
 use App\Providers\AppServiceProvider;
 use Carbon\CarbonImmutable;

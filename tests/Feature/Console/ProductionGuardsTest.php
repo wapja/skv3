@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.12, §5.2, §5.3.3 */
+/** covers §4.0.1, §4.12, §5.2, §5.3.3 */
 
 use App\Models\Organisation;
 use App\Setup\SetupContext;

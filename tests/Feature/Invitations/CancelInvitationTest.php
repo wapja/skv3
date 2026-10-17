@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §4.5 */
+/** covers §4.4, §4.5.4, §4.5.9 */
 
 use App\Actions\Invitations\CancelInvitation;
 use App\Actions\Users\RestoreUser;

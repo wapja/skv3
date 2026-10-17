@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §5.3.3, §5.3.2 */
+/** covers §4.12.2, §5.3.3, §5.3.2 */
 
 use App\Models\User;
 use App\Setup\Marker;

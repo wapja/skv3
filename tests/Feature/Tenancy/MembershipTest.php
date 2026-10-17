@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1 */
+/** covers §4.1.6, §4.1.10 */
 
 use App\Enums\Locale;
 use App\Models\Organisation;

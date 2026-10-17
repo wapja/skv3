@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §4.6, Appendix A W8, W9, W10, W11, W13, W14 */
+/** covers §4.5.1, §4.5.2, §4.5.4, §4.5.5, §4.5.8, §4.5.12, §4.6, Appendix A W8, W9, W10, W11, W13, W14 */
 
 use App\Actions\Invitations\InviteUser;
 use App\Authorization\Permission;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.2, §7.2 */
+/** covers §4.1.4, §4.1.8, §6.2, §7.2 */
 
 use App\Tenancy\Concerns\BelongsToOrganisation;
 use Illuminate\Database\Eloquent\Model;
