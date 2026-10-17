@@ -144,9 +144,17 @@ it('names a passkey in the rule\'s description only while the passkeys module is
         ->assertDontSee($passkeys ? $totpOnly : $withPasskey);
 })->with(['passkeys on' => true, 'passkeys off' => false]);
 
-it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page with the unsaved form (CD-3)', function (bool $before): void {
+it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page with the unsaved form (CD-3)', function (string $actor, bool $before): void {
     $acme = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme', 'description' => null, 'require_second_factor' => $before]);
-    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+
+    if ($actor === 'a super admin') {
+        // No second factor of their own needed: the organisation's rule is not theirs.
+        asSuperAdmin();
+        onAdminHost();
+    } else {
+        asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    }
+
     $page = route('organisations.edit', $acme->id);
     $snapshot = pageSnapshot($page, 'pages::organisations.edit');
 
@@ -172,7 +180,7 @@ it('asks for a fresh password confirmation before changing the second-factor rul
 
     expect($acme->fresh()?->only(['name', 'description', 'require_second_factor']))
         ->toBe(['name' => 'Acme Renamed', 'description' => 'Parked', 'require_second_factor' => ! $before]);
-})->with(['turning it on' => false, 'turning it off' => true]);
+})->with(['an organisation admin', 'a super admin'])->with(['turning it on' => false, 'turning it off' => true]);
 
 it('shows the parked switch and a notice on the first render after the confirmation, and only then (CD-3)', function (): void {
     $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => false]);

@@ -173,8 +173,11 @@ it('records the second-factor rule in organisation.updated\'s changes (§6.6, CD
 
     app(UpdateOrganisation::class)->handle($superAdmin, $organisation, $organisation->name, 'acme', $organisation->description, false);
 
+    $entries = recordedActivity(ActivityEvent::OrganisationUpdated);
     expect($organisation->fresh()?->require_second_factor)->toBeFalse()
-        ->and(recordedActivity(ActivityEvent::OrganisationUpdated)->last()?->attribute_changes?->get('attributes'))->toBe(['require_second_factor' => false]);
+        ->and($entries)->toHaveCount(2)
+        ->and($entries->last()?->attribute_changes?->get('old'))->toBe(['require_second_factor' => true])
+        ->and($entries->last()?->attribute_changes?->get('attributes'))->toBe(['require_second_factor' => false]);
 });
 
 it('refuses an organisation admin without a second factor of their own turning the rule on (CD-3)', function (): void {

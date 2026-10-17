@@ -108,7 +108,9 @@ new class extends Component
 
     /**
      * The stored codes, or null when they cannot be read (G2-07): encrypted with another APP_KEY that
-     * APP_PREVIOUS_KEYS does not list, or not a JSON list. Decrypted like Fortify's recoveryCodes().
+     * APP_PREVIOUS_KEYS does not list, encrypted without being serialised first (unserialize() warns, which Laravel
+     * turns into an ErrorException), or not a non-empty JSON list of strings. Decrypted like Fortify's
+     * recoveryCodes().
      *
      * @return list<string>|null
      */
@@ -116,12 +118,26 @@ new class extends Component
     {
         try {
             $decrypted = Fortify::currentEncrypter()->decrypt((string) $user->two_factor_recovery_codes);
-        } catch (DecryptException) {
+        } catch (DecryptException|ErrorException) {
             return null;
         }
 
         $codes = is_string($decrypted) ? json_decode($decrypted, true) : null;
 
-        return is_array($codes) ? array_values(array_filter($codes, is_string(...))) : null;
+        if (! is_array($codes) || $codes === [] || ! array_is_list($codes)) {
+            return null;
+        }
+
+        $strings = [];
+
+        foreach ($codes as $code) {
+            if (! is_string($code)) {
+                return null;
+            }
+
+            $strings[] = $code;
+        }
+
+        return $strings;
     }
 };
