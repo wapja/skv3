@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Authorization\Permission;
+use App\Http\Controllers\ActivityExportController;
 use App\Http\Middleware\EnsureSecondFactor;
 use App\Http\Middleware\SetReferrerPolicy;
 use Illuminate\Support\Facades\Route;
@@ -61,6 +62,12 @@ Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void 
 
     // §4.8: any host. A tenant host shows its own organisation's entries; on central hosts a super admin sees all.
     Route::livewire('activity', 'pages::activity.index')->can(Permission::ActivityLogView)->name('activity.index');
+
+    // §6.6, CD-5: the viewer's entries as a streamed CSV, with the same filters and scope; any host, like the viewer.
+    Route::get('activity/export', ActivityExportController::class)
+        ->middleware('throttle:activity-export')
+        ->can(Permission::ActivityLogView)
+        ->name('activity.export');
 });
 
 // §4.5 / §6.2: guests open the accept link, so it lives outside the auth group, on tenant hosts only.

@@ -162,6 +162,10 @@ class FortifyServiceProvider extends ServiceProvider
         ]);
 
         RateLimiter::for('handoff', fn (Request $request): Limit => Limit::perMinute(10)->by('handoff:'.$request->ip()));
+
+        // §6.6, CD-5: the audit CSV export, every request, per user; each download reads the whole filtered log.
+        RateLimiter::for('activity-export', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('activity-export:'.$request->user()?->getAuthIdentifier()));
     }
 
     /**

@@ -226,6 +226,16 @@ new #[Title('Activity log')] class extends Component
         return ActivityFilters::isCentral();
     }
 
+    /**
+     * The "Export CSV" link: the export route with the current filters (CD-5). A plain GET download, never a
+     * Livewire action, which would buffer the whole file into its JSON response.
+     */
+    #[Computed]
+    public function exportUrl(): string
+    {
+        return route('activity.export', $this->filters()->toQuery(), absolute: false);
+    }
+
     private function filters(): ActivityFilters
     {
         return new ActivityFilters($this->from, $this->until, $this->event, $this->subject, $this->causer, $this->organisation);
