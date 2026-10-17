@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Auth\ConfirmPasswordController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Auth\SendPasswordResetLinkController;
 use App\Tenancy\Http\Middleware\StopImpersonationBeforeLogout;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
 use Laravel\Fortify\Http\Controllers\ConfirmedTwoFactorAuthenticationController;
 use Laravel\Fortify\Http\Controllers\RecoveryCodeController;
 use Laravel\Fortify\Http\Controllers\TwoFactorAuthenticationController;
@@ -18,8 +18,8 @@ use Laravel\Fortify\RoutePath;
 | (RoutePath honours fortify.paths), so each replaces the vendor route even with a custom prefix or domain (FU3-3).
 */
 Route::group(['domain' => config('fortify.domain'), 'prefix' => config('fortify.prefix')], function (): void {
-    // §4.2: password confirmation is throttled.
-    Route::post(RoutePath::for('password.confirm', '/user/confirm-password'), [ConfirmablePasswordController::class, 'store'])
+    // §4.2: password confirmation is throttled; an array password is a validation error.
+    Route::post(RoutePath::for('password.confirm', '/user/confirm-password'), [ConfirmPasswordController::class, 'store'])
         ->middleware(['auth:web', 'throttle:password-confirm'])
         ->name('password.confirm.store');
 

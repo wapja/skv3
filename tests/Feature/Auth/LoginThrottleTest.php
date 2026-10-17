@@ -196,6 +196,18 @@ it('answers array input to the throttled auth routes with a validation error, no
     'reset the password (token)' => ['password.update', ['token' => ['x'], 'email' => 'member@example.com', 'password' => 'new-password', 'password_confirmation' => 'new-password'], 'token'],
 ]);
 
+it('answers an array password to the password confirmation with a validation error, not a server error', function (): void {
+    // Fortify's ConfirmPassword takes ?string $password and got the array from $request->input('password').
+    $organisation = Organisation::factory()->create();
+    asMember($organisation);
+
+    $this->from(route('password.confirm'))->post(route('password.confirm.store'), ['password' => ['password']])
+        ->assertRedirect(route('password.confirm'))
+        ->assertSessionHasErrors('password');
+
+    expect(session('auth.password_confirmed_at'))->toBeNull();
+});
+
 it('answers an array credential id to the passkey sign-in with a validation error, not a server error (G1-02)', function (): void {
     usePasskeysModule(true);
     onTenant(Organisation::factory()->create());
