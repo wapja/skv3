@@ -109,7 +109,7 @@ it('never hands the token to a proxied or tunnelled request (§5.3.4, DEC-24)', 
     useSetupWizard();
 
     $this->get('/', [$header => 'x'])->assertRedirect(route('login'));
-})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain']);
+})->with(['X-Forwarded-For', 'X-Forwarded-Host', 'X-Forwarded-Proto', 'X-Original-Host', 'Forwarded', 'X-Expose-Subdomain', 'Via', 'X-Real-IP', 'True-Client-IP', 'CF-Connecting-IP', 'CF-Ray']);
 
 it('leaves / alone outside setup mode (§6.2)', function (): void {
     $this->get('/')->assertRedirect(route('login'));
