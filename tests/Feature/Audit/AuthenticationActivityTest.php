@@ -179,6 +179,52 @@ it('records nothing in an organisation\'s log when a super admin\'s reset is ask
         ->and(recordedActivity(ActivityEvent::PasswordResetCompleted))->toHaveCount(0);
 });
 
+it('records nothing in its own organisation\'s log when a promoted super admin\'s reset is asked for or completed there (R1, G4-01)', function (): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    // SetSuperAdmin keeps organisation_id on promotion, so this super admin still "belongs" to the host by id.
+    $promoted = User::factory()->for($organisation)->create();
+    app(SetSuperAdmin::class)->handle($promoted, true);
+    onTenant($organisation);
+
+    $this->post(route('password.email'), ['email' => $promoted->email]);
+
+    $token = null;
+    Notification::assertSentTo($promoted, ResetPassword::class, function (ResetPassword $notification) use (&$token): bool {
+        $token = $notification->token;
+
+        return true;
+    });
+
+    $this->post(route('password.update'), [
+        'token' => $token,
+        'email' => $promoted->email,
+        'password' => 'new-password',
+        'password_confirmation' => 'new-password',
+    ])->assertSessionHasNoErrors();
+
+    expect(recordedActivity(ActivityEvent::PasswordResetRequested))->toHaveCount(0)
+        ->and(recordedActivity(ActivityEvent::PasswordResetCompleted))->toHaveCount(0);
+});
+
+it('stores at most 500 characters of valid UTF-8 as the user agent, also for a failed sign-in (G4-03)', function (string $userAgent, string $stored): void {
+    $organisation = Organisation::factory()->create();
+    onTenant($organisation);
+
+    // Anyone can fail a sign-in: an over-long or invalid header must neither fill the log nor break the insert.
+    $this->withHeader('User-Agent', $userAgent)
+        ->post(route('login.store'), ['email' => 'nobody@example.com', 'password' => 'wrong-password'])
+        ->assertSessionHasErrors('email');
+
+    $entry = recordedActivity(ActivityEvent::LoginFailed)->sole();
+    expect($entry->user_agent)->toBe($stored)
+        ->and(mb_check_encoding((string) $entry->user_agent, 'UTF-8'))->toBeTrue();
+})->with([
+    'over-long' => [str_repeat('a', 5000), str_repeat('a', 500)],
+    'invalid UTF-8' => ["Probe\xffAgent/1.0", 'Probe?Agent/1.0'],
+    'multibyte at the limit' => [str_repeat('é', 600), str_repeat('é', 500)],
+]);
+
 it('records enabling and disabling two-factor authentication', function (): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create();

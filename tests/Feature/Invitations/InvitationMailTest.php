@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §6.2, X11 */
+/** covers §4.5, §6.2, Appendix A W10, X11 */
 
+use App\Actions\Invitations\AcceptInvitation;
+use App\Actions\Invitations\CancelInvitation;
 use App\Actions\Invitations\InviteUser;
+use App\Actions\Invitations\RemindInvitation;
 use App\Authorization\Role;
 use App\Authorization\SetSuperAdmin;
 use App\Enums\Locale;
+use App\Models\Invitation;
 use App\Models\Organisation;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -88,3 +92,51 @@ it('writes the mail in the invitee\'s language with a localised expiry date (X11
     'Dutch' => [Locale::Dutch, 'Je bent uitgenodigd voor Acme', '18 oktober 2026'],
     'English' => [Locale::English, 'You have been invited to Acme', 'October 18, 2026'],
 ]);
+
+/** An invitation with its invitation mail and a reminder queued for the worker (G4-05). */
+$queueBothMails = function (): Invitation {
+    $organisation = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    app(RemindInvitation::class)->handle($admin, $invitation);
+
+    expect(DB::table('jobs')->count())->toBe(2);
+
+    return $invitation;
+};
+
+it('delivers both queued invitation mails while the invitation is open (W10)', function () use ($queueBothMails, $deliveredMails): void {
+    $queueBothMails();
+
+    // --sleep=0: with --stop-when-empty the worker otherwise sleeps 3 seconds once the queue is empty.
+    // --memory=0: the daemon loop stops after the first job once the test process passes 128 MB
+    // (Worker::memoryExceeded), which a long parallel or sequential run reaches.
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+
+    // inviteMember() invites in the default language; the worker renders each mail in it.
+    expect(DB::table('jobs')->count())->toBe(0)
+        ->and(DB::table('failed_jobs')->count())->toBe(0)
+        ->and(array_map(fn (Email $mail): ?string => $mail->getSubject(), $deliveredMails()))->toBe([
+            __('You have been invited to :organisation', ['organisation' => 'Acme'], Locale::default()->value),
+            __('Reminder: your invitation to :organisation is waiting', ['organisation' => 'Acme'], Locale::default()->value),
+        ]);
+});
+
+it('drops a queued invitation mail without a failed job once the invitation is gone, accepted or expired (G4-05)', function (string $outcome) use ($queueBothMails, $deliveredMails): void {
+    $invitation = $queueBothMails();
+
+    if ($outcome === 'cancelled') {
+        app(CancelInvitation::class)->handle(User::query()->findOrFail((int) $invitation->invited_by), $invitation);
+    } elseif ($outcome === 'accepted') {
+        app(AcceptInvitation::class)->handle($invitation, 'Ann Invitee', 'secret-password');
+    } else {
+        $this->travel(8)->days();
+    }
+
+    Artisan::call('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--tries' => 1, '--memory' => 0]);
+
+    // A failed job would warn on the health report and the System page, and queue:retry would only fail it again.
+    expect(DB::table('jobs')->count())->toBe(0)
+        ->and(DB::table('failed_jobs')->count())->toBe(0)
+        ->and($deliveredMails())->toBe([]);
+})->with(['cancelled', 'accepted', 'expired']);

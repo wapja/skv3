@@ -78,11 +78,14 @@ final readonly class RecordAuthenticationActivity
         }
 
         // R1: anyone can type an address into a host's reset form, so a tenant host's log names only its own
-        // members. Not a super admin either: the host's admins could then find the platform's super admins.
-        // The link goes to the user's own host (R1). Central hosts record every reset.
+        // members. Not a super admin either, also not one promoted from this organisation, who keeps its
+        // organisation_id (G4-01): the host's admins could then find the platform's super admins. The link goes
+        // to the user's own host (R1). Central hosts record every reset.
         $organisation = Tenant::current();
 
-        if (($event instanceof PasswordResetLinkSent || $event instanceof PasswordReset) && $organisation !== null && $user->organisation_id !== $organisation->id) {
+        if (($event instanceof PasswordResetLinkSent || $event instanceof PasswordReset)
+            && $organisation !== null
+            && ($user->organisation_id !== $organisation->id || $user->isSuperAdmin())) {
             return;
         }
 

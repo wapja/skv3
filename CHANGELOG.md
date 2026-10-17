@@ -154,6 +154,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Administrative changes lock their rows in one order (organisation, roles, users, then the rest), so concurrent changes in one organisation wait for each other instead of deadlocking on PostgreSQL. Accepting an invitation while its organisation is archived, disabling or deleting a user during an archive, and changing roles while a role is deleted no longer deadlock. Demoting a super admin or restoring a user while their organisation is archived is refused instead of slipping through.
 - A pending invitee keeps the roles they were invited with, also after their only role was deleted.
 - Saving a user's name, address and status is all or nothing: a refused status change no longer saves the new name or address, and an address change that fails keeps a pending self-service change link.
+- A password reset of a super admin who was promoted from an organisation is no longer recorded in that organisation's audit log.
+- The audit log keeps at most 500 characters of a visitor's user agent, as valid UTF-8, so an unusual browser header can no longer break the entry of a failed sign-in.
+- A queued invitation mail or reminder whose invitation was cancelled, accepted or has expired before the queue worker ran is dropped instead of ending as a failed job.
+- Jobs dispatched while a web request runs an Artisan command itself (the setup wizard's migrations and seeders) no longer write *Command line* entries in the audit log.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

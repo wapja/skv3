@@ -12,11 +12,14 @@ use App\Models\User;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Hosts;
 use Illuminate\Foundation\Testing\WithConsoleEvents;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Tests\Fixtures\RecordOrganisationCreatedJob;
 
 // The console kernel dispatches CommandStarting/CommandFinished in tests only with this trait.
 uses(WithConsoleEvents::class);
@@ -70,6 +73,57 @@ it('leaves entries a web request writes during Artisan::call untagged (CD-7)', f
 
     expect($entry->ip_address)->not->toBeNull()
         ->and($entry->getProperty('via'))->toBeNull()
+        ->and($entry->getProperty('command'))->toBeNull();
+});
+
+it('keeps a command\'s tag on the entries its queued jobs write in a worker (CD-7, RL-9, G6-02)', function (): void {
+    config(['queue.default' => 'database']);
+    $organisation = Organisation::factory()->create();
+
+    ConsoleOrigin::enter('skv:create-organisation');
+    RecordOrganisationCreatedJob::dispatch($organisation->id);
+    ConsoleOrigin::leave('skv:create-organisation');
+
+    // The worker is another process: nothing of the command is left but what the job's payload carries.
+    expect(ConsoleOrigin::command())->toBeNull();
+
+    Artisan::call('queue:work', ['--once' => true, '--stop-when-empty' => true, '--tries' => 1]);
+
+    $entry = recordedActivity(ActivityEvent::OrganisationCreated)->sole();
+
+    expect(DB::table('failed_jobs')->count())->toBe(0)
+        ->and($entry->getProperty('via'))->toBe('console')
+        ->and($entry->getProperty('command'))->toBe('skv:create-organisation');
+});
+
+it('never hands a command\'s tag to the jobs a web request dispatches during Artisan::call (CD-7, G6-04)', function (): void {
+    config(['queue.default' => 'database']);
+    $organisation = Organisation::factory()->create();
+
+    // The setup wizard runs migrate and db:seed inline in its Livewire request; a job they dispatch is the request's.
+    Route::middleware('web')->group(function () use ($organisation): void {
+        Route::central(function () use ($organisation): void {
+            Route::get('/_console-origin-job-probe', function () use ($organisation): string {
+                ConsoleOrigin::enter('db:seed');
+                RecordOrganisationCreatedJob::dispatch($organisation->id);
+                ConsoleOrigin::leave('db:seed');
+
+                return 'ok';
+            });
+        });
+    });
+
+    $this->get(Hosts::url(Hosts::apex(), '/_console-origin-job-probe'))->assertOk();
+
+    expect((string) DB::table('jobs')->value('payload'))->not->toContain(ConsoleOrigin::CONTEXT_KEY);
+
+    // A worker has no route: drop the probe's request, as a separate worker process would not have it.
+    app()->instance('request', Request::create('http://localhost/'));
+    Artisan::call('queue:work', ['--once' => true, '--stop-when-empty' => true, '--tries' => 1]);
+
+    $entry = recordedActivity(ActivityEvent::OrganisationCreated)->sole();
+
+    expect($entry->getProperty('via'))->toBeNull()
         ->and($entry->getProperty('command'))->toBeNull();
 });
 
