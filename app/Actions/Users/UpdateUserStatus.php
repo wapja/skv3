@@ -22,8 +22,9 @@ use Illuminate\Validation\ValidationException;
  * user's status only changes by accepting the invitation (W4, USR-13). Disabling never removes the
  * last active super admin or the last active organisation admin, whoever asks (DEC-26 (10)), and it
  * ends the user's sessions and cycles the remember token, so enabling them again revives neither
- * (RL-28). Every decision is taken on the locked row, never on a possibly stale model (FU2-5), and the
- * locks follow the order of CD-5: the organisation, the users batch, then the sessions.
+ * (RL-28). Every decision is taken on the locked row, never on a possibly stale model (FU2-5), the policy's
+ * 'not a super admin, still in this organisation, not deleted' included, and the locks follow the order of CD-5:
+ * the organisation, the users batch, then the sessions.
  */
 final readonly class UpdateUserStatus
 {
@@ -52,6 +53,8 @@ final readonly class UpdateUserStatus
             if ($stored === null) {
                 return;
             }
+
+            $this->lockoutGuard->ensureStillManageable($actor, $target, $stored);
 
             $previous = $stored['status'];
 

@@ -11,6 +11,7 @@ use App\Authorization\Permission;
 use App\Authorization\PermissionsTeam;
 use App\Authorization\Role;
 use App\Enums\Locale;
+use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -272,3 +273,36 @@ it('decides again on the locked row that the target may hold organisation roles 
 
     expect(roleNamesOf($target, $organisation))->toBe([]);
 });
+
+it('decides RK-B3 on the locked status, so an invitee who accepted while the change waited gets the new roles (G2-06)', function (): void {
+    // The stale model still says pending and the accepted invitation row survives (accepted_at), so a decision on
+    // the model wrongly refused the change.
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $helpdesk = teamRole($organisation, 'Helpdesk');
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    $stale = User::query()->findOrFail($invitation->user_id);
+    DB::table('users')->where('id', $stale->id)->update(['status' => UserStatus::Active->value]);
+    DB::table('invitations')->where('id', $invitation->id)->update(['accepted_at' => now()]);
+
+    app(UpdateUserRoles::class)->handle($admin, $stale, [(int) $helpdesk->id]);
+
+    expect(roleNamesOf($stale, $organisation))->toBe(['Helpdesk']);
+});
+
+it('refuses roles for a target that was deleted or moved while the change waited (FU2-5)', function (string $change): void {
+    // A cancelled invitee (soft-deleted) given roles here would get them back on restore.
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $helpdesk = teamRole($organisation, 'Helpdesk');
+    $target = User::factory()->for($organisation)->create();
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(match ($change) {
+        'deleted' => ['deleted_at' => now()],
+        default => ['organisation_id' => Organisation::factory()->create()->id],
+    });
+
+    expect(fn () => app(UpdateUserRoles::class)->handle($admin, $target, [(int) $helpdesk->id]))
+        ->toThrow(AuthorizationException::class);
+
+    expect(DB::table('model_has_roles')->where('model_id', $target->id)->exists())->toBeFalse();
+})->with(['deleted', 'moved']);

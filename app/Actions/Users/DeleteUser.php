@@ -22,8 +22,9 @@ use Illuminate\Validation\ValidationException;
  * admin, whoever asks (DEC-26 (10), W12). A pending user is removed by cancelling the invitation.
  * The user's sessions end and the remember token is cycled, so a restore revives neither (RL-28); their reset
  * links go too, because reset tokens are keyed by address and the address is free for another account now.
- * Every decision is taken on the locked row, never on a possibly stale model (FU2-5), and the locks follow the
- * order of CD-5: the organisation, the users batch, then the sessions and reset tokens.
+ * Every decision is taken on the locked row, never on a possibly stale model (FU2-5), the policy's 'not a super
+ * admin, still in this organisation' included, and the locks follow the order of CD-5: the organisation, the users
+ * batch, then the sessions and reset tokens.
  */
 final readonly class DeleteUser
 {
@@ -46,6 +47,8 @@ final readonly class DeleteUser
             if ($stored === null || $stored['deleted']) {
                 return;
             }
+
+            $this->lockoutGuard->ensureStillManageable($actor, $target, $stored);
 
             if ($stored['status'] === UserStatus::PendingActivation) {
                 throw ValidationException::withMessages(['user' => [__('Cancel the invitation instead.')]]);

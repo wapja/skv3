@@ -6,6 +6,7 @@ namespace App\Authorization;
 
 use App\Enums\UserStatus;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -93,6 +94,23 @@ final readonly class LockoutGuard
         $holdsTemplate = $teamId !== null && $this->effectivePermissions->holdsTemplate([$target->id], $teamId) !== [];
 
         return $this->lockUsers([$target->id], withSuperAdmins: (bool) $stored->is_super_admin, teamAdminsOf: $holdsTemplate ? $teamId : null);
+    }
+
+    /**
+     * The policy's preconditions for writing a user, decided again on the target's locked row (FU2-5): a promotion, a
+     * move or a deletion that committed while the write waited for its locks leaves the model the policy read stale.
+     * Only a super admin acts on a super admin (§6.3), and nobody writes a user who left the organisation the write
+     * locked or was deleted.
+     *
+     * @param  LockedUser  $stored
+     *
+     * @throws AuthorizationException
+     */
+    public function ensureStillManageable(User $actor, User $target, array $stored): void
+    {
+        if (($stored['is_super_admin'] && ! $actor->isSuperAdmin()) || $stored['organisation_id'] !== $target->organisation_id || $stored['deleted']) {
+            throw new AuthorizationException;
+        }
     }
 
     /**

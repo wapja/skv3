@@ -18,6 +18,7 @@ use App\Actions\Roles\DeleteRole;
 use App\Actions\Roles\UpdateRole;
 use App\Actions\Users\DeleteUser;
 use App\Actions\Users\RestoreUser;
+use App\Actions\Users\UpdateUser;
 use App\Actions\Users\UpdateUserRoles;
 use App\Actions\Users\UpdateUserStatus;
 use App\Authorization\Permission;
@@ -108,6 +109,13 @@ it('takes its row locks in the one order of CD-5', function (Closure $arrange, a
 
         return fn () => app(RestoreUser::class)->handle($admin, $member);
     }, ['organisations']],
+    'UpdateUser, changing a member\'s address (FU2-5)' => [function (): Closure {
+        $organisation = Organisation::factory()->create();
+        $member = User::factory()->for($organisation)->create();
+        $admin = asOrgAdmin($organisation);
+
+        return fn () => app(UpdateUser::class)->handle($admin, $member, $member->name, 'moved@example.com');
+    }, ['users']],
     'UpdateUserRoles, taking the template from an admin (G4-06, cycle 4)' => [function (): Closure {
         $organisation = Organisation::factory()->create();
         $leaving = User::factory()->for($organisation)->create();

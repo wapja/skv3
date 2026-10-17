@@ -282,3 +282,25 @@ it('turns a unique-index race into a validation error, also when confirming an e
         ->toBe(['email' => [__('This address can\'t be used.')]])
         ->and($member->refresh()->email)->toBe('old@example.com');
 });
+
+it('decides again on the locked row that an organisation admin may still edit the target (FU2-5)', function (string $change): void {
+    // The policy reads the model, which a promotion, a move or a deletion that committed between the check and the
+    // write leaves stale; without the re-check an organisation admin set a super admin's address (an account takeover
+    // through the reset link).
+    Notification::fake();
+    $organisation = Organisation::factory()->create();
+    $target = User::factory()->for($organisation)->create(['email' => 'member@example.com']);
+    $admin = asOrgAdmin($organisation);
+    DB::table('users')->where('id', $target->id)->update(match ($change) {
+        'promoted' => ['is_super_admin' => true],
+        'moved' => ['organisation_id' => Organisation::factory()->create()->id],
+        default => ['deleted_at' => now()],
+    });
+    $before = (array) DB::table('users')->where('id', $target->id)->first();
+
+    expect(fn () => app(UpdateUser::class)->handle($admin, $target, 'Taken Over', 'attacker@example.com'))
+        ->toThrow(AuthorizationException::class);
+
+    expect((array) DB::table('users')->where('id', $target->id)->first())->toBe($before);
+    Notification::assertNothingSent();
+})->with(['promoted', 'moved', 'deleted']);
