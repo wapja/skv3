@@ -17,6 +17,7 @@ use App\Tenancy\Facades\Tenant;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Exception\InvalidOptionException;
@@ -105,6 +106,34 @@ it('keeps an existing user\'s password when the new one is too weak (RL-9, L-51)
 
     expect($member->fresh()?->isSuperAdmin())->toBeFalse()
         ->and(Hash::check('old-password-123', (string) $member->fresh()?->password))->toBeTrue();
+});
+
+it('refuses a hash in place of the password, for a new and an existing user (L7b-38)', function () use ($withStdin): void {
+    // The `hashed` cast keeps a value that already is a hash: piping bcrypt('a') would make "a" the password.
+    $member = User::factory()->for(Organisation::factory()->create(['slug' => 'acme']))->create(['email' => 'member@example.com', 'password' => 'old-password-123']);
+    $hash = Hash::make('a');
+
+    [$newExit, $newOutput] = $withStdin('skv:create-super-admin', ['email' => 'owner@example.com', '--password-stdin' => true, '--no-interaction' => true], $hash."\n");
+    [$existingExit, $existingOutput] = $withStdin('skv:create-super-admin', ['email' => 'member@example.com', '--password-stdin' => true, '--no-interaction' => true], $hash."\n");
+
+    expect([$newExit, $existingExit])->toBe([1, 1])
+        ->and($newOutput)->toContain(__('Pass the password itself, not a hash.'))->not->toContain($hash)
+        ->and($existingOutput)->toContain(__('Pass the password itself, not a hash.'))
+        ->and(Tenant::bypass(fn (): bool => User::query()->where('email', 'owner@example.com')->exists()))->toBeFalse()
+        ->and($member->fresh()?->isSuperAdmin())->toBeFalse()
+        ->and(Hash::check('old-password-123', (string) $member->fresh()?->password))->toBeTrue();
+});
+
+it('applies the strict password rule on staging, where skv:install creates a super admin (CD-10, L7b-45)', function () use ($withStdin): void {
+    app()->detectEnvironment(fn (): string => 'staging');
+    // The strict rule asks Have I Been Pwned once the other rules pass; this run never gets that far.
+    Http::preventStrayRequests();
+
+    [$exit, $output] = $withStdin('skv:create-super-admin', ['email' => 'owner@example.com', '--password-stdin' => true, '--no-interaction' => true], "password1\n");
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain(__('validation.min.string', ['attribute' => 'password', 'min' => 12]))
+        ->and(Tenant::bypass(fn (): bool => User::query()->where('email', 'owner@example.com')->exists()))->toBeFalse();
 });
 
 it('refuses a user who is not active (RL-9, g2-18)', function (UserStatus $status): void {

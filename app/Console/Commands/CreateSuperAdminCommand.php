@@ -12,10 +12,12 @@ use App\Enums\ActivityEvent;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Tenancy\Facades\Tenant;
+use Closure;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
@@ -111,7 +113,7 @@ final class CreateSuperAdminCommand extends Command
         /** @var array{name?: string, password?: string} $changes */
         $changes = Validator::make(array_filter(['name' => is_string($name) ? trim($name) : null, 'password' => $this->givenPassword()], fn (mixed $value): bool => $value !== null), [
             'name' => ['sometimes', ...$this->nameRules()],
-            'password' => ['sometimes', 'required', 'string', Password::default()],
+            'password' => ['sometimes', ...$this->passwordRules()],
         ])->validate();
 
         DB::transaction(function () use ($setSuperAdmin, $user, $changes): void {
@@ -150,10 +152,25 @@ final class CreateSuperAdminCommand extends Command
         $valid = Validator::make(['email' => $email, 'name' => trim($name), 'password' => $password], [
             'email' => $this->emailRules(),
             'name' => $this->nameRules(),
-            'password' => ['required', 'string', Password::default()],
+            'password' => $this->passwordRules(),
         ])->validate();
 
         return $valid;
+    }
+
+    /**
+     * The app's password rule, plus no hash (L7b-38): the `hashed` cast stores a value that already is a hash as it is,
+     * so a piped bcrypt hash would become the account's hash and its plaintext the super admin's password.
+     *
+     * @return list<mixed>
+     */
+    private function passwordRules(): array
+    {
+        return ['required', 'string', Password::default(), function (string $attribute, mixed $value, Closure $fail): void {
+            if (is_string($value) && Hash::isHashed($value)) {
+                $fail(__('Pass the password itself, not a hash.'));
+            }
+        }];
     }
 
     /** The password given on standard input with --password-stdin (CD-8), read once; null without the flag. */

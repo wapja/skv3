@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 /** covers §4.6, §6.3, §7.2 */
 
+use App\Actions\Users\UpdateSuperAdmin;
 use App\Authorization\Permission;
+use App\Authorization\SetSuperAdmin;
+use App\Console\Commands\CreateSuperAdminCommand;
+use App\Setup\Steps\DatabaseStep;
+use Database\Seeders\DemoSeeder;
 use Illuminate\Support\Str;
 
 it('spells permission names only in the Permission enum', function (): void {
@@ -47,3 +52,14 @@ it('sets the team outside a restoring run() only in tenancy code', function (): 
 arch('actions never depend on Livewire')
     ->expect('App\Actions')
     ->not->toUse(['Livewire', 'App\Livewire']);
+
+// L7b-39: the super-admin flag changes only through SetSuperAdmin, and SetSuperAdmin is called only by the action pages
+// use (UpdateSuperAdmin, which authorises first), setup's database step, skv:create-super-admin and the demo seeder.
+arch('only the super-admin action, setup, the CLI and the demo seeder call SetSuperAdmin (L7b-39)')
+    ->expect(SetSuperAdmin::class)
+    ->toOnlyBeUsedIn([UpdateSuperAdmin::class, DatabaseStep::class, CreateSuperAdminCommand::class, DemoSeeder::class]);
+
+it('never calls SetSuperAdmin from a page, a component or a route file (L7b-39)', function (): void {
+    // The arch rule sees autoloaded classes only; Livewire's multi-file classes and route closures are scanned as text.
+    expect(filesMatching(kitSourceFiles('resources/views', 'routes'), '/\bSetSuperAdmin\b/'))->toBe([]);
+});

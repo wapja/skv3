@@ -96,6 +96,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - `/health-check` keeps its per-key counter under an HMAC of the key with `APP_KEY` instead of a plain SHA-256, and while the ops store is broken it logs one warning line instead of an exception with a stack trace on every request.
 - The last-backup health check names why backups would not be encrypted (no `BACKUP_ARCHIVE_PASSWORD`, encryption switched off in `config/backup.php`, or a PHP zip without AES-256), each with its own fix.
 - Without the PHP posix extension the backups trust no directory as this account's: `backup:run` refuses to start, Herd's `pg_dump` counts only when root owns it, and the doctor's `pg-dump` row says why. Running as root, `backup:run` accepts only a temporary directory inside `storage/`.
+- Every environment except `local` and `testing` uses the strict password rule (12 characters, mixed case, letters, numbers, symbols, not in a known breach), so a staging install's super admin gets it too.
+- `skv:flux-pro` also removes the `repositories.flux-pro` entry after an install that did not finish, prints the `composer config --unset` command for a key it could not remove, and cleans up the same way after Ctrl-C or a Composer timeout.
 
 ### Fixed
 - CI: `composer audit` reports abandoned packages instead of failing (`config.audit.abandoned = report`); the Composer cache step uses `composer config cache-files-dir`.
@@ -171,6 +173,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Setup creates the `public/storage` link, so the doctor's `storage-link` row no longer warns after a fresh install.
 - Backup archives on the local `backups` disk are readable by this account only (0600, folders 0700).
 - `backup:run --config=…` and `--db-name=…` hand `pg_dump` the `sslmode` of the sources that run dumps, not the default configuration's. All of a run's dumps share one `PGSSLMODE`, so when the sources' modes differ the strictest one applies to every source (`verify-full` before `verify-ca`, `require`, `prefer`, `allow`, `disable`), and a mode PostgreSQL does not know makes `pg_dump` refuse.
+- `skv:create-super-admin` refuses a password hash given in place of the password, which the `hashed` cast would have stored as it was.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).

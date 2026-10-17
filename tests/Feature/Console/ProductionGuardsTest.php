@@ -15,6 +15,7 @@ use App\Tenancy\Facades\Tenant;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Tests\Fixtures\FailingBootstrap;
 
@@ -67,10 +68,13 @@ it('refuses the demo data outside local development before anything is written (
 it('lets a staging install with its own super admin past the guards (CD-3, CD-9, L-58)', function (): void {
     app()->instance(BootstrapRunner::class, new FailingBootstrap);
     app()['env'] = 'staging';
+    // CD-10: staging has the strict password rule; its uncompromised() lookup gets an empty range, never the network.
+    Http::preventStrayRequests();
+    Http::fake(['api.pwnedpasswords.com/*' => Http::response('')]);
     $answers = $this->sandbox->path('answers.json');
     file_put_contents($answers, json_encode([
         'database' => 'sqlite', 'start_with' => 'super_admin', 'super_admin_email' => 'owner@example.com',
-        'super_admin_password' => 'correct-horse-battery', 'modules' => [], 'https' => false, 'claude' => false,
+        'super_admin_password' => 'Correct-Horse-Battery-42', 'modules' => [], 'https' => false, 'claude' => false,
     ], JSON_THROW_ON_ERROR));
 
     $exit = Artisan::call('skv:install', ['--answers' => '@'.$answers, '--no-interaction' => true]);

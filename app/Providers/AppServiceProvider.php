@@ -128,7 +128,9 @@ class AppServiceProvider extends ServiceProvider
         // Values echoed into Markdown mails (organisation names, addresses) never become links or HTML.
         Markdown::withSecuredEncoding();
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
+        // CD-10: the strict rule everywhere but local development and the test suite, so a staging server (where
+        // skv:install creates a super admin, M7b CD-3) gets the production rule.
+        Password::defaults(fn (): ?Password => ! app()->environment(['local', 'testing'])
             ? Password::min(12)
                 ->mixedCase()
                 ->letters()
