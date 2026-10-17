@@ -15,10 +15,11 @@ it('lists the ops schedule from its own copy, not from the scheduler\'s instance
 
     $tasks = ScheduledTasks::all();
 
-    expect($tasks)->toHaveCount(9)
+    expect($tasks)->toHaveCount(10)
         ->and(array_column($tasks, 'expression', 'task'))->toBe([
             'activitylog:clean --force' => '0 1 * * *',
             'backup-temp-cleanup' => '15 * * * *',
+            'livewire-tmp-cleanup' => '45 * * * *',
             'backup:clean' => '30 1 * * *',
             'backup:run --only-db' => '0 2 * * *',
             'backup:monitor' => '0 3 * * *',

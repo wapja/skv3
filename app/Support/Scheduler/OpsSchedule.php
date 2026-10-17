@@ -7,16 +7,18 @@ namespace App\Support\Scheduler;
 use App\Support\Backups\BackupEncryption;
 use App\Support\Backups\PrivateBackupTemp;
 use App\Support\Skv;
+use App\Support\Uploads\StaleTemporaryUploads;
 use Illuminate\Console\Scheduling\Schedule;
 
 /**
  * The ops schedule of §4.9 (CD-8). routes/console.php defines it on the scheduler's Schedule, and ScheduledTasks
  * defines it again on a fresh one for the System page, so a page render never boots the console kernel.
  *
- * The jobs run on one server and never twice at once, except the heartbeat (no overlap lock) and backup-temp-cleanup
+ * The jobs run on one server and never twice at once, except the heartbeat (no overlap lock), backup-temp-cleanup
  * (hourly on every server, because each has its own temporary directory, and also while the backups module is off,
- * so a dump left from before it was switched off still goes). The backup jobs' overlap lock expires after 12
- * hours, so a killed run never blocks the next night (F6). The backup jobs run only while the backups module is on
+ * so a dump left from before it was switched off still goes) and livewire-tmp-cleanup (hourly on every server, whose
+ * local disk holds its own temporary uploads, CD-4). The backup jobs' overlap lock expires after 12 hours, so a
+ * killed run never blocks the next night (F6). The backup jobs run only while the backups module is on
  * (§6.8; always off on SQLite), and backup:run only while it would encrypt the archive (DEC-32 CD-10): the package
  * writes a plaintext dump for a blank password and still exits 0. backup:monitor keeps running, so a missing backup
  * is still reported, and last-backup fails on /health-check. activitylog:clean asks for confirmation in production,
@@ -35,6 +37,11 @@ final readonly class OpsSchedule
         $schedule->call(function (): void {
             app(PrivateBackupTemp::class)->removeStale();
         })->hourlyAt(15)->name('backup-temp-cleanup');
+        // E5, CD-4: the temporary uploads an abandoned page left (photos with their EXIF data, address lists), older
+        // than Livewire's own 24 hours. At :45, clear of backup-temp-cleanup; nothing on an S3 temporary disk.
+        $schedule->call(function (): void {
+            app(StaleTemporaryUploads::class)->removeStale();
+        })->hourlyAt(45)->name('livewire-tmp-cleanup');
         $schedule->command('backup:clean')->dailyAt('01:30')->when($backupsEnabled)->onOneServer()->withoutOverlapping(720);
         $schedule->command('backup:run --only-db')->dailyAt('02:00')->when($encryptedBackupsEnabled)->onOneServer()->withoutOverlapping(720);
         $schedule->command('backup:monitor')->dailyAt('03:00')->when($backupsEnabled)->onOneServer()->withoutOverlapping(720);

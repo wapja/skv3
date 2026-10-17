@@ -144,7 +144,7 @@ The key reaches curl on standard input (curl 7.55 or later), so it never shows i
 
 ## Scheduler
 
-The kit schedules the ops jobs in `App\Support\Scheduler\OpsSchedule::define()`, which `routes/console.php` calls; the System page reads the same definition without booting the console kernel. Every job but `backup-temp-cleanup` runs on one server (`onOneServer()`), because each server has its own temporary directory, and every job but the heartbeat and `backup-temp-cleanup` never twice at once (`withoutOverlapping()`). The backup jobs' overlap lock expires after 12 hours instead of 24, so a killed backup never skips the next night. The times are in `config('app.timezone')` (UTC by default).
+The kit schedules the ops jobs in `App\Support\Scheduler\OpsSchedule::define()`, which `routes/console.php` calls; the System page reads the same definition without booting the console kernel. Every job but `backup-temp-cleanup` and `livewire-tmp-cleanup` runs on one server (`onOneServer()`), because each server has its own temporary directory and its own temporary uploads, and every job but the heartbeat and those two never twice at once (`withoutOverlapping()`). The backup jobs' overlap lock expires after 12 hours instead of 24, so a killed backup never skips the next night. The times are in `config('app.timezone')` (UTC by default).
 
 | Job | When | Runs |
 |---|---|---|
@@ -155,6 +155,7 @@ The kit schedules the ops jobs in `App\Support\Scheduler\OpsSchedule::define()`,
 | `queue:prune-failed` | 03:30 | always |
 | `model:prune` | 04:00 | always (removes expired cross-host sign-in links) |
 | `backup-temp-cleanup` | every hour at :15 | always, also while the backups module is off (removes files older than six hours from `storage/app/backup-temp/temp`) |
+| `livewire-tmp-cleanup` | every hour at :45 | always (removes Livewire's temporary uploads older than 24 hours, such as a photo or a list of addresses left on an abandoned page; on an S3 temporary-upload disk it does nothing: run `php artisan livewire:configure-s3-upload-cleanup` once, so the bucket expires them; and nothing while `livewire.temporary_file_upload.cleanup` is false) |
 | `auth:clear-resets` | every 15 minutes | always |
 | `scheduler-heartbeat` | every minute | always |
 
