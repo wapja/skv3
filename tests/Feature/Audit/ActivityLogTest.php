@@ -195,6 +195,6 @@ it('gives every activity event a Dutch label and a group', function (ActivityEve
 
     expect(dutchTranslationKeys())->toContain($event->label())
         ->and(__($event->label(), [], 'nl'))->not->toBe($event->label())
-        ->and($event->group())->toBeIn(['authentication', 'security', 'users', 'invitations', 'organisations', 'roles', 'impersonation'])
-        ->and($event->tagsByHost())->toBe(in_array($event->group(), ['authentication', 'security', 'impersonation'], true));
+        ->and($event->group())->toBeIn(['authentication', 'security', 'users', 'invitations', 'organisations', 'roles', 'impersonation', 'audit'])
+        ->and($event->tagsByHost())->toBe(in_array($event->group(), ['authentication', 'security', 'impersonation', 'audit'], true));
 })->with(ActivityEvent::cases());

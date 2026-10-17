@@ -14,6 +14,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -21,7 +22,8 @@ use Spatie\Permission\PermissionRegistrar;
  * Purges an archived organisation for good (§4.3): super admins only, only after its slug is typed, in one
  * transaction. Promoted super admins are detached, not deleted (DEC-26 (9)); then invitations, the users'
  * sessions and reset tokens, the users including deleted ones (passkeys and handoff tokens cascade), the
- * team's role assignments and roles, and the organisation are deleted. Activity rows are kept (ORG-12).
+ * team's role assignments and roles, and the organisation are deleted. Activity rows are kept (ORG-12). The
+ * deleted users' profile photos are deleted from the public disk after commit (§6.6).
  *
  * Every bulk delete is a query-builder statement with an explicit organisation or id filter: Eloquent's builder
  * forceDelete() runs without global scopes, so on a tenant model it would delete every organisation's rows.
@@ -61,16 +63,21 @@ final readonly class PurgeOrganisation
                 ->where('organisation_id', $locked->id)
                 ->orderBy('id')
                 ->lockForUpdate()
-                ->get(['id', 'email', 'is_super_admin']);
+                ->get(['id', 'email', 'is_super_admin', 'avatar_path']);
 
             $detached = [];
             $users = [];
+            $avatars = [];
 
             foreach ($rows as $row) {
                 if ((bool) $row->is_super_admin) {
                     $detached[] = (int) $row->id;
                 } else {
                     $users[(int) $row->id] = (string) $row->email;
+
+                    if (is_string($row->avatar_path) && $row->avatar_path !== '') {
+                        $avatars[] = $row->avatar_path;
+                    }
                 }
             }
 
@@ -98,6 +105,11 @@ final readonly class PurgeOrganisation
             );
 
             DB::afterCommit(fn (): bool => $this->permissionRegistrar->forgetCachedPermissions());
+
+            // §4.3: the deleted users' profile photos go once the purge is committed; a detached super admin keeps theirs.
+            if ($avatars !== []) {
+                DB::afterCommit(fn (): bool => Storage::disk('public')->delete($avatars));
+            }
         });
     }
 

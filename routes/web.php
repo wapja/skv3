@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\HandoffController;
 use App\Http\Controllers\Auth\QuickLoginController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Middleware\EnsureSecondFactor;
 use App\Models\User;
 use App\Setup\SetupMode;
 use App\Support\Skv;
@@ -42,7 +43,8 @@ Route::get('/', function (): RedirectResponse|Response {
     return to_route($user->isSuperAdmin() && ! Tenant::check() ? 'organisations.index' : 'dashboard');
 })->name('home');
 
-Route::middleware(['auth'])->group(function (): void {
+// §6.6: every authenticated group also runs EnsureSecondFactor (CD-4); the global web group does not.
+Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
 });
 

@@ -3,6 +3,10 @@
     <flux:subheading size="lg" class="mb-6">{{ $this->organisation->name }}</flux:subheading>
     <flux:separator variant="subtle" />
 
+    @if ($draftRestored)
+        <flux:callout icon="information-circle" class="mt-6" :heading="__('Your unsaved changes are back. Save again to apply them.')" data-test="organisation-draft-restored" />
+    @endif
+
     <form wire:submit="save" class="my-6 space-y-6">
         <flux:input wire:model="name" :label="__('Name')" required data-test="organisation-name" />
 
@@ -25,6 +29,15 @@
         @endif
 
         <flux:textarea wire:model="description" :label="__('Description')" rows="3" />
+
+        <flux:switch
+            wire:model="requireSecondFactor"
+            :label="__('Require a second factor')"
+            :description="Skv::passkeysEnabled()
+                ? __('Members must set up two-factor authentication or a passkey before they can continue. Changing this asks for your password.')
+                : __('Members must set up two-factor authentication before they can continue. Changing this asks for your password.')"
+            data-test="organisation-require-second-factor"
+        />
 
         <flux:error name="organisation" />
 

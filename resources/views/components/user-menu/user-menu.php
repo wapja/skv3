@@ -10,6 +10,7 @@ use App\Enums\Locale;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
@@ -54,6 +55,10 @@ new class extends Component
 
         $updateAppearance->handle($this->currentUser(), $choice);
     }
+
+    /** §6.6: the profile page saved or removed the photo; rendering again reads the user's new photo. */
+    #[On('avatar-updated')]
+    public function refreshAvatar(): void {}
 
     /** @return array{user: User, locales: list<Locale>} */
     public function with(): array

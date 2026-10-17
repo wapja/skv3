@@ -83,14 +83,19 @@
 
                 <flux:table.row :key="$user->id" data-test="user-row">
                     <flux:table.cell variant="strong">
-                        @if ($user->status === \App\Enums\UserStatus::PendingActivation)
-                            <flux:link :href="route('invitations.pending')" wire:navigate data-test="pending-user-link-{{ $user->id }}">{{ $user->name }}</flux:link>
-                        @elseif ($abilities['view'] && $this->view !== 'archived')
-                            <flux:link :href="route('users.edit', ['user' => $user->id])" wire:navigate>{{ $user->name }}</flux:link>
-                        @else
-                            <div>{{ $user->name }}</div>
-                        @endif
-                        <flux:text size="sm">{{ $user->email }}</flux:text>
+                        <div class="flex items-center gap-3">
+                            <flux:avatar size="sm" :src="$user->avatarUrl()" :name="$user->name" :initials="$user->initials()" alt="" />
+                            <div>
+                                @if ($user->status === \App\Enums\UserStatus::PendingActivation)
+                                    <flux:link :href="route('invitations.pending')" wire:navigate data-test="pending-user-link-{{ $user->id }}">{{ $user->name }}</flux:link>
+                                @elseif ($abilities['view'] && $this->view !== 'archived')
+                                    <flux:link :href="route('users.edit', ['user' => $user->id])" wire:navigate>{{ $user->name }}</flux:link>
+                                @else
+                                    <div>{{ $user->name }}</div>
+                                @endif
+                                <flux:text size="sm">{{ $user->email }}</flux:text>
+                            </div>
+                        </div>
                     </flux:table.cell>
 
                     @if ($this->central)

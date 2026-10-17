@@ -2,14 +2,14 @@
 <div {{ $attributes }} @if ($variant === 'sidebar') x-data x-init="$watch('$flux.appearance', value => $wire.saveAppearance(value))" @endif>
     <flux:dropdown :position="$variant === 'sidebar' ? 'bottom' : 'top'" :align="$variant === 'sidebar' ? 'start' : 'end'">
         @if ($variant === 'sidebar')
-            <flux:sidebar.profile :name="$user->name" :initials="$user->initials()" icon:trailing="chevrons-up-down" data-test="sidebar-menu-button" />
+            <flux:sidebar.profile :name="$user->name" :avatar="$user->avatarUrl()" :initials="$user->initials()" icon:trailing="chevrons-up-down" data-test="sidebar-menu-button" />
         @else
-            <flux:profile :initials="$user->initials()" icon-trailing="chevron-down" />
+            <flux:profile :avatar="$user->avatarUrl()" :initials="$user->initials()" icon-trailing="chevron-down" />
         @endif
 
         <flux:menu>
             <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-                <flux:avatar :name="$user->name" :initials="$user->initials()" />
+                <flux:avatar :src="$user->avatarUrl()" :name="$user->name" :initials="$user->initials()" />
                 <div class="grid flex-1 text-start text-sm leading-tight">
                     <flux:heading class="truncate">{{ $user->name }}</flux:heading>
                     <flux:text class="truncate">{{ $user->email }}</flux:text>

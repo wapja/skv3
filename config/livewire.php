@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\LimitTemporaryUploads;
+
 return [
 
     /*
@@ -128,13 +130,20 @@ return [
     | before the file is stored permanently. All file uploads are directed to
     | a global endpoint for temporary storage. You may configure this below:
     |
+    | The kit's upload fields take one file each, of at most 2 MB (a profile
+    | photo; a bulk invitation list is at most 512 KB), and only signed-in
+    | users upload: the signed URL is bound to no user or session. The
+    | `livewire-upload` limiter allows 10 uploads a minute and 60 an hour per
+    | user (FortifyServiceProvider), and LimitTemporaryUploads refuses a
+    | request with more than one file. The pages check type and size again.
+    |
     */
 
     'temporary_file_upload' => [
         'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK'), // Example: 'local', 's3'             | Default: 'default'
-        'rules' => null,                                      // Example: ['file', 'mimes:png,jpg'] | Default: ['required', 'file', 'max:12288'] (12MB)
+        'rules' => ['required', 'file', 'max:2048'],          // Example: ['file', 'mimes:png,jpg'] | Default: ['required', 'file', 'max:12288'] (12MB)
         'directory' => null,                                  // Example: 'tmp'                     | Default: 'livewire-tmp'
-        'middleware' => null,                                 // Example: 'throttle:5,1'            | Default: 'throttle:60,1'
+        'middleware' => ['auth', 'throttle:livewire-upload', LimitTemporaryUploads::class], // Default: 'throttle:60,1'
         'preview_mimes' => [                                  // Supported file types for temporary pre-signed file URLs...
             'png', 'gif', 'bmp', 'svg', 'wav', 'mp4',
             'mov', 'avi', 'wmv', 'mp3', 'm4a',

@@ -6,9 +6,14 @@
         </div>
 
         @if ($this->canInvite)
-            <flux:button variant="primary" icon="envelope" :href="route('users.invite')" wire:navigate data-test="invite-user-button">
-                {{ __('Invite user') }}
-            </flux:button>
+            <div class="flex flex-wrap gap-2">
+                <flux:button variant="filled" icon="users" :href="route('invitations.bulk')" wire:navigate data-test="bulk-invite-button">
+                    {{ __('Invite several people') }}
+                </flux:button>
+                <flux:button variant="primary" icon="envelope" :href="route('users.invite')" wire:navigate data-test="invite-user-button">
+                    {{ __('Invite user') }}
+                </flux:button>
+            </div>
         @endif
     </div>
 

@@ -31,6 +31,40 @@ final readonly class UserActionLimit
         }
     }
 
+    /**
+     * Change another user's address on users.edit: 10 changes per hour per administrator (FM-19). Each change mails
+     * the old address, so the limit counts sends as emailChange() does.
+     */
+    public static function addressChange(): self
+    {
+        return new self('address-change', 10, 3600);
+    }
+
+    /**
+     * Save a profile photo: 10 attempts per 10 minutes, counted before the upload is checked. Each save can decode up
+     * to 4096 × 4096 pixels with memory_limit raised for it (§6.6), so a member who repeats it is held back like a
+     * secret check.
+     */
+    public static function avatarUpdate(): self
+    {
+        return new self('avatar-update', 10, 600);
+    }
+
+    /**
+     * Send a checked list on the bulk invitation page (CD-6): 100 invitations per hour, reserved for every ready row
+     * before the first send; the rows InviteUser refuses are given back. The invite() limit is not consumed.
+     */
+    public static function bulkInvite(): self
+    {
+        return new self('bulk-invite', 100, 3600);
+    }
+
+    /** Log out other devices on the security page: 5 attempts per minute, counted before the password is checked. */
+    public static function logoutOtherDevices(): self
+    {
+        return new self('logout-other-devices', 5, 60);
+    }
+
     /** Request an email change on the profile page: 3 sends per 10 minutes. */
     public static function emailChange(): self
     {
@@ -49,7 +83,7 @@ final readonly class UserActionLimit
         return new self('two-factor-confirm', 5, 60);
     }
 
-    /** Invite a user from the invite page: 10 invitations per minute. */
+    /** Invite a user from the invite page, or an organisation's first admin from the wizard (FM-19): 10 invitations per minute. */
     public static function invite(): self
     {
         return new self('invite', 10, 60);

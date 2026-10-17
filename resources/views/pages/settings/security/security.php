@@ -8,12 +8,14 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\ActivityEvent;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\SecondFactor;
 use Flux\Flux;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 use Laravel\Passkeys\Actions\DeletePasskey;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
@@ -198,6 +200,19 @@ new #[Title('Security settings')] class extends Component
         $disableTwoFactorAuthentication($this->currentUser());
 
         $this->twoFactorEnabled = false;
+    }
+
+    /**
+     * Why this page opened instead of the one asked for (§6.6, CD-4): the explanation while the second-factor rule
+     * applies to the user and is unmet, otherwise null. Read on every render, so it goes away as soon as a factor is
+     * set up on this page.
+     */
+    #[Computed]
+    public function secondFactorNotice(): ?string
+    {
+        $user = $this->currentUser();
+
+        return SecondFactor::missingFor($user) ? SecondFactor::explanation($user) : null;
     }
 
     /**

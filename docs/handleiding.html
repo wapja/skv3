@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>M7c</span><span>M0–M7c in main</span><span>bijgewerkt 17-10-2026</span></div>
+    <div class="eyebrow"><span>M7d</span><span>M0–M7d in main</span><span>bijgewerkt 17-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M7c.</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M7d.</p>
   </header>
 
   <div class="page">
@@ -489,6 +489,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
             <li><a href="#instellingen">Instellingen, taal en weergave</a></li>
             <li><a href="#twofa">Tweestapsverificatie</a></li>
             <li><a href="#passkeys">Passkeys</a></li>
+            <li><a href="#tweede-factor">Tweede factor verplicht</a></li>
             <li><a href="#reset">Wachtwoord vergeten</a></li>
             <li><a href="#emailchange">E-mailadres wijzigen</a></li>
             <li><a href="#handoff">Wisselen van host</a></li>
@@ -597,7 +598,7 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
   <h3 id="vereisten">Vereisten</h3>
   <ul>
-    <li>PHP 8.4 of nieuwer met de extensie <code>zip</code> (nodig voor de back-ups, ook op SQLite), Composer 2</li>
+    <li>PHP 8.4 of nieuwer met de extensie <code>zip</code> (nodig voor de back-ups, ook op SQLite) en GD met WebP-ondersteuning (nodig voor profielfoto&rsquo;s), Composer 2</li>
     <li>Node 22.13 of nieuwer met npm (nodig voor <code>composer setup</code> en <code>composer dev</code>)</li>
     <li>Laravel Herd. Herd Pro is aan te raden voor PostgreSQL en mail.</li>
     <li>Database: SQLite werkt direct. PostgreSQL (18 in Herd en CI) is de standaard waar het beschikbaar is; beide worden in CI getest.</li>
@@ -799,6 +800,7 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>TENANCY_APEX_DOMAIN</code></td><td>leeg</td><td>Apex overschrijven; leeg betekent de host van <code>APP_URL</code></td></tr>
         <tr><td><code>TENANCY_ADMIN_SUBDOMAIN</code></td><td><code>admin</code></td><td>Subdomein van de beheerhost. Wordt nooit als organisatie gezien</td></tr>
         <tr><td><code>TENANCY_STRICT</code></td><td><code>true</code></td><td>Een tenant-model lezen zonder gekoppelde organisatie geeft een fout (behalve in de console en in <code>Tenant::bypass()</code>)</td></tr>
+        <tr><td><code>REQUIRE_SECOND_FACTOR_SUPER_ADMINS</code></td><td><code>false</code></td><td>Met <code>true</code> moet elke superbeheerder een tweede factor hebben, op elke host (zie <a href="#tweede-factor">Tweede factor verplicht</a>)</td></tr>
         <tr><td><code>INVITATION_EXPIRES_IN_DAYS</code></td><td class="tabnum"><code>7</code></td><td>Geldigheid van een uitnodiging; een herinnering verlengt hem</td></tr>
         <tr><td><code>MODULE_IMPERSONATION</code></td><td><code>true</code></td><td>Module &lsquo;Inloggen als gebruiker&rsquo;. Met <code>false</code> bestaan de routes niet</td></tr>
         <tr><td><code>MODULE_PASSKEYS</code></td><td><code>true</code></td><td>Module Passkeys. Met <code>false</code> bestaan de passkeyroutes en <code>.well-known/passkey-endpoints</code> niet, en verdwijnen de passkeyknop en het onderdeel Passkeys. De setup zet hem op <code>false</code> als de site geen HTTPS krijgt</td></tr>
@@ -815,7 +817,7 @@ php artisan skv:bootstrap</code></pre>
         <tr><td><code>ACTIVITYLOG_RETENTION_DAYS</code></td><td class="tabnum"><code>365</code></td><td>Logregels ouder dan dit verwijdert <code>activitylog:clean</code></td></tr>
         <tr><td><code>DB_CONNECTION</code></td><td><code>sqlite</code></td><td>Databasedriver; <code>pgsql</code> voor PostgreSQL</td></tr>
         <tr><td><code>DB_CONNECT_TIMEOUT</code></td><td class="tabnum"><code>5</code> s</td><td>Hoe lang een verbinding met PostgreSQL mag duren; een server die niet antwoordt, houdt de gezondheidscontrole zo hooguit 5 seconden op</td></tr>
-        <tr><td><code>SESSION_DRIVER</code></td><td><code>database</code></td><td>Sessies in de database</td></tr>
+        <tr><td><code>SESSION_DRIVER</code></td><td><code>database</code></td><td>Sessies in de database; het sessieoverzicht op de beveiligingspagina leest die tabel</td></tr>
         <tr><td><code>SESSION_DOMAIN</code></td><td><code>null</code></td><td>Cookies per host, dus een aparte sessie per subdomein</td></tr>
         <tr><td><code>SESSION_COOKIE</code></td><td><code>app_session</code></td><td>Vaste, neutrale naam: een andere <code>APP_NAME</code> hernoemt de cookie niet</td></tr>
         <tr><td><code>QUEUE_CONNECTION</code></td><td><code>database</code></td><td>Mails wachten in de tabel <code>jobs</code>; er moet een worker draaien</td></tr>
@@ -834,6 +836,8 @@ php artisan skv:bootstrap</code></pre>
       <tbody>
         <tr><td><code>skv.invitations.expires_in_days</code></td><td class="tabnum">7</td><td>Uit <code>INVITATION_EXPIRES_IN_DAYS</code></td></tr>
         <tr><td><code>skv.invitations.signature_grace_days</code></td><td class="tabnum">30</td><td>De handtekening van een uitnodigingslink leeft 30 dagen langer dan de uitnodiging. Een net verlopen link toont zo nog de pagina &lsquo;verlopen&rsquo;; pas oudere links geven 403</td></tr>
+        <tr><td><code>skv.second_factor.super_admins</code></td><td>false</td><td>Uit <code>REQUIRE_SECOND_FACTOR_SUPER_ADMINS</code></td></tr>
+        <tr><td><code>skv.second_factor.exempt_routes</code></td><td class="wrapcode"><code>security.edit, password.confirm, password.confirm.store, password.confirmation, two-factor.*, passkey.*, well-known.passkeys, logout, auth.handoff, auth.handoff.store, impersonation.stop, setup.*</code></td><td>Routes die bereikbaar blijven voor wie nog een tweede factor moet instellen: een factor instellen, het wachtwoord bevestigen, uitloggen, de overdrachtslink, &lsquo;inloggen als&rsquo; stoppen en de setupwizard</td></tr>
         <tr><td><code>skv.modules.impersonation</code></td><td>true</td><td>Uit <code>MODULE_IMPERSONATION</code></td></tr>
         <tr><td><code>skv.modules.passkeys</code></td><td>true</td><td>Uit <code>MODULE_PASSKEYS</code></td></tr>
         <tr><td><code>skv.locale.default</code></td><td><code>nl</code></td><td>Uit <code>APP_LOCALE</code>. <code>Locale::default()</code> leest deze sleutel, omdat <code>app.locale</code> per verzoek verandert</td></tr>
@@ -857,7 +861,8 @@ php artisan skv:bootstrap</code></pre>
     <table>
       <thead><tr><th>Onderdeel</th><th>Gratis Flux</th><th>Met Flux Pro</th></tr></thead>
       <tbody>
-        <tr><td>Rollen kiezen (gebruiker bewerken, uitnodigen)</td><td>Vinkjes</td><td>Een keuzelijst met meerdere rollen</td></tr>
+        <tr><td>Rollen kiezen (gebruiker bewerken, uitnodigen, meerdere mensen uitnodigen)</td><td>Vinkjes</td><td>Een keuzelijst met meerdere rollen</td></tr>
+        <tr><td>Profielfoto en CSV-bestand uploaden</td><td>Een bestandsveld</td><td>Een vak waar je het bestand in sleept of op klikt</td></tr>
         <tr><td><span class="ui">Actief</span> / <span class="ui">Gearchiveerd</span> (gebruikers, organisaties)</td><td>Schakelknop</td><td>Tabbladen</td></tr>
         <tr><td><span class="ui">Van</span> / <span class="ui">Tot en met</span> in het activiteitenlog</td><td>Twee datumvelden</td><td>Twee datumkiezers</td></tr>
         <tr><td>Navigatie zoeken</td><td>&mdash;</td><td><span class="ui">Zoeken…</span> bovenaan in de zijbalk, of <code>⌘K</code>: typ en spring naar een pagina</td></tr>
@@ -908,19 +913,28 @@ php artisan skv:bootstrap</code></pre>
     <li>Een sessie geldt alleen op de host waar je inlogde en duurt standaard 120 minuten.</li>
     <li>Wijzig je je wachtwoord, dan worden je sessies op andere apparaten afgemeld.</li>
     <li>Wordt een account uitgeschakeld of verwijderd, of de organisatie gearchiveerd of verwijderd, dan is die persoon direct overal uitgelogd.</li>
-    <li>Een overzicht van je sessies met &lsquo;andere apparaten uitloggen&rsquo; komt in M7d.</li>
+    <li>Op de beveiligingspagina (<span class="ui">Instellingen</span> → <span class="ui">Beveiliging</span>) staat onder <span class="ui">Sessies</span> een overzicht van de apparaten waarop je bent ingelogd: browser en platform (bijvoorbeeld <span class="ui">Firefox op macOS</span>), IP-adres, <span class="ui">Laatst actief</span>, en <span class="ui">Dit apparaat</span> bij het apparaat dat je nu gebruikt. Alleen sessies binnen de sessieduur (<code>SESSION_LIFETIME</code>) staan erin, ook die op je andere hosts.</li>
+    <li>Met <span class="ui">Andere apparaten uitloggen</span> vul je je wachtwoord in. Bij hun volgende verzoek zijn al je andere sessies en &lsquo;onthoud mij&rsquo;-logins afgemeld, op elke host; op dit apparaat blijf je ingelogd. Overdrachtslinks die je nog niet gebruikte, vervallen ook. Je hebt 5 pogingen per minuut, en elke poging telt. In het activiteitenlog staat <span class="ui">Andere apparaten uitgelogd</span>, met het aantal afgemelde sessies.</li>
+    <li>Tijdens &lsquo;inloggen als&rsquo; is dit onderdeel verborgen.</li>
+    <li>Het overzicht heeft <code>SESSION_DRIVER=database</code> nodig (de standaard). Met een andere driver blijft het leeg, maar de knop werkt nog: hij versleutelt je wachtwoord opnieuw, en daardoor vallen de andere sessies bij hun volgende verzoek weg.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">config/session.php:23,37,161; bootstrap/app.php:29; app/Tenancy/Auth/Sessions.php:9-26; docs/decisions.md:127; resources/views/pages/settings/sessions/*; app/Support/UserAgent.php; tests/Feature/Settings/SessionsTest.php</p></details>
 
   <h4>Limieten</h4>
   <p>Een paar acties hebben een limiet per gebruiker. Ga je erboven, dan zegt het formulier <span class="ui">Te veel pogingen. Probeer het over <em>42</em> seconden opnieuw.</span></p>
   <ul>
     <li>Een nieuw e-mailadres aanvragen: 3 keer per 10 minuten.</li>
     <li>Je wachtwoord wijzigen en een tweestapscode bevestigen: 5 keer per minuut; elke poging telt.</li>
-    <li>Iemand uitnodigen en een herinnering sturen: elk 10 keer per minuut. Per uitnodiging gaat er hooguit één herinnering per 10 minuten weg; anders zie je <span class="ui">Deze uitnodiging is minder dan <em>10</em> minuten geleden opnieuw verstuurd.</span></li>
+    <li>Andere apparaten uitloggen: 5 keer per minuut; elke poging telt.</li>
+    <li>Iemand uitnodigen (ook de eerste beheerder bij een nieuwe organisatie) en een herinnering sturen: elk 10 keer per minuut. Per uitnodiging gaat er hooguit één herinnering per 10 minuten weg; anders zie je <span class="ui">Deze uitnodiging is minder dan <em>10</em> minuten geleden opnieuw verstuurd.</span></li>
+    <li>Meerdere uitnodigingen: 100 per uur per beheerder. Alleen verstuurde uitnodigingen tellen; de limiet voor één uitnodiging telt niet mee.</li>
+    <li>Het e-mailadres van iemand anders wijzigen (als beheerder): 10 keer per uur. Een opslag die het adres niet verandert, telt niet.</li>
+    <li>Het activiteitenlog exporteren: 5 keer per minuut.</li>
+    <li>Een profielfoto opslaan: 10 keer per 10 minuten; elke poging telt.</li>
+    <li>Een bestand uploaden (een profielfoto of een lijst voor meerdere uitnodigingen): 10 keer per minuut en 60 keer per uur (<code>livewire-upload</code>).</li>
     <li>De routes voor tweestapsbeheer en het verwijderen van een passkey: 10 keer per minuut (<code>account-security</code>).</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/RateLimits/UserActionLimit.php; app/Providers/FortifyServiceProvider.php; routes/fortify.php; routes/passkeys.php; app/Actions/Invitations/RemindInvitation.php; tests/Feature/Auth/ActionLimitsTest.php; tests/Feature/Auth/LoginThrottleTest.php</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Support/RateLimits/UserActionLimit.php; app/Providers/FortifyServiceProvider.php; config/livewire.php; routes/fortify.php; routes/passkeys.php; app/Actions/Invitations/RemindInvitation.php; tests/Feature/Auth/ActionLimitsTest.php; tests/Feature/Auth/LoginThrottleTest.php; tests/Feature/Auth/AdministratorActionLimitsTest.php; tests/Feature/Settings/TemporaryUploadsTest.php</p></details>
 
   <h3 id="instellingen">Instellingen, taal en weergave</h3>
   <p>Klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven). Het gebruikersmenu toont je naam en e-mailadres, <span class="ui">Instellingen</span>, de keuze <span class="ui">Taal</span> (<span class="ui">Nederlands</span> of <span class="ui">Engels</span>), de keuze <span class="ui">Weergave</span> (<span class="ui">Licht</span>, <span class="ui">Donker</span> of <span class="ui">Systeem</span>) en <span class="ui">Uitloggen</span>.</p>
@@ -928,8 +942,8 @@ php artisan skv:bootstrap</code></pre>
     <table>
       <thead><tr><th>Instellingen</th><th>Pad</th><th>Wat je er doet</th></tr></thead>
       <tbody>
-        <tr><td><span class="ui">Profiel</span></td><td><code>/settings/profile</code></td><td><span class="ui">Naam</span>, <span class="ui">E-mailadres</span> (zie <a href="#emailchange">E-mailadres wijzigen</a>) en <span class="ui">Taal</span></td></tr>
-        <tr><td><span class="ui">Beveiliging</span></td><td><code>/settings/security</code></td><td>Wachtwoord, tweestapsverificatie en (als de module aan staat) passkeys</td></tr>
+        <tr><td><span class="ui">Profiel</span></td><td><code>/settings/profile</code></td><td><span class="ui">Naam</span>, <span class="ui">E-mailadres</span> (zie <a href="#emailchange">E-mailadres wijzigen</a>), <span class="ui">Taal</span> en <span class="ui">Profielfoto</span></td></tr>
+        <tr><td><span class="ui">Beveiliging</span></td><td><code>/settings/security</code></td><td>Wachtwoord, tweestapsverificatie, (als de module aan staat) passkeys en je sessies</td></tr>
         <tr><td><span class="ui">Weergave</span></td><td><code>/settings/appearance</code></td><td><span class="ui">Licht</span>, <span class="ui">Donker</span> of <span class="ui">Systeem</span></td></tr>
       </tbody>
     </table>
@@ -940,7 +954,18 @@ php artisan skv:bootstrap</code></pre>
     <li><strong>Weergave.</strong> Je keuze wordt bij je account bewaard. Hij geldt dus op elke host (centraal en op elke organisatiehost), ook in een andere browser, en de pagina flitst niet licht op voordat hij donker wordt. <span class="ui">Systeem</span> volgt de instelling van je besturingssysteem. Gasten volgen altijd hun systeem; mails blijven licht. Tijdens &lsquo;inloggen als&rsquo; gelden taal en weergave alleen voor jou (zie <a href="#inloggen-als">Inloggen als gebruiker</a>).</li>
     <li>Taal en weergave komen niet in het activiteitenlog: het zijn voorkeuren, geen beheerwijzigingen.</li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/components/user-menu/*; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/profile/*; resources/views/pages/settings/appearance/*; resources/views/layouts/base.blade.php; app/Support/Locales.php; app/Http/Middleware/SetLocale.php; app/Http/Controllers/LocaleController.php; app/Actions/Settings/{UpdateLocale,UpdateAppearance}.php; resources/views/pages/invitations/accept/accept.php; tests/Browser/AppearanceTest.php; docs/decisions.md (DEC-29 (4), (7), (8), (29))</p></details>
+  <h4 id="profielfoto">Profielfoto</h4>
+  <ul>
+    <li>Op je profielpagina kies je onder <span class="ui">Profielfoto</span> een <span class="ui">Nieuwe foto</span> en klik je <span class="ui">Foto opslaan</span>: een JPEG, PNG of WebP van maximaal 2 MB en 4096 × 4096 pixels. Met Flux Pro sleep je de foto in een vak. Met <span class="ui">Foto verwijderen</span> haal je hem weg. Het gratis bestandsveld toont zijn eigen tekst (<span class="ui">Choose file</span>) in het Engels.</li>
+    <li>De kit zet de foto rechtop, snijdt hem bij tot een vierkant van 512 × 512 pixels en bewaart hem als WebP, zonder de gegevens die in de foto zaten (zoals de plek waar hij gemaakt is). Lukt dat niet, dan zie je <span class="ui">Deze afbeelding kon niet worden verwerkt.</span></li>
+    <li>De foto staat op <code>APP_URL/storage/avatars/{organisatie-id of platform}/{gebruikers-id}-{willekeurig}.webp</code>: een openbaar maar onraadbaar adres. Je ziet hem in het gebruikersmenu, in de lijst <span class="ui">Gebruikers</span> en op je profielpagina; zonder foto staan daar je initialen.</li>
+    <li>Een nieuwe foto of <span class="ui">Foto verwijderen</span> wist het oude bestand. Een organisatie definitief verwijderen wist de foto&rsquo;s van haar gebruikers; een verwijderde gebruiker houdt zijn foto, zodat herstellen kan. In het activiteitenlog staat <span class="ui">Gebruiker bijgewerkt</span>, zonder het pad van de foto.</li>
+    <li>Je slaat hooguit 10 keer per 10 minuten een foto op; elke poging telt, want de server moet elke foto van maximaal 4096 × 4096 pixels uitpakken. De foto die je koos, met de gegevens die erin zaten, verdwijnt uit de tijdelijke uploads van Livewire zodra hij verwerkt is, of als je een andere foto kiest of je foto verwijdert.</li>
+    <li>Tijdens &lsquo;inloggen als&rsquo; is dit onderdeel verborgen.</li>
+    <li>Voor beheerders: de foto&rsquo;s hebben de link <code>public/storage</code> nodig (de setup maakt hem; <code>php artisan skv:doctor --fix</code> herstelt hem) en GD met WebP-ondersteuning. Zonder WebP mislukt een upload met een serverfout die in het log komt. De extensie exif is niet verplicht; zonder exif houdt een foto de stand waarin hij is opgeslagen. Een foto van bijna 4096 pixels vraagt ongeveer 270 MB geheugen; de kit verhoogt <code>memory_limit</code> daarvoor alleen voor dat verzoek, en weigert de foto als de server dat verbiedt (<code>php_admin_value</code>).</li>
+    <li>Voor beheerders: het uploadadres van Livewire (<code>config/livewire.php</code>) neemt per verzoek één bestand van maximaal 2 MB aan, alleen van wie ingelogd is, hooguit 10 per minuut en 60 per uur per gebruiker (<code>livewire-upload</code>); <code>App\Http\Middleware\LimitTemporaryUploads</code> weigert een verzoek met meer bestanden (422).</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/components/user-menu/*; resources/views/pages/settings/layout.blade.php; resources/views/pages/settings/profile/*; resources/views/pages/settings/appearance/*; app/Actions/Users/{UpdateAvatar,RemoveAvatar}.php; app/Models/User.php (avatarUrl); tests/Feature/Settings/AvatarTest.php; resources/views/layouts/base.blade.php; app/Support/Locales.php; app/Http/Middleware/SetLocale.php; app/Http/Controllers/LocaleController.php; app/Actions/Settings/{UpdateLocale,UpdateAppearance}.php; resources/views/pages/invitations/accept/accept.php; tests/Browser/AppearanceTest.php; docs/decisions.md (DEC-29 (4), (7), (8), (29))</p></details>
 
   <h3 id="twofa">Tweestapsverificatie en herstelcodes</h3>
   <p>Je beheert de tweede stap op de beveiligingspagina: klik linksonder in de zijbalk op je naam (op een telefoon: je initialen rechtsboven), dan <span class="ui">Instellingen</span> en <span class="ui">Beveiliging</span> (<code>/settings/security</code>). Die pagina vraagt eerst je wachtwoord (<span class="ui">Wachtwoord bevestigen</span>). Een bevestiging blijft 3 uur geldig; elke gevoelige actie controleert dat opnieuw.</p>
@@ -964,6 +989,22 @@ php artisan skv:bootstrap</code></pre>
     <li>Passkeys zijn een optionele module: <code>MODULE_PASSKEYS</code>, standaard <code>true</code>. Met <code>false</code> registreert de kit geen passkeyroutes en geen <code>.well-known/passkey-endpoints</code>, en verdwijnen de knop op de inlogpagina en bij het bevestigen van je wachtwoord en het onderdeel <span class="ui">Passkeys</span> op de beveiligingspagina. Ook een Livewire-verzoek dat de passkeyacties van de beveiligingspagina rechtstreeks aanroept, krijgt dan 404. Opgeslagen passkeys blijven in de database staan. Draai na het wijzigen <code>php artisan config:clear</code> als je de config cachet.</li>
   </ul>
   <details class="srcs"><summary>Bronnen</summary><p class="src">config/fortify.php; config/skv.php (modules.passkeys); app/Providers/AppServiceProvider.php; routes/passkeys.php; spec:111, §6.8; app/Tenancy/Listeners/SetPasskeyOrigin.php; resources/views/components/passkey-registration.blade.php; resources/views/pages/settings/security/security.blade.php; tests/Feature/Passkeys/PasskeysModuleTest.php</p></details>
+
+  <h3 id="tweede-factor">Tweede factor verplicht</h3>
+  <p>Een organisatie kan van haar leden een tweede factor eisen: tweestapsverificatie of, als de passkeymodule aan staat, een passkey.</p>
+  <ul>
+    <li><strong>Aanzetten.</strong> Op de bewerkpagina van de organisatie (<span class="ui">Organisaties</span> → <span class="ui">Bewerken</span>) zet een beheerder van de organisatie (wie de organisatie mag bewerken) of een superbeheerder de schakelaar <span class="ui">Tweede factor verplicht stellen</span> om en klikt <span class="ui">Opslaan</span>. Wijzigen, aan of uit, vraagt je wachtwoord; na de bevestiging staan je wijzigingen er weer, met de melding <span class="ui">Je niet-opgeslagen wijzigingen staan er weer. Sla opnieuw op om ze door te voeren.</span>, en klik je nog een keer <span class="ui">Opslaan</span>. De wijziging staat in het activiteitenlog bij <span class="ui">Organisatie bijgewerkt</span>.</li>
+    <li><strong>Eerst je eigen factor.</strong> Een organisatiebeheerder zonder eigen tweede factor kan de regel niet aanzetten: <span class="ui">Stel eerst een tweede factor in voor je eigen account.</span> Zo sluit je jezelf niet buiten.</li>
+    <li><strong>Wat leden zien.</strong> Wie nog geen tweede factor heeft, gaat bij elke pagina naar <span class="ui">Beveiliging</span>, met bovenaan de melding <span class="ui">Je organisatie vereist een tweede factor. Stel tweestapsverificatie of een passkey in om verder te gaan.</span> Pas als de factor er is, werkt de rest van de app weer. Een knop op een andere pagina stuurt je ook daarheen; een ander verzoek dan GET op een gewone route krijgt 403.</li>
+    <li><strong>Alleen een passkey.</strong> Na het wachtwoord vraagt de kit alleen om een tweestapscode als je tweestapsverificatie hebt. Wie onder de regel valt en als tweede factor alleen een passkey heeft, logt daarom met die passkey in: met het juiste wachtwoord alleen zie je <span class="ui">Log in met je passkey: alleen een wachtwoord is voor dit account niet genoeg.</span> Wie nog geen factor heeft, logt wel met het wachtwoord in en gaat dan naar <span class="ui">Beveiliging</span>. Ben je je enige passkey kwijt, dan kom je pas weer binnen als een beheerder de regel even uitzet; stel daarom ook tweestapsverificatie in, met de herstelcodes als reserve.</li>
+    <li><strong>Passkeys uit.</strong> Met <code>MODULE_PASSKEYS=false</code> telt alleen tweestapsverificatie, en de tekst zegt dat ook: <span class="ui">Stel tweestapsverificatie in om verder te gaan.</span></li>
+    <li><strong>Je laatste factor weghalen</strong> mag; daarna stuurt de kit je meteen terug naar <span class="ui">Beveiliging</span>.</li>
+    <li><strong>Nieuwe leden.</strong> Wie een uitnodiging voor zo&rsquo;n organisatie accepteert, komt direct daarna op <span class="ui">Beveiliging</span> en vult daar eerst het wachtwoord in dat hij net koos (de beveiligingspagina vraagt altijd een wachtwoordbevestiging).</li>
+    <li><strong>Wat bereikbaar blijft:</strong> de beveiligingspagina, het bevestigen van je wachtwoord, tweestapsverificatie en passkeys instellen, uitloggen, de overdrachtslink, &lsquo;inloggen als&rsquo; stoppen en de setupwizard (<code>config('skv.second_factor.exempt_routes')</code>). Een link uit de mail om je e-mailadres te bevestigen hoort daar niet bij: je stelt eerst je factor in, en de link blijft werken tot hij verloopt.</li>
+    <li><strong>Inloggen als.</strong> Tijdens &lsquo;inloggen als&rsquo; geldt de regel niet: de beheerder kan de factor van de ander toch niet instellen.</li>
+    <li><strong>Superbeheerders.</strong> Met <code>REQUIRE_SECOND_FACTOR_SUPER_ADMINS=true</code> moet elke superbeheerder een tweede factor hebben, op elke host. Ze zien dan <span class="ui">Superbeheerders hebben een tweede factor nodig.</span> De regel van een organisatie geldt niet voor superbeheerders.</li>
+  </ul>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">app/Tenancy/Auth/SecondFactor.php; app/Tenancy/Auth/AuthenticateOnThisHost.php; app/Http/Middleware/EnsureSecondFactor.php; config/skv.php (second_factor); routes/web.php; routes/settings.php; routes/admin.php; app/Providers/TenancyServiceProvider.php; resources/views/pages/organisations/edit/*; app/Actions/Organisations/UpdateOrganisation.php; resources/views/pages/settings/security/*; tests/Feature/Auth/{SecondFactor,EnsureSecondFactor}Test.php</p></details>
 
   <h3 id="reset">Wachtwoord vergeten</h3>
   <p>Klik op de inlogpagina <span class="ui">Wachtwoord vergeten?</span>, vul je e-mailadres in en klik <span class="ui">Link om je wachtwoord opnieuw in te stellen mailen</span>. Je krijgt altijd hetzelfde antwoord, of het adres nu bestaat of niet:</p>
@@ -1122,7 +1163,7 @@ php artisan skv:bootstrap</code></pre>
   </ul>
 
   <h4>Bewerken</h4>
-  <p>Met <span class="ui">Bewerken</span> pas je <span class="ui">Naam</span> en <span class="ui">Omschrijving</span> aan (recht <code>organisations.update</code>). Alleen een superbeheerder wijzigt het <span class="ui">Adres</span>; anderen zien <span class="ui">Alleen een platformbeheerder kan het adres wijzigen.</span></p>
+  <p>Met <span class="ui">Bewerken</span> pas je <span class="ui">Naam</span> en <span class="ui">Omschrijving</span> aan (recht <code>organisations.update</code>). Alleen een superbeheerder wijzigt het <span class="ui">Adres</span>; anderen zien <span class="ui">Alleen een platformbeheerder kan het adres wijzigen.</span> Met de schakelaar <span class="ui">Tweede factor verplicht stellen</span> eis je van de leden een tweede factor (zie <a href="#tweede-factor">Tweede factor verplicht</a>).</p>
   <div class="note warn">
     <p class="note-title">Webadres wijzigen</p>
     <p><span class="ui">Een ander adres verplaatst de organisatie naar een nieuwe host: iedereen daar wordt uitgelogd en oude links werken niet meer.</span> Het oude webadres is meteen vrij en verwijst niet door. Uitnodigingen die eerder zijn verstuurd, wijzen naar het oude webadres tot je ze opnieuw verstuurt.</p>
@@ -1171,6 +1212,20 @@ php artisan skv:bootstrap</code></pre>
     <p>Een uitnodiging heeft minstens één rol nodig (anders: <span class="ui">Kies minstens één rol.</span>). Zonder eigen rollen kun je alleen <span class="ui">Organisatiebeheerder</span> kiezen, en eigen rollen maakt alleen een superbeheerder. Bestaat er nog geen eigen rol zoals &lsquo;Medewerker&rsquo;, vraag dan een superbeheerder er een aan te maken. Of nodig uit als Organisatiebeheerder en haal de rol na activatie weg bij <span class="ui">Gebruikers</span> → <em>naam</em> → <span class="ui">Rollen</span> (alle vinkjes uit, <span class="ui">Rollen opslaan</span>). Tot dat moment is de genodigde organisatiebeheerder.</p>
   </div>
 
+  <h4 id="meerdere-uitnodigen">Meerdere mensen uitnodigen</h4>
+  <p>Klik bij <span class="ui">Openstaande uitnodigingen</span> op <span class="ui">Meerdere mensen uitnodigen</span>. Je hebt dezelfde rechten nodig als voor <span class="ui">Gebruiker uitnodigen</span>; centraal kies je als superbeheerder eerst een organisatie.</p>
+  <ol class="steps">
+    <li><div><p>Plak de adressen bij <span class="ui">E-mailadressen</span> (<span class="ui">Eén per regel, of gescheiden door komma&rsquo;s of puntkomma&rsquo;s.</span>, samen hooguit 30.000 tekens), kies een <span class="ui">CSV-bestand</span> van hooguit 512 KB, of allebei. Met Flux Pro sleep je het bestand in een vak.</p></div></li>
+    <li><div><p>Kies één keer de <span class="ui">Taal</span> (voor elk adres zonder eigen taal) en minstens één rol. Klik <span class="ui">Lijst controleren</span>.</p></div></li>
+    <li><div><p>Elke regel staat op <span class="ui">Gereed</span> of wordt overgeslagen met de reden: <span class="ui">Geen geldig e-mailadres.</span>, <span class="ui">Staat meer dan eens in de lijst.</span>, <span class="ui">Onbekende taal.</span> of <span class="ui">Dit adres kan niet worden uitgenodigd.</span> Die laatste melding geldt voor elke reden waarom een adres niet kan (al lid, al uitgenodigd, in gebruik bij een andere organisatie), zodat de lijst niet verraadt welke adressen elders bestaan. Verander je iets aan de invoer, dan verdwijnt de controle en controleer je opnieuw.</p></div></li>
+    <li><div><p>Klik <span class="ui">Uitnodigingen versturen (<em>12</em>)</span>. De kit controleert de regels nog een keer en verstuurt daarna elke uitnodiging apart, in de taal van die regel. De samenvatting toont <span class="ui">Verstuurd: <em>12</em></span> en <span class="ui">Overgeslagen: <em>2</em></span> met de redenen.</p></div></li>
+  </ol>
+  <ul>
+    <li><strong>Het CSV-bestand</strong> heeft een kolom met e-mailadressen en eventueel een kolom met de taal (<code>nl</code> of <code>en</code>). Een kopregel mag; de kit herkent hem alleen aan de kolomnamen: een naam met &lsquo;mail&rsquo; erin (email, e-mail, e-mailadres …) en <code>locale</code>, <code>language</code>, <code>lang</code> of <code>taal</code>. Zonder kopregel is de eerste kolom het adres en de tweede de taal, dus een eerste adres met een typefout blijft gewoon een regel. Komma&rsquo;s en puntkomma&rsquo;s (zoals Excel in het Nederlands bewaart) werken allebei, en een BOM mag. De kit leest het bestand alleen als tekst en bewaart er geen kopie van; de tijdelijke upload van Livewire verdwijnt zodra de lijst verstuurd is of je het bestand weghaalt of vervangt (een bestand op een verlaten pagina ruimt Livewire zelf op, een dag later, bij een volgende upload).</li>
+    <li><strong>Hooguit 100 regels</strong> per lijst, en hooguit 100 uitnodigingen per uur per beheerder. Alleen de regels die echt verstuurd worden, tellen; een lijst die groter is dan wat er dit uur nog over is, wordt geweigerd voordat er iets weggaat. Meerdere uitnodigingen tellen niet mee voor de limiet van <span class="ui">Gebruiker uitnodigen</span>.</li>
+    <li>Elke verstuurde uitnodiging staat apart in het activiteitenlog (<span class="ui">Uitnodiging verstuurd</span>).</li>
+  </ul>
+
   <h4>Openstaande uitnodigingen</h4>
   <div class="table-wrap">
     <table>
@@ -1191,7 +1246,7 @@ php artisan skv:bootstrap</code></pre>
     <li>Er is al iemand ingelogd: <span class="ui">Log eerst uit om deze uitnodiging te accepteren.</span></li>
     <li>Het formulier <span class="ui">Welkom bij <em>Acme</em></span>: <span class="ui">Naam</span>, <span class="ui">Wachtwoord</span>, <span class="ui">Wachtwoord bevestigen</span> en <span class="ui">Account activeren</span>. Het wachtwoord moet lokaal minimaal 8 tekens hebben; in elke andere omgeving dan <code>local</code> en <code>testing</code> minimaal 12 tekens met hoofd- en kleine letters, cijfers, symbolen en niet gelekt. Een wachtwoordhash in plaats van een wachtwoord wordt hier, bij het opnieuw instellen en op de beveiligingspagina geweigerd (<span class="ui">Geef het wachtwoord zelf mee, geen hash.</span>). Daarna ben je meteen ingelogd: <span class="ui">Welkom, je account is klaar.</span></li>
   </ul>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/invite/*; resources/views/pages/invitations/{pending,accept}/*; app/Actions/Invitations/*.php; app/Actions/Invitations/InviteUser.php:84-88; app/Actions/Invitations/AcceptInvitation.php:38; app/Providers/AppServiceProvider.php:56-64; app/Policies/InvitationPolicy.php:25-73 (viewLink :44-59); app/Actions/Users/UpdateUserRoles.php:41-74; app/Rules/AvailableEmail.php:52-59; config/skv.php:12-15</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/users/invite/*; resources/views/pages/invitations/{pending,accept}/*; app/Actions/Invitations/*.php; app/Actions/Invitations/InviteUser.php:84-88; app/Actions/Invitations/AcceptInvitation.php:38; app/Providers/AppServiceProvider.php:56-64; app/Policies/InvitationPolicy.php:25-73 (viewLink :44-59); app/Actions/Users/UpdateUserRoles.php:41-74; app/Rules/AvailableEmail.php:52-59; config/skv.php:12-15; resources/views/pages/invitations/bulk/*; app/Support/Invitations/InvitationList.php; app/Concerns/ChoosesInvitationOrganisation.php; tests/Feature/Invitations/BulkInvitationsTest.php</p></details>
 
   <h3 id="rechten">Rollen en rechten</h3>
   <p><span class="ui">Rollen</span> toont de <span class="ui">Systeemrollen</span> (beschermd, niet te wijzigen) en de <span class="ui">Eigen rollen</span> per organisatie. Alleen een superbeheerder maakt, wijzigt of verwijdert eigen rollen (<span class="ui">Nieuwe rol</span>, <span class="ui">Bewerken</span>, <span class="ui">Verwijderen</span>). Verwijder je een rol die mensen hebben, dan raken zij hem kwijt.</p>
@@ -1251,7 +1306,15 @@ php artisan skv:bootstrap</code></pre>
     <li>Op een organisatiehost zie je alleen de eigen organisatie. Centraal ziet een superbeheerder alles, ook gearchiveerde organisaties en platformregels.</li>
     <li>Gaat een regel over iemand die geen gewoon lid van je organisatie is (bijvoorbeeld een superbeheerder die hielp), dan zie je als organisatiebeheerder geen IP-adres en browser. De naam blijft zichtbaar.</li>
     <li>Wachtwoorden, tokens en links worden nooit opgeslagen. Bij een mislukte inlogpoging staat het getypte e-mailadres er alleen als het een geldig e-mailadres is. Van de browser (user agent) bewaart het log hooguit 500 tekens, als geldige UTF-8 zonder NUL-tekens.</li>
-    <li>Het log kan niet uit. Regels ouder dan 365 dagen ruimt de planner elke nacht om 01:00 op (<code>php artisan activitylog:clean --force</code>, zie <a href="#systeemstatus">Systeemstatus</a>). Een CSV-export komt in M7d.</li>
+    <li>Het log kan niet uit. Regels ouder dan 365 dagen ruimt de planner elke nacht om 01:00 op (<code>php artisan activitylog:clean --force</code>, zie <a href="#systeemstatus">Systeemstatus</a>). Met <span class="ui">CSV exporteren</span> download je wat de filters tonen (zie hieronder).</li>
+  </ul>
+  <h4 id="export">CSV exporteren</h4>
+  <ul>
+    <li><span class="ui">CSV exporteren</span> downloadt precies de regels die de filters tonen, van dezelfde organisaties als het log, als bestand <code>activity-log-&lt;datum&gt;-&lt;tijd&gt;.csv</code>. Het opent direct in Excel (UTF-8 met BOM).</li>
+    <li>Kolommen: <span class="ui">Datum</span> (ISO 8601, in de tijdzone van de app), <span class="ui">Gebeurtenissleutel</span>, <span class="ui">Actie</span>, <span class="ui">Uitgevoerd door</span>, <span class="ui">Onderwerp</span>, centraal ook <span class="ui">Organisatie</span>, <span class="ui">IP-adres</span>, <span class="ui">Browser</span> en <span class="ui">Eigenschappen</span> (JSON).</li>
+    <li>IP-adres en browser blijven leeg waar het log ze verbergt voor platformmedewerkers. Er is geen kolom met de wijzigingen, zodat ook verborgen wijzigingen van medewerkers verborgen blijven.</li>
+    <li>Een cel die begint met <code>=</code>, <code>+</code>, <code>-</code>, <code>@</code>, een tab of een CR krijgt een <code>'</code> ervoor, zodat een spreadsheet hem niet als formule uitvoert. Dat gebeurt ook na een <code>;</code>, tab of regeleinde midden in een cel (Excel in het Nederlands splitst op puntkomma&rsquo;s), en voor de brede tekens ＝＋－＠. Een apostrof midden in een waarde, bijvoorbeeld in een user agent, komt dus van de export.</li>
+    <li>Elke export staat in het log (<span class="ui">Activiteitenlog geëxporteerd</span>, met de gebruikte filters); hooguit vijf per minuut per gebruiker. Een heel grote export moet binnen de maximale looptijd van PHP (<code>max_execution_time</code>) passen.</li>
   </ul>
   <h4>Wat er wordt vastgelegd</h4>
   <div class="events">
@@ -1259,10 +1322,10 @@ php artisan skv:bootstrap</code></pre>
       <li>Ingelogd<code>auth.login</code></li><li>Inloggen mislukt (ook met een passkey: <code>method: passkey</code>)<code>auth.login_failed</code></li><li>Uitgelogd<code>auth.logout</code></li><li>Wachtwoordherstel aangevraagd<code>auth.password_reset_requested</code></li><li>Wachtwoordherstel voltooid<code>auth.password_reset_completed</code></li><li>Ingelogd met een overdrachtslink<code>auth.handoff_consumed</code></li><li>Tweestapscode geweigerd<code>auth.two_factor_failed</code></li><li>Herstelcode gebruikt<code>auth.recovery_code_used</code></li>
     </ul></div>
     <div class="grp"><span class="gname">security</span><ul>
-      <li>Wachtwoord gewijzigd<code>security.password_changed</code></li><li>Tweestapsverificatie ingeschakeld<code>security.two_factor_enabled</code></li><li>Tweestapsverificatie uitgeschakeld<code>security.two_factor_disabled</code></li><li>Herstelcodes opnieuw gegenereerd<code>security.recovery_codes_regenerated</code></li><li>Passkey toegevoegd<code>security.passkey_registered</code></li><li>Passkey verwijderd<code>security.passkey_deleted</code></li>
+      <li>Wachtwoord gewijzigd<code>security.password_changed</code></li><li>Tweestapsverificatie ingeschakeld<code>security.two_factor_enabled</code></li><li>Tweestapsverificatie uitgeschakeld<code>security.two_factor_disabled</code></li><li>Herstelcodes opnieuw gegenereerd<code>security.recovery_codes_regenerated</code></li><li>Passkey toegevoegd<code>security.passkey_registered</code></li><li>Passkey verwijderd<code>security.passkey_deleted</code></li><li>Andere apparaten uitgelogd (met het aantal)<code>security.other_sessions_ended</code></li>
     </ul></div>
     <div class="grp"><span class="gname">users</span><ul>
-      <li>Gebruiker bijgewerkt<code>user.updated</code></li><li>Status van gebruiker gewijzigd<code>user.status_changed</code></li><li>Gebruiker verwijderd<code>user.deleted</code></li><li>Gebruiker hersteld<code>user.restored</code></li><li>Rollen gewijzigd<code>user.roles_changed</code></li><li>Superbeheer toegekend<code>user.super_admin_granted</code></li><li>Superbeheer ingetrokken<code>user.super_admin_revoked</code></li>
+      <li>Gebruiker bijgewerkt (ook een profielfoto: <code>avatar: set</code> of <code>removed</code>)<code>user.updated</code></li><li>Status van gebruiker gewijzigd<code>user.status_changed</code></li><li>Gebruiker verwijderd<code>user.deleted</code></li><li>Gebruiker hersteld<code>user.restored</code></li><li>Rollen gewijzigd<code>user.roles_changed</code></li><li>Superbeheer toegekend<code>user.super_admin_granted</code></li><li>Superbeheer ingetrokken<code>user.super_admin_revoked</code></li>
     </ul></div>
     <div class="grp"><span class="gname">invitations</span><ul>
       <li>Uitnodiging verstuurd<code>invitation.sent</code></li><li>Uitnodiging opnieuw verstuurd<code>invitation.reminder_sent</code></li><li>Uitnodiging geaccepteerd<code>invitation.accepted</code></li><li>Uitnodiging ingetrokken<code>invitation.cancelled</code></li>
@@ -1276,8 +1339,11 @@ php artisan skv:bootstrap</code></pre>
     <div class="grp"><span class="gname">impersonation</span><ul>
       <li>Inloggen als gebruiker gestart<code>impersonation.start</code></li><li>Inloggen als gebruiker beëindigd<code>impersonation.stop</code></li>
     </ul></div>
+    <div class="grp"><span class="gname">audit</span><ul>
+      <li>Activiteitenlog geëxporteerd<code>audit.exported</code></li>
+    </ul></div>
   </div>
-  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Enums/ActivityEvent.php:18-114; app/Actions/Audit/RecordActivity.php:15-20; config/activitylog.php:15-19; docs/decisions.md:132 (7, 34), :134</p></details>
+  <details class="srcs"><summary>Bronnen</summary><p class="src">resources/views/pages/activity/index/*; app/Http/Controllers/ActivityExportController.php; app/Support/Audit/{ActivityFilters,ActivityRows}.php; tests/Feature/Audit/ActivityExportTest.php; app/Enums/ActivityEvent.php; app/Actions/Audit/RecordActivity.php:15-20; config/activitylog.php:15-19; docs/decisions.md:132 (7, 34), :134</p></details>
 
   <h3 id="systeemstatus">Systeemstatus</h3>
   <p><span class="ui">Systeemstatus</span> (<span class="ui">Gezondheidscontroles, back-ups en de planner bekijken</span>) staat in de groep <span class="ui">Systeem</span>, op <code>/system</code>. Alleen superbeheerders zien hem, en alleen op een centrale host (<code>admin.mijnapp.test</code> of <code>mijnapp.test</code>); op een organisatiehost bestaat de pagina niet.</p>
@@ -1336,7 +1402,7 @@ Route::tenant(function (): void {
     <li>Componenten roepen acties aan; de domeinlogica staat in <code>App\Actions</code>.</li>
     <li>Een actie die alleen op een organisatiehost zin heeft, krijgt <code>#[RequiresTenant]</code>: centraal geeft hij 404, ook bij een vervalst Livewire-verzoek.</li>
     <li><code>password.confirm</code> op een route dekt geen Livewire-updates. Gevoelige acties beginnen daarom met de trait <code>App\Concerns\ConfirmsPasswords</code>.</li>
-    <li>De acties voor jezelf en voor uitnodigingen die mail versturen of een geheim controleren (de adreswijziging, de wachtwoordwijziging, de bevestiging van de TOTP-code, de uitnodiging en de herinnering; CD-3), en elke nieuwe actie die een lid kan herhalen om mail te versturen of een geheim te proberen, begrenzen zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie (twee beheeracties die mail versturen, hebben nog geen limiet: de uitnodiging van de eerste beheerder vanuit <code>organisations.create</code> en de adreswijziging door een beheerder op <code>users.edit</code>): <code>attempt()</code> vóór de controle van een geheim; <code>around()</code> om het versturen heen: die reserveert de plek, voert de actie uit en geeft de plek terug als de actie een fout gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
+    <li>De acties voor jezelf en voor uitnodigingen die mail versturen of een geheim controleren (de adreswijziging, de wachtwoordwijziging, de bevestiging van de TOTP-code, de uitnodiging en de herinnering; CD-3), en elke nieuwe actie die een lid kan herhalen om mail te versturen of een geheim te proberen, begrenzen zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie (ook de uitnodiging van de eerste beheerder vanuit <code>organisations.create</code>, onder <code>invite()</code>, en de adreswijziging door een beheerder op <code>users.edit</code>, onder <code>addressChange()</code>): <code>attempt()</code> vóór de controle van een geheim; <code>around()</code> om het versturen heen: die reserveert de plek, voert de actie uit en geeft de plek terug als de actie een fout gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
   </ul>
 <pre><code>use App\Tenancy\Attributes\RequiresTenant;
 
@@ -1567,7 +1633,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M7c zitten in <code>main</code>. Daarna volgen M7d, de extra&rsquo;s, en M8, de release. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
+  <p>Milestones M0 tot en met M7d zitten in <code>main</code>. Daarna volgt M8, de release. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1584,28 +1650,27 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
         <tr><td class="tabnum">M7a</td><td>Beheerlaag: <code>/health-check</code> met sleutel, versleutelde back-ups van de database, de planner met hartslag, de pagina Systeemstatus, auditregels van de opdrachtregel, wachtwoorden nooit meer als argument, <code>skv:install</code> niet in productie en de demodata alleen lokaal en in de tests</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M7b</td><td>Installatie verstevigd: de wizard alleen vanaf deze computer en op het vastgelegde adres, statusbestanden die geen links volgen, een Herd-stap die altijd een uitslag of een commando geeft, <code>skv:install</code> alleen in <code>local</code>, <code>testing</code> en <code>staging</code>, een sleutel van minstens 32 tekens voor <code>/health-check</code> met aparte limieten, een privémap voor de tijdelijke dump, en een Systeemstatus die blijft werken als de cache of een schijf uitvalt</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M7c</td><td>Beveiliging verstevigd: limieten per gebruiker, links uit <code>APP_URL</code>, de passkeyacties en herstelcodes op de beveiligingspagina, voorkeuren tijdens &lsquo;inloggen als&rsquo;, meldingen en mails in de taal van de lezer, foutpagina&rsquo;s voor elke 4xx en 5xx, één volgorde van vergrendelen in het beheer, het activiteitenlog, de huisstijl op de inlogpagina&rsquo;s, en de restpunten van de installatie, de beheerlaag en de back-ups</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M7d</td><td>Extra&rsquo;s: sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;, tweede factor verplicht per organisatie, CSV-export van het log, meerdere mensen tegelijk uitnodigen, profielfoto&rsquo;s, en limieten op adreswijzigingen door een beheerder en de uitnodiging uit de organisatiewizard</td><td><span class="badge b-ok">klaar</span></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">git log (main); CHANGELOG.md; README.md (Status); docs/decisions.md (DEC-34)</p>
+  <p class="src">git log (main); CHANGELOG.md; README.md (Status); docs/decisions.md (DEC-34, DEC-35)</p>
 
   <h3 id="roadmap">Wat er komt</h3>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M7d · Extra&rsquo;s</strong></td><td>Sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;; tweede stap verplicht per organisatie; CSV-export van het log; uitnodigen in bulk; avatars</td></tr>
         <tr><td><strong>M8 · Release</strong></td><td>Documentatie, volledige CI met e2e, Herd-deeplink gecontroleerd; daarna (na akkoord van de eigenaar) publicatie op GitHub/Packagist als <code>frankcornet/skv3</code>, tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
   </div>
-  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence, DEC-30 Consequence, DEC-31 Consequence, DEC-34 Consequence)</p>
+  <p class="src">spec §11.2, §6.5-§6.8; docs/decisions.md (DEC-28, DEC-29 Consequence, DEC-30 Consequence, DEC-31 Consequence, DEC-34 Consequence, DEC-35 Consequence)</p>
 
   <h3 id="beperkingen">Bekende beperkingen nu</h3>
   <ul>
     <li>Installeren met één klik vanuit de Herd-app werkt pas na de publicatie (M8); tot dan kloon je de code en open je de wizard zoals in <a href="#herd">Installeren via Herd</a>.</li>
     <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); de setup controleert de waarden, maar er is nog geen pagina voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
-    <li>Het log heeft nog geen export.</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
     <li>Persoonsgegevens van een definitief verwijderde organisatie blijven in het log tot de bewaartermijn verloopt.</li>
   </ul>
@@ -1615,7 +1680,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van <code>main</code> na milestone M7c. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van <code>main</code> na milestone M7d. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
       </footer>
     </main>
   </div>

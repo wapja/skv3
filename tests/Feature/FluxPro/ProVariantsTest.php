@@ -16,8 +16,10 @@ it('renders the Pro variants when Flux Pro is installed', function (): void {
 
     $this->get(route('users.index'))->assertOk()->assertSee('data-flux-tabs', false);
     $this->get(route('users.invite'))->assertOk()->assertSee('listbox', false);
+    $this->get(route('invitations.bulk'))->assertOk()->assertSee('data-flux-file-upload', false)->assertSee('listbox', false);
     $this->get(route('activity.index'))->assertOk()->assertSee('data-flux-date-picker', false);
     $this->get(route('dashboard'))->assertOk()->assertSee('data-test="login-trend"', false)->assertSee('data-test="command-palette"', false);
+    $this->get(route('profile.edit'))->assertOk()->assertSee('data-flux-file-upload', false)->assertDontSee('data-flux-input-file', false);
 })->group('flux-pro')->skip(fn (): bool => ! InstalledVersions::isInstalled('livewire/flux-pro'), 'Flux Pro is not installed (OD-1)');
 
 it('keeps the role assignment working with the listbox', function (): void {

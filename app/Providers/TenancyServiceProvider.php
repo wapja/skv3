@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Http\Middleware\EnsureSecondFactor;
 use App\Models\User;
 use App\Support\Skv;
 use App\Tenancy\Auth\HostLoginRule;
@@ -106,6 +107,9 @@ final class TenancyServiceProvider extends ServiceProvider
 
         // Re-applied on the Livewire update request for components mounted on these routes (FQCN required).
         Livewire::addPersistentMiddleware([EnsureTenantHost::class, EnsureCentralHost::class]);
+
+        // §6.6, CD-4: an update is replayed against its page's rule, so a tab loaded before the rule applied stops working.
+        Livewire::addPersistentMiddleware([EnsureSecondFactor::class]);
 
         // §4.7 / RL-28: the database driver writes the impersonator, not the impersonated user, into sessions.user_id.
         Session::extend('database', fn (Application $app): SessionHandlerInterface => new ImpersonationAwareSessionHandler(

@@ -38,6 +38,8 @@
         <!-- §6.8: no force, so CI's sqlite-free job can run the whole suite with the optional modules off. -->
         <env name="MODULE_IMPERSONATION" value="true"/>
         <env name="MODULE_PASSKEYS" value="true"/>
+        <!-- CD-4: the owner's .env may require a second factor of super admins; tests turn it on per test. -->
+        <env name="REQUIRE_SECOND_FACTOR_SUPER_ADMINS" value="false" force="true"/>
         <env name="APP_LOCALE" value="en"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

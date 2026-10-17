@@ -5,6 +5,11 @@
         <flux:separator variant="subtle" />
     </div>
 
+    {{-- A plain download link with the current filters (CD-5), never wire:navigate or a Livewire action. --}}
+    <div class="flex justify-end">
+        <flux:button :href="$this->exportUrl" icon="arrow-down-tray" data-test="activity-export">{{ __('Export CSV') }}</flux:button>
+    </div>
+
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         @if (Skv::hasFluxPro())
             <flux:date-picker wire:model.live="from" :label="__('From')" data-test="filter-from" />

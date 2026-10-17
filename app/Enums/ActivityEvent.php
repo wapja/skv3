@@ -9,7 +9,7 @@ use LogicException;
 
 /**
  * The audit vocabulary (§4.8). The value is stored as the entry's event and description, group() as its
- * log name. Entries of the authentication, security and impersonation groups are tagged with the host's
+ * log name. Entries of the authentication, security, impersonation and audit groups are tagged with the host's
  * organisation, every other entry with its subject's (RL-5). Not the vendor's
  * Spatie\Activitylog\Enums\ActivityEvent (created, updated, …), which the kit does not use.
  */
@@ -29,6 +29,7 @@ enum ActivityEvent: string
     case RecoveryCodesRegenerated = 'security.recovery_codes_regenerated';
     case PasskeyRegistered = 'security.passkey_registered';
     case PasskeyDeleted = 'security.passkey_deleted';
+    case OtherSessionsEnded = 'security.other_sessions_ended';
     case UserUpdated = 'user.updated';
     case UserStatusChanged = 'user.status_changed';
     case UserDeleted = 'user.deleted';
@@ -50,6 +51,7 @@ enum ActivityEvent: string
     case RoleDeleted = 'role.deleted';
     case ImpersonationStarted = 'impersonation.start';
     case ImpersonationStopped = 'impersonation.stop';
+    case ActivityExported = 'audit.exported';
 
     public function label(): string
     {
@@ -68,6 +70,7 @@ enum ActivityEvent: string
             self::RecoveryCodesRegenerated => __('Recovery codes regenerated'),
             self::PasskeyRegistered => __('Passkey added'),
             self::PasskeyDeleted => __('Passkey removed'),
+            self::OtherSessionsEnded => __('Other devices signed out'),
             self::UserUpdated => __('User updated'),
             self::UserStatusChanged => __('User status changed'),
             self::UserDeleted => __('User deleted'),
@@ -89,10 +92,11 @@ enum ActivityEvent: string
             self::RoleDeleted => __('Role deleted'),
             self::ImpersonationStarted => __('Impersonation started'),
             self::ImpersonationStopped => __('Impersonation stopped'),
+            self::ActivityExported => __('Activity log exported'),
         };
     }
 
-    /** The log name: authentication, security, users, invitations, organisations, roles or impersonation. */
+    /** The log name: authentication, security, users, invitations, organisations, roles, impersonation or audit. */
     public function group(): string
     {
         return match (Str::before($this->value, '.')) {
@@ -103,6 +107,7 @@ enum ActivityEvent: string
             'organisation' => 'organisations',
             'role' => 'roles',
             'impersonation' => 'impersonation',
+            'audit' => 'audit',
             default => throw new LogicException("Activity event [{$this->value}] has no group."),
         };
     }
@@ -110,6 +115,6 @@ enum ActivityEvent: string
     /** RL-5 host mode: tagged with the host's organisation (central = none), whatever the subject. */
     public function tagsByHost(): bool
     {
-        return in_array($this->group(), ['authentication', 'security', 'impersonation'], true);
+        return in_array($this->group(), ['authentication', 'security', 'impersonation', 'audit'], true);
     }
 }

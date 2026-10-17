@@ -36,6 +36,31 @@ return [
     ],
 
     /*
+    | The second factor (§6.6, CD-4). An organisation's require_second_factor applies to its own members, on every
+    | host; super_admins applies the rule to every super admin, on every host, whatever their organisation. With
+    | the passkeys module off only two-factor authentication counts (§6.8). EnsureSecondFactor lets the
+    | exempt_routes through (Request::routeIs() patterns): setting up a factor, confirming the password, signing
+    | out, finishing a handoff, ending an impersonation and the setup wizard.
+    */
+    'second_factor' => [
+        'super_admins' => (bool) env('REQUIRE_SECOND_FACTOR_SUPER_ADMINS', false),
+        'exempt_routes' => [
+            'security.edit',
+            'password.confirm',
+            'password.confirm.store',
+            'password.confirmation',
+            'two-factor.*',
+            'passkey.*',
+            'well-known.passkeys',
+            'logout',
+            'auth.handoff',
+            'auth.handoff.store',
+            'impersonation.stop',
+            'setup.*',
+        ],
+    ],
+
+    /*
     | /health-check (§4.9, RL-5): authorised only by the X-Health-Check-Key header, compared with hash_equals();
     | a blank key always answers 403. Results are cached for cache_seconds (CD-5). last-backup allows the newest
     | backup backup_grace_minutes beyond the monitor's maximum age, because an archive is named after the time its

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Actions\Settings\RequestEmailChange;
 use App\Actions\Settings\UpdateLocale;
+use App\Actions\Users\RemoveAvatar;
+use App\Actions\Users\UpdateAvatar;
 use App\Concerns\ProfileValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\Locale;
@@ -12,19 +14,31 @@ use App\Tenancy\Auth\Impersonation;
 use Flux\Flux;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 new #[Title('Profile settings')] class extends Component
 {
     use ProfileValidationRules;
     use ResolvesCurrentUser;
+    use WithFileUploads;
 
     public string $name = '';
 
     public string $email = '';
 
     public string $locale = '';
+
+    /** The chosen profile photo, uploaded to Livewire's temporary disk until saveAvatar() stores it (§6.6). */
+    public ?TemporaryUploadedFile $avatar = null;
+
+    /** Whether the photo section renders: never during an impersonation; the actions check again on every request. */
+    #[Locked]
+    public bool $canManageAvatar = false;
 
     /**
      * Mount the component.
@@ -36,6 +50,21 @@ new #[Title('Profile settings')] class extends Component
         $this->name = $user->name;
         $this->email = $user->email;
         $this->locale = Impersonation::localeFor($user)->value;
+        $this->canManageAvatar = ! Impersonation::isActive();
+    }
+
+    /** The stored photo's URL for the preview, or null for the initials. */
+    #[Computed]
+    public function avatarUrl(): ?string
+    {
+        return $this->currentUser()->avatarUrl();
+    }
+
+    /** The initials the preview shows without a photo. */
+    #[Computed]
+    public function initials(): string
+    {
+        return $this->currentUser()->initials();
     }
 
     /**
@@ -94,5 +123,78 @@ new #[Title('Profile settings')] class extends Component
         // language, and the base layout's flash→toast bridge shows it on the reloaded page.
         session()->flash('status', $status);
         $this->redirect(route('profile.edit'), navigate: false);
+    }
+
+    /**
+     * Store the chosen photo as the user's own (§6.6): validated here, re-encoded and stored by UpdateAvatar, whose
+     * "could not be processed" error lands on the same field. The user menu re-renders on avatar-updated. Each attempt
+     * counts under UserActionLimit::avatarUpdate() before the upload is checked, because a save can decode up to
+     * 4096 × 4096 pixels. Livewire's temporary upload, which still holds the original's metadata, is deleted once
+     * UpdateAvatar has read it, saved or not; a replayed snapshot that names it again is refused as if no photo were chosen.
+     */
+    public function saveAvatar(UpdateAvatar $updateAvatar): void
+    {
+        $this->ensureAvatarManageable();
+        $user = $this->currentUser();
+
+        UserActionLimit::avatarUpdate()->attempt($user, 'avatar');
+
+        if ($this->avatar instanceof TemporaryUploadedFile && ! $this->avatar->exists()) {
+            $this->reset('avatar');
+        }
+
+        $this->validate([
+            'avatar' => ['required', 'image', 'mimes:jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
+        ]);
+
+        $file = $this->avatar ?? throw new LogicException('The validated photo is missing.');
+
+        try {
+            $updateAvatar->handle($user, $file);
+        } finally {
+            $file->delete();
+            $this->reset('avatar');
+        }
+
+        unset($this->avatarUrl);
+        $this->dispatch('avatar-updated');
+        Flux::toast(variant: 'success', text: __('Profile photo saved.'));
+    }
+
+    /** Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. */
+    public function removeAvatar(RemoveAvatar $removeAvatar): void
+    {
+        $this->ensureAvatarManageable();
+
+        $removeAvatar->handle($this->currentUser());
+
+        $this->avatar?->delete();
+        $this->reset('avatar');
+        unset($this->avatarUrl);
+        $this->dispatch('avatar-updated');
+        Flux::toast(variant: 'success', text: __('Profile photo removed.'));
+    }
+
+    /** A photo chosen in place of another one not saved yet: the earlier temporary upload is deleted (§6.6). */
+    public function updatingAvatar(mixed $value): void
+    {
+        if ($this->avatar instanceof TemporaryUploadedFile && (! $value instanceof TemporaryUploadedFile || $value->getFilename() !== $this->avatar->getFilename())) {
+            $this->avatar->delete();
+        }
+    }
+
+    /** @return array<string, string> */
+    protected function validationAttributes(): array
+    {
+        return ['avatar' => __('profile photo')];
+    }
+
+    /**
+     * §6.6, CD-7: the impersonated user's photo is theirs, so the photo actions answer 403 during an impersonation,
+     * read on every request rather than from the locked snapshot.
+     */
+    private function ensureAvatarManageable(): void
+    {
+        abort_if(Impersonation::isActive(), 403);
     }
 };

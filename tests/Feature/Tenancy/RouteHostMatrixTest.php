@@ -23,8 +23,8 @@ function matrixRoutes(): array
     return [
         'home', 'login', 'password.request', 'two-factor.login', 'password.confirm',
         'dashboard', 'profile.edit', 'appearance.edit', 'security.edit', 'users.index', 'users.edit',
-        'users.invite', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
-        'roles.index', 'activity.index', 'system.index',
+        'users.invite', 'invitations.bulk', 'invitations.pending', 'organisations.index', 'organisations.create', 'organisations.edit',
+        'roles.index', 'activity.index', 'activity.export', 'system.index',
     ];
 }
 
@@ -54,8 +54,8 @@ function routeMatrixOutcome(string $route, string $actor, string $host): string
         in_array($route, ['organisations.create', 'system.index'], true) && $host === 'tenant' => 'not found', // central pages; host before can:
         $route === 'security.edit' => 'confirm',
         $actor === 'member' && in_array($route, [
-            'users.index', 'users.edit', 'users.invite', 'invitations.pending', 'organisations.index',
-            'organisations.edit', 'roles.index', 'activity.index',
+            'users.index', 'users.edit', 'users.invite', 'invitations.bulk', 'invitations.pending', 'organisations.index',
+            'organisations.edit', 'roles.index', 'activity.index', 'activity.export',
         ], true) => 'forbidden',                          // the matrix member holds no permission
         default => 'ok',
     };
