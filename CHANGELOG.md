@@ -91,6 +91,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A passkey whose signature counter did not increase (a sign of a cloned authenticator) is refused as before and now also writes one warning to the log.
 - While you impersonate someone, a language or appearance you pick lasts until the impersonation ends and never changes their account.
 - While you impersonate someone, their profile page refuses an email change, so no confirmation link goes out and their own pending link keeps working.
+- An email-change link stops working once the account's address is no longer the one the change was requested from, so it never overwrites an administrator's correction made in the meantime.
 - The language switch in the user menu reloads the page you are on, query string and filters included.
 - `config/app.php` defaults `APP_LOCALE` to `nl`, the same default as the kit's own language setting.
 - `skv:bootstrap` creates `.env`, and setup's database step `.env.testing`, with mode 0600 whatever the mode of `.env.example`, also when Composer's install hook (`post-root-package-install`, `composer setup`) creates `.env`; an `.env.example` or `.env` that cannot be read stops them with "Could not read .env." instead of a PHP warning that names the full path.

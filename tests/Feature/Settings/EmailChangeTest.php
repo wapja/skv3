@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §4.2 */
 
+use App\Actions\Settings\ConfirmEmailChange;
 use App\Actions\Settings\RequestEmailChange;
 use App\Enums\Locale;
 use App\Models\Organisation;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mime\Email;
 
@@ -148,6 +151,20 @@ it('refuses an address that was taken in the meantime', function (): void {
         ->assertSessionHas('status', __('This address is already used in this organisation.'));
 
     expect($member->fresh()?->email)->toBe('old@example.com');
+});
+
+it('refuses a link when the address it was requested from changed in the meantime (E1)', function (): void {
+    // An administrator's correction committed while the confirmation waited for the row, before its Cache::forget
+    // ran: the confirmation must not overwrite the corrected address.
+    [, $member] = memberChangingEmail();
+    app(RequestEmailChange::class)->handle($member, 'new@example.com');
+    $nonce = Str::between(confirmationLinkFor('new@example.com'), 'nonce=', '&');
+    DB::table('users')->where('id', $member->id)->update(['email' => 'corrected@example.com']);
+
+    expect(fn () => app(ConfirmEmailChange::class)->handle($member, 'new@example.com', $nonce))
+        ->toThrow(ValidationException::class, __('This confirmation link is no longer valid.'));
+
+    expect(DB::table('users')->where('id', $member->id)->value('email'))->toBe('corrected@example.com');
 });
 
 it('asks a session without a confirmed password to confirm it before the address changes', function (): void {

@@ -15,7 +15,9 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Applies a confirmed email change (E1). Only the newest link works, and only once: the nonce is
- * forgotten when it matches, so an older link never removes the newest one.
+ * forgotten when it matches, so an older link never removes the newest one. The link is checked on the
+ * locked users row against the address it was requested from, so an administrator's correction that
+ * committed meanwhile (UpdateUser forgets the link only after its commit) is never overwritten.
  */
 final class ConfirmEmailChange
 {
@@ -26,19 +28,19 @@ final class ConfirmEmailChange
     {
         $email = Str::lower($email);
         $key = RequestEmailChange::cacheKey($user);
-        $expected = Cache::get($key);
-
-        if (! is_string($expected) || ! hash_equals($expected, hash('sha256', $nonce.'|'.$email))) {
-            throw ValidationException::withMessages(['email' => [__('This confirmation link is no longer valid.')]]);
-        }
-
-        Cache::forget($key);
-
-        Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();
 
         try {
-            DB::transaction(function () use ($user, $email): void {
-                $previous = $user->email;
+            DB::transaction(function () use ($user, $email, $nonce, $key): void {
+                $previous = DB::table('users')->where('id', $user->id)->lockForUpdate()->value('email');
+                $expected = Cache::get($key);
+
+                if (! is_string($previous) || ! is_string($expected) || ! hash_equals($expected, RequestEmailChange::digest($nonce, $previous, $email))) {
+                    throw ValidationException::withMessages(['email' => [__('This confirmation link is no longer valid.')]]);
+                }
+
+                Cache::forget($key);
+
+                Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();
 
                 $user->forceFill(['email' => $email])->save();
 

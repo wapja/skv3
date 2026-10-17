@@ -35,6 +35,15 @@ final class RequestEmailChange
         return 'email-change.'.$user->id;
     }
 
+    /**
+     * What the cache holds for a link: the nonce bound to the address the change was requested from and the new one,
+     * so a link stops working once the stored address is no longer the one it was requested from.
+     */
+    public static function digest(string $nonce, string $from, string $to): string
+    {
+        return hash('sha256', $nonce.'|'.$from.'|'.$to);
+    }
+
     /** @throws ValidationException */
     public function handle(User $user, string $email): void
     {
@@ -51,7 +60,7 @@ final class RequestEmailChange
         Validator::make(['email' => $email], ['email' => $this->emailRules($user->id, $user->organisation_id)])->validate();
 
         $nonce = Str::random(40);
-        Cache::put(self::cacheKey($user), hash('sha256', $nonce.'|'.$email), now()->addMinutes(self::EXPIRES_IN_MINUTES));
+        Cache::put(self::cacheKey($user), self::digest($nonce, $user->email, $email), now()->addMinutes(self::EXPIRES_IN_MINUTES));
 
         $url = Hosts::url(Hosts::homeOf($user), URL::temporarySignedRoute(
             'email-change.confirm',
