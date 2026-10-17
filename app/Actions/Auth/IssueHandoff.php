@@ -15,10 +15,11 @@ use InvalidArgumentException;
 use LogicException;
 
 /**
- * Issues a single-use sign-in link for another host (§6.4): valid 60 seconds, bound to the user and the
- * target host, only for relative paths. Super admins may enter any host; members only their own
- * organisation's host (used after a slug rename). Session cookies stay host-only. Whether the user may
- * still sign in at all (active, not deleted) is decided when the link is used, by the host login rule.
+ * Issues a single-use sign-in link for another host (§6.4): valid 60 seconds, bound to the user, the target
+ * host and the user's current password (CD-3: a password change or reset ends it), only for relative paths.
+ * Super admins may enter any host; members only their own organisation's host (used after a slug rename).
+ * Session cookies stay host-only. Whether the user may still sign in at all (active, not deleted) is decided
+ * when the link is used, by the host login rule.
  *
  * A handoff is a sign-in that skips the second factor: callers pass only the authenticated actor, never
  * a user taken from input (FU3-1). Local-only exceptions: App\Setup\QuickLogin (a demo install, the demo password
@@ -58,6 +59,7 @@ final class IssueHandoff
             'token_hash' => hash('sha256', $token),
             'target_host' => $targetHost,
             'path' => $path,
+            'password_hash' => HandoffToken::passwordBindingFor($user),
             'expires_at' => now()->addSeconds(self::TTL_SECONDS),
         ]);
 
