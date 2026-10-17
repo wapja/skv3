@@ -202,3 +202,12 @@ it('shows on / that Herd did not answer while herd tld fails (§5.3.4, g3-28)', 
         ->assertSee(__('Herd did not answer. Reload the page in a moment.'))
         ->assertDontSee((string) new SetupToken($context->basePath)->value());
 });
+
+it('resolves the host once when / refuses it under Herd, so a hung herd tld stalls / for one timeout (G6-07)', function () use ($withHerd): void {
+    $context = useSetupWizard();
+    $withHerd($context);
+
+    $this->get('http://evil.test/')->assertRedirect('http://'.Str::lower($context->folderName()).'.test/');
+
+    Process::assertRanTimes(fn ($process): bool => array_slice((array) $process->command, -1) === ['tld'], 1);
+});

@@ -18,18 +18,19 @@ use Illuminate\Support\Facades\Route;
 // to the wizard, with the token, until a super admin exists (§5.3.4); on a host the wizard cannot pin, `/` names
 // the address to use instead, never with the token (RL-5).
 Route::get('/', function (): RedirectResponse|Response {
-    $setup = app(SetupMode::class);
+    // G6-07: one look at setup mode, the token, the super admin, the pin and the host.
+    $setup = app(SetupMode::class)->home(request());
 
     // §5.3.4: before setup, `/` leads to the wizard.
-    if (($wizard = $setup->homeRedirect(request())) !== null) {
-        return redirect($wizard);
+    if ($setup['redirect'] !== null) {
+        return redirect($setup['redirect']);
     }
 
     // g3-34: a token-less redirect to the address the wizard pins; g3-10, g3-28: no address would do, so say why.
-    if (($refused = $setup->homeHostProblem(request())) !== null) {
-        return $refused['suggestion'] !== null
-            ? redirect()->away(rtrim($refused['suggestion'], '/').'/')
-            : response()->view('setup.host-problem', ['problem' => $refused['problem']], 409);
+    if ($setup['problem'] !== null) {
+        return $setup['problem']['suggestion'] !== null
+            ? redirect()->away(rtrim($setup['problem']['suggestion'], '/').'/')
+            : response()->view('setup.host-problem', ['problem' => $setup['problem']['problem']], 409);
     }
 
     $user = auth()->user();

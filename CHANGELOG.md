@@ -161,6 +161,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The sign-in pages show the organisation's name under the mark on its own address, and the platform name on the central addresses; until now the name was there for screen readers only.
 - On a central address, the dashboard's recent activity also lists the entries of archived organisations, as the audit log does.
 - Without Flux Pro, a Pro branch that holds `@auth`, `@can`, `@isset`, `@error` or another block with its own `@else` no longer breaks the page; the Flux Pro check reads the views the same way, including tags over several lines, a bound or single-quoted `variant`, Blade comments and a `pro-only` marker that is not right before its `@if`.
+- Under Herd, `/` on a host the setup refuses asks `herd tld` once instead of twice, so a Herd that does not answer delays it by at most 5 seconds.
 
 ### Removed
 - Registration, email verification and self-service account deletion (invite-only kit).
