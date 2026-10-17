@@ -7562,7 +7562,7 @@ Expected:
 - `0` and `0`
 - no catch-all fake
 - an empty `grep -L`
-- the `composer.json` diff is exactly one added `"intervention/image": "^3…"` line in `require`
+- the `composer.json` diff is exactly one added `"intervention/image": "^4…"` line in `require`
 - no npm change
 
 - [ ] **Step 2: The real run (PostgreSQL + Herd Pro + HTTPS)**
