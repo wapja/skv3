@@ -29,6 +29,7 @@ enum ActivityEvent: string
     case RecoveryCodesRegenerated = 'security.recovery_codes_regenerated';
     case PasskeyRegistered = 'security.passkey_registered';
     case PasskeyDeleted = 'security.passkey_deleted';
+    case OtherSessionsEnded = 'security.other_sessions_ended';
     case UserUpdated = 'user.updated';
     case UserStatusChanged = 'user.status_changed';
     case UserDeleted = 'user.deleted';
@@ -68,6 +69,7 @@ enum ActivityEvent: string
             self::RecoveryCodesRegenerated => __('Recovery codes regenerated'),
             self::PasskeyRegistered => __('Passkey added'),
             self::PasskeyDeleted => __('Passkey removed'),
+            self::OtherSessionsEnded => __('Other devices signed out'),
             self::UserUpdated => __('User updated'),
             self::UserStatusChanged => __('User status changed'),
             self::UserDeleted => __('User deleted'),

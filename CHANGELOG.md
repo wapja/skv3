@@ -56,6 +56,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `DB_CONNECT_TIMEOUT` (5 seconds, at least 1, because 0 waits forever) limits how long a PostgreSQL connection may take, so a database that does not answer cannot stall `/health-check` or the System page.
 - The System page's *Refresh* and *Run checks* allow six runs a minute per user.
 - Per-user limits on sending email-change links (3 per 10 minutes), password changes and two-factor confirmations (5 per minute, every attempt), invitations and reminders (10 per minute), and on the two-factor and passkey management routes (10 per minute); an invitation is sent again at most once per 10 minutes.
+- Settings → Security lists your sessions: browser and platform, IP address, last activity and *This device*. *Log out other devices* asks for your password (at most 5 attempts a minute), signs out every other session and "remember me" login on its next request, and is recorded in the audit log (*Other devices signed out*). It is hidden during an impersonation.
 
 ### Changed
 - `composer setup` runs `skv:bootstrap` and `skv:install`; the temporary development login (`test@example.com`) is gone.

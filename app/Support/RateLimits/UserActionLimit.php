@@ -31,6 +31,12 @@ final readonly class UserActionLimit
         }
     }
 
+    /** Log out other devices on the security page: 5 attempts per minute, counted before the password is checked. */
+    public static function logoutOtherDevices(): self
+    {
+        return new self('logout-other-devices', 5, 60);
+    }
+
     /** Request an email change on the profile page: 3 sends per 10 minutes. */
     public static function emailChange(): self
     {

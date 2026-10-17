@@ -466,6 +466,30 @@ function startImpersonatingOverHttp(User $impersonator, User $target, string $re
 }
 
 /**
+ * Inserts a `sessions` row for $user, as the database session driver writes one for a device that signed in
+ * elsewhere (§6.6, CD-2), and returns its id. The payload is an empty session: the row is listed and ended, never
+ * read. By default the row is a Chrome on Windows at 203.0.113.7 that was active a minute ago.
+ *
+ * @param  array{ip_address?: string|null, user_agent?: string|null, last_activity?: int}  $attributes
+ */
+function sessionRowFor(User $user, array $attributes = []): string
+{
+    $id = Str::random(40);
+
+    DB::table('sessions')->insert([
+        'id' => $id,
+        'user_id' => $user->id,
+        'ip_address' => '203.0.113.7',
+        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'payload' => base64_encode(serialize([])),
+        'last_activity' => now()->subMinute()->getTimestamp(),
+        ...$attributes,
+    ]);
+
+    return $id;
+}
+
+/**
  * An active user for browser tests, password "password": a member of $organisation, or a super admin.
  * Signs nobody in: the browser signs in through the login page on the host it visits.
  */

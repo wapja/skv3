@@ -138,6 +138,11 @@
                 </div>
             </section>
         @endif
+
+        {{-- §6.6, CD-2: not during an impersonation, where the component answers 403. --}}
+        @unless (\App\Tenancy\Auth\Impersonation::isActive())
+            <livewire:pages::settings.sessions />
+        @endunless
     </x-pages::settings.layout>
 
     @if ($canManagePasskeys)
