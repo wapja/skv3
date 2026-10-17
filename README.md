@@ -72,7 +72,7 @@ After a local install with demo data, the login page lists the demo accounts und
 
 The state files are written atomically with mode 0600. The logs and exit codes of the long steps and the Herd step, which their shell writes, get mode 0600 too, but are not written atomically. A state file that is a symbolic link or cannot be read counts as damaged. Only the token file holds a secret in plain text; the others hold hashes. Never write them by hand.
 
-Setup also writes `.env` and `.env.testing` with mode 0600, whatever the mode of `.env.example` (`skv:bootstrap` and Composer's `.env` hook do the same for `.env`), and creates the `public/storage` link in its environment step.
+Setup also writes `.env.testing` with mode 0600 and creates a missing `.env` with mode 0600, whatever the mode of `.env.example` (`skv:bootstrap` and Composer's `.env` hook do the same for `.env`), and creates the `public/storage` link in its environment step. An `.env` that already exists keeps its mode, so run `chmod 600 .env` on one you copied by hand or kept from an older install.
 
 ## Commands
 
@@ -221,7 +221,7 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 - Never run `php artisan skv:install` there (it runs only in `local`, `testing` and `staging`); `php artisan skv:bootstrap` only prepares `.env`, `APP_KEY` and the generated secrets, also when only the server's environment sets `APP_ENV` (any name but `local`, `testing` and `staging`). Demo data never runs outside local and testing.
 - Set `APP_URL` to the public origin, `https://` behind a TLS-terminating proxy (see [Configuration](#configuration)).
 - Behind a load balancer, CDN or TLS-terminating proxy, set `TRUSTED_PROXIES` to its addresses (or `*`), so the limits and the logs see each visitor's IP and the pages' own links, forms and redirects keep the public scheme, host and port (see [Configuration](#configuration)).
-- Keep `.env` at mode 0600. If php-fpm runs as another account than the one that ran `skv:bootstrap`, `chown` the file to that account, or use 0640 with a shared group.
+- Keep `.env` at mode 0600: setup creates it so, but an `.env` that already existed keeps its mode (`chmod 600 .env`). If php-fpm runs as another account than the one that ran `skv:bootstrap`, `chown` the file to that account, or use 0640 with a shared group.
 - Run `php artisan permissions:sync` on every deploy.
 - Set a random `HEALTH_CHECK_KEY` of at least 32 characters (setup and the production `skv:bootstrap` generate a 40-character one; a shorter key counts as none), and point an uptime monitor at `/health-check` with the `X-Health-Check-Key` header; expect 200 (see [Health check](#health-check)). With backups on, run `php artisan backup:run --only-db` once after the first deploy: until the first backup exists, `last-backup` fails and the endpoint answers 503.
 - Set a non-empty `BACKUP_ARCHIVE_PASSWORD`: without one `backup:run` refuses to start, because the backups would be unencrypted (`php artisan skv:doctor --fix` writes one; then run `php artisan config:cache` again). Keep a copy off the server, and set `BACKUP_NOTIFY_EMAIL`.
@@ -229,6 +229,7 @@ Set `TENANCY_APEX_DOMAIN` to that apex (for example `myapp.localhost`) and `APP_
 - Keep `SESSION_DRIVER=database`.
 - Run a queue worker (`php artisan queue:work`), because invitation mails are queued. The queue can use Redis: `QUEUE_CONNECTION=redis` with the `REDIS_*` keys and phpredis or predis.
 - Add the cron line from [Scheduler](#scheduler): `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1`.
+- Run the scheduler, and so `backup:run`, as the web server's account, never from root's crontab: as root a backup accepts only a temporary directory inside `storage/`, but the web account that owns `storage/app` could still swap that directory for a symbolic link while root's backup works in it.
 
 ## AI
 

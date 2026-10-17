@@ -11,6 +11,11 @@ namespace App\Support;
  * literal, `email@if` is text, and the arguments are read up to their balanced closing parenthesis, outside quotes.
  * Blade comments, `@verbatim` and `@php` blocks are never compiled, so nothing inside them counts.
  * FluxProBranches (the stripper) and the Pro lint (tests/Support/FluxProLint.php) read templates only through this.
+ *
+ * Limit: only Blade's built-in conditionals are known. A condition a package registers with Blade::if (spatie's
+ * `@role`, `@haspermission`, `@hasanyrole`, …) opens a block Blade compiles but this grammar does not see, so its
+ * `@else` would be taken for the enclosing block's: never put such a condition with an `@else` inside a Pro branch
+ * (the Pro lint flags the leftover tag when one is stripped too early).
  */
 final class BladeDirectives
 {

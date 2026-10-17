@@ -24,8 +24,9 @@ use Throwable;
  *
  * A broken ops store (an unknown OPS_CACHE_STORE, redis down, a full disk) lets the request through, so it never
  * locks monitoring out; the controller then answers a key holder 503 with JSON, never a 500, and reports the error.
- * The throttle itself logs one warning line with the exception's class only (L7b-58): no trace and no message, which
- * could hold the cache key, so key-less requests cannot flood the log.
+ * The throttle itself logs one short warning line per request with the exception's class only (L7b-58): no trace
+ * and no message, which could hold the cache key. While the store stays broken every request writes that line, so
+ * key-less traffic still grows the log, one short line at a time.
  */
 final readonly class ThrottleHealthChecks
 {
