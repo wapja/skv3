@@ -98,7 +98,7 @@
 
                 <div class="flex flex-wrap gap-1">
                     @if ($this->target->isSuperAdmin())
-                        <flux:badge size="sm" color="violet">{{ \App\Authorization\Role::SuperAdmin->label() }}</flux:badge>
+                        <flux:badge size="sm" :color="\App\Authorization\Role::SuperAdmin->color()">{{ \App\Authorization\Role::SuperAdmin->label() }}</flux:badge>
                     @endif
                     @forelse (array_intersect_key($this->roleOptions, array_flip(array_map('intval', $roles))) as $label)
                         <flux:badge size="sm">{{ $label }}</flux:badge>

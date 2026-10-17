@@ -60,4 +60,13 @@ enum Role: string
             self::OrganisationAdmin => __('Organisation admin'),
         };
     }
+
+    /** The Flux badge colour of the role (§6.5): the super admin badge stands out, a team role stays neutral. */
+    public function color(): string
+    {
+        return match ($this) {
+            self::SuperAdmin => 'violet',
+            self::OrganisationAdmin => 'zinc',
+        };
+    }
 }

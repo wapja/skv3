@@ -107,7 +107,7 @@
                     <flux:table.cell>
                         <div class="flex flex-wrap gap-1">
                             @if ($user->isSuperAdmin())
-                                <flux:badge size="sm" color="violet">{{ \App\Authorization\Role::SuperAdmin->label() }}</flux:badge>
+                                <flux:badge size="sm" :color="\App\Authorization\Role::SuperAdmin->color()">{{ \App\Authorization\Role::SuperAdmin->label() }}</flux:badge>
                             @endif
                             @foreach ($this->rolesByUser[$user->id] ?? [] as $roleLabel)
                                 <flux:badge size="sm">{{ $roleLabel }}</flux:badge>
