@@ -108,7 +108,7 @@ it('reads back the snapshot it writes (CD-15)', function () use ($snapshot): voi
         ->and(Detection::fromArray($snapshot))->toEqual(Detection::none());
 });
 
-it('refuses a detection snapshot of the wrong shape (CD-15)', function (array $broken): void {
+it('refuses a detection snapshot of the wrong shape or with a value setup never writes (CD-15, L7b-30, L7b-35)', function (array $broken): void {
     expect(fn (): Detection => Detection::fromArray($broken))->toThrow(InvalidArgumentException::class);
 })->with([
     'a missing key' => [array_diff_key($snapshot, ['herd' => true])],
@@ -116,7 +116,25 @@ it('refuses a detection snapshot of the wrong shape (CD-15)', function (array $b
     'a string port' => [[...$snapshot, 'herd_smtp_port' => '2525']],
     'no host' => [[...$snapshot, 'host' => null]],
     'a string request port' => [[...$snapshot, 'port' => '8000']],
+    'no SMTP port key (L7b-30)' => [array_diff_key($snapshot, ['herd_smtp_port' => true])],
+    'no request port key (L7b-30)' => [array_diff_key($snapshot, ['port' => true])],
+    'a host with a path (L7b-35)' => [[...$snapshot, 'host' => 'evil.test/x']],
+    'a host with a port (L7b-35)' => [[...$snapshot, 'host' => 'localhost:8000']],
+    'an upper-case host (L7b-35)' => [[...$snapshot, 'host' => 'MyApp.test']],
+    'a javascript scheme (L7b-35)' => [[...$snapshot, 'scheme' => 'javascript']],
+    'request port 0 (L7b-35)' => [[...$snapshot, 'port' => 0]],
+    'request port 65536 (L7b-35)' => [[...$snapshot, 'port' => 65536]],
+    'SMTP port 0 (L7b-35)' => [[...$snapshot, 'herd_smtp_port' => 0]],
 ]);
+
+it('reads back a snapshot on https with the edge ports (L7b-35)', function () use ($snapshot): void {
+    $detection = Detection::fromArray([...$snapshot, 'herd_smtp_port' => 1, 'host' => 'admin.my-app.test', 'scheme' => 'https', 'port' => 65535]);
+
+    expect($detection->herdSmtpPort)->toBe(1)
+        ->and($detection->host)->toBe('admin.my-app.test')
+        ->and($detection->scheme)->toBe('https')
+        ->and($detection->port)->toBe(65535);
+});
 
 it('refuses a state file written before the detection snapshot, and starts over (CD-15)', function (): void {
     $context = setupSandbox();

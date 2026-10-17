@@ -30,7 +30,8 @@ final readonly class Detector
      *                                    that fails SetupHost::normalise() falls back to the CLI host (A4)
      * @param  string  $scheme  the scheme the site is served over now
      * @param  int|null  $requestPort  the port of the current request; kept without Herd unless it is the scheme's
-     *                                 default (CD-15, g1-17)
+     *                                 default or no port at all (CD-15, g1-17; L7b-35: Detection::fromArray()
+     *                                 refuses a port outside 1–65535, so a snapshot must never hold one)
      */
     public function detect(?string $requestHost = null, string $scheme = 'http', ?int $requestPort = null): Detection
     {
@@ -47,7 +48,7 @@ final readonly class Detector
             claude: $this->toolchain->which('claude') !== null,
             host: ($requestHost !== null ? SetupHost::normalise($requestHost) : null) ?? $this->cliHost(),
             scheme: $scheme,
-            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) ? $requestPort : null,
+            port: $herd === null && $requestPort !== ($scheme === 'https' ? 443 : 80) && $this->isPort($requestPort) ? $requestPort : null,
         );
     }
 
@@ -88,7 +89,8 @@ final readonly class Detector
     }
 
     /**
-     * Herd's mail service from herd.json: a truthy `mails` and an int `smtpPort`. The file is read, never printed.
+     * Herd's mail service from herd.json: a truthy `mails` and an `smtpPort` in 1–65535 (L7b-35). The file is read,
+     * never printed.
      *
      * @return array{0: bool, 1: int|null}
      */
@@ -97,11 +99,17 @@ final readonly class Detector
         $path = $this->toolchain->herdConfigPath();
         $config = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
 
-        if (! is_array($config) || ! is_int($config['smtpPort'] ?? null) || ! (bool) ($config['mails'] ?? false)) {
+        if (! is_array($config) || ! $this->isPort($config['smtpPort'] ?? null) || ! (bool) ($config['mails'] ?? false)) {
             return [false, null];
         }
 
         return [true, $config['smtpPort']];
+    }
+
+    /** @phpstan-assert-if-true int $value */
+    private function isPort(mixed $value): bool
+    {
+        return is_int($value) && $value >= 1 && $value <= 65535;
     }
 
     /** The folder plus `herd tld` under Herd, else the APP_URL host, else localhost (RL-4, A5). */

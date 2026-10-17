@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /** covers §5.3.2 */
 
+use App\Setup\Detection;
 use App\Setup\Detector;
 use App\Setup\Support\Toolchain;
 use Illuminate\Process\PendingProcess;
@@ -129,7 +130,7 @@ it('uses a valid request host and ignores an invalid one (A4)', function () use 
         ->and($detector(new Toolchain($this->home))->detect('evil.com@x')->host)->toBe('fallback.test');
 });
 
-it('keeps the request\'s port without Herd, never the scheme\'s default port (CD-15, g1-17)', function (string $scheme, ?int $requestPort, ?int $port): void {
+it('keeps the request\'s port without Herd, never the scheme\'s default port or a number that is no port (CD-15, g1-17, L7b-35)', function (string $scheme, ?int $requestPort, ?int $port): void {
     $detection = new Detector(new Toolchain($this->home), postgresProbe: fn (): bool => false)->detect('localhost', $scheme, $requestPort);
 
     expect($detection->port)->toBe($port);
@@ -138,7 +139,24 @@ it('keeps the request\'s port without Herd, never the scheme\'s default port (CD
     'http on 80' => ['http', 80, null],
     'https on 443' => ['https', 443, null],
     'no request' => ['http', null, null],
+    'port 0, from a forged Host header' => ['http', 0, null],
+    'port 65536' => ['http', 65536, null],
 ]);
+
+it('reads a herd.json SMTP port outside 1–65535 as no Herd mail, so the wizard\'s snapshot reads back (L7b-35)', function (int $smtpPort) use ($detector): void {
+    $herd = $this->home.'/Library/Application Support/Herd/bin/herd';
+    File::ensureDirectoryExists(dirname($herd));
+    File::put($herd, "#!/bin/sh\n");
+    chmod($herd, 0755);
+    File::put($this->home.'/Library/Application Support/Herd/config/herd.json', json_encode(['mails' => true, 'smtpPort' => $smtpPort], JSON_THROW_ON_ERROR));
+    Process::fake(["*'services:list' '--json'*" => Process::result('')]);
+
+    $detection = $detector(new Toolchain($this->home))->detect('localhost');
+
+    expect($detection->herdMail)->toBeFalse()
+        ->and($detection->herdSmtpPort)->toBeNull()
+        ->and(Detection::fromArray($detection->toArray()))->toEqual($detection);
+})->with(['0' => [0], '70000' => [70000]]);
 
 it('keeps no port under Herd, which serves every site on the default port (CD-15)', function (): void {
     $herd = $this->home.'/Library/Application Support/Herd/bin/herd';

@@ -48,29 +48,38 @@ final readonly class Detection
     }
 
     /**
-     * A snapshot toArray() wrote (CD-15): checked for shape, not detected again.
+     * A snapshot toArray() wrote (CD-15), checked for shape and values, not detected again (L7b-30, L7b-35): every key
+     * present, the host as SetupHost::normalise() leaves it, the scheme http or https, each port null or 1–65535. The
+     * host, scheme and port go into APP_URL and TENANCY_APEX_DOMAIN, so a file this kit did not write is refused (RL-5).
      *
      * @param  array<array-key, mixed>  $data
      *
-     * @throws InvalidArgumentException when a key is missing or has the wrong type
+     * @throws InvalidArgumentException when a key is missing or has the wrong type or value
      */
     public static function fromArray(array $data): self
     {
-        $bool = fn (string $key): bool => is_bool($data[$key] ?? null) ? $data[$key] : throw new InvalidArgumentException("Detection: {$key} must be a boolean.");
-        $string = fn (string $key): string => is_string($data[$key] ?? null) ? $data[$key] : throw new InvalidArgumentException("Detection: {$key} must be a string.");
-        $int = fn (string $key): ?int => ($data[$key] ?? null) === null || is_int($data[$key]) ? ($data[$key] ?? null) : throw new InvalidArgumentException("Detection: {$key} must be an integer or null.");
+        $host = self::text($data, 'host');
+        $scheme = self::text($data, 'scheme');
+
+        if (SetupHost::normalise($host) !== $host) {
+            throw new InvalidArgumentException('Detection: host must be a lower-case host name without a port.');
+        }
+
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            throw new InvalidArgumentException('Detection: scheme must be http or https.');
+        }
 
         return new self(
-            herd: $bool('herd'),
-            herdPro: $bool('herd_pro'),
-            herdMail: $bool('herd_mail'),
-            herdSmtpPort: $int('herd_smtp_port'),
-            postgres: $bool('postgres'),
-            fluxPro: $bool('flux_pro'),
-            claude: $bool('claude'),
-            host: $string('host'),
-            scheme: $string('scheme'),
-            port: $int('port'),
+            herd: self::boolean($data, 'herd'),
+            herdPro: self::boolean($data, 'herd_pro'),
+            herdMail: self::boolean($data, 'herd_mail'),
+            herdSmtpPort: self::port($data, 'herd_smtp_port'),
+            postgres: self::boolean($data, 'postgres'),
+            fluxPro: self::boolean($data, 'flux_pro'),
+            claude: self::boolean($data, 'claude'),
+            host: $host,
+            scheme: $scheme,
+            port: self::port($data, 'port'),
         );
     }
 
@@ -93,5 +102,41 @@ final readonly class Detection
             'scheme' => $this->scheme,
             'port' => $this->port,
         ];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $data
+     *
+     * @throws InvalidArgumentException when $key is missing
+     */
+    private static function field(array $data, string $key): mixed
+    {
+        return array_key_exists($key, $data) ? $data[$key] : throw new InvalidArgumentException("Detection: {$key} is missing.");
+    }
+
+    /** @param  array<array-key, mixed>  $data */
+    private static function boolean(array $data, string $key): bool
+    {
+        $value = self::field($data, $key);
+
+        return is_bool($value) ? $value : throw new InvalidArgumentException("Detection: {$key} must be a boolean.");
+    }
+
+    /** @param  array<array-key, mixed>  $data */
+    private static function text(array $data, string $key): string
+    {
+        $value = self::field($data, $key);
+
+        return is_string($value) ? $value : throw new InvalidArgumentException("Detection: {$key} must be a string.");
+    }
+
+    /** @param  array<array-key, mixed>  $data */
+    private static function port(array $data, string $key): ?int
+    {
+        $value = self::field($data, $key);
+
+        return $value === null || (is_int($value) && $value >= 1 && $value <= 65535)
+            ? $value
+            : throw new InvalidArgumentException("Detection: {$key} must be a port number or null.");
     }
 }
