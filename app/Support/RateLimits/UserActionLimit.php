@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Support\RateLimits;
 
 use App\Models\User;
+use Closure;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * A per-user limit on a Livewire action (§4.2, CD-3). Every Livewire action shares one update endpoint, so a
@@ -83,7 +85,8 @@ final readonly class UserActionLimit
 
     /**
      * Reserves $cost attempts before a completed-send action (email change, invite, remind), as attempt() does.
-     * The caller gives them back with release() when the action throws, so a refused address costs nothing.
+     * The caller gives them back with release() when the action throws, so a refused address costs nothing;
+     * around() does both.
      *
      * @throws ValidationException
      */
@@ -92,12 +95,42 @@ final readonly class UserActionLimit
         $this->attempt($user, $field, $cost);
     }
 
-    /** Gives back $cost reserved attempts of an action that did not go through. */
+    /**
+     * Gives back $cost reserved attempts of an action that did not go through. When the reservation's window has
+     * passed meanwhile, the decrement lands on a fresh counter below zero; that counter is cleared instead, so the
+     * next window never admits more than the limit.
+     */
     public function release(User $user, int $cost = 1): void
     {
         $this->assertCost($cost);
 
-        RateLimiter::decrement($this->key($user), $this->decaySeconds, $cost);
+        if (RateLimiter::decrement($this->key($user), $this->decaySeconds, $cost) < 0) {
+            RateLimiter::clear($this->key($user));
+        }
+    }
+
+    /**
+     * The one shape of reserve() and release() for a completed-send action: reserves $cost attempts, runs $action
+     * and gives them back when it throws, then rethrows, so a refused address or any other failure costs nothing.
+     *
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $action
+     * @return TResult
+     *
+     * @throws ValidationException
+     */
+    public function around(User $user, string $field, Closure $action, int $cost = 1): mixed
+    {
+        $this->reserve($user, $field, $cost);
+
+        try {
+            return $action();
+        } catch (Throwable $exception) {
+            $this->release($user, $cost);
+
+            throw $exception;
+        }
     }
 
     /**

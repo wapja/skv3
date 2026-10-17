@@ -80,16 +80,9 @@ new #[Title('Pending invitations')] class extends Component
         $invitation = $this->findInvitation($invitationId);
         $this->authorize('remind', $invitation);
 
-        $remindLimit = UserActionLimit::remind();
-        $remindLimit->reserve($this->currentUser(), 'invitation');
-
-        try {
+        UserActionLimit::remind()->around($this->currentUser(), 'invitation', function () use ($remindInvitation, $invitation): void {
             $remindInvitation->handle($this->currentUser(), $invitation);
-        } catch (Throwable $exception) {
-            $remindLimit->release($this->currentUser());
-
-            throw $exception;
-        }
+        });
 
         Flux::toast(variant: 'success', text: __('The invitation was sent again.'));
     }

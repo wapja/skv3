@@ -139,16 +139,9 @@ new #[Layout('layouts::auth')] #[Title('Accept invitation')] class extends Compo
             abort(403);
         }
 
-        $remindLimit = UserActionLimit::remind();
-        $remindLimit->reserve($actor, 'invitation');
-
-        try {
+        UserActionLimit::remind()->around($actor, 'invitation', function () use ($remindInvitation, $actor): void {
             $remindInvitation->handle($actor, $this->invitation());
-        } catch (Throwable $exception) {
-            $remindLimit->release($actor);
-
-            throw $exception;
-        }
+        });
 
         Flux::toast(variant: 'success', text: __('Invitation reminder sent.'));
     }

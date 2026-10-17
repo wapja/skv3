@@ -78,22 +78,13 @@ new #[Title('Invite user')] class extends Component
 
         // CD-3: a per-user limit on sent invitations, here and not in InviteUser, so a bulk caller counts its own way.
         // The slot is reserved before the send and given back when InviteUser refuses (DEC-27 (2)).
-        $inviteLimit = UserActionLimit::invite();
-        $inviteLimit->reserve($this->currentUser(), 'email');
-
-        try {
-            $inviteUser->handle(
-                $this->currentUser(),
-                $organisation,
-                $email,
-                array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles),
-                Locale::from($this->locale),
-            );
-        } catch (Throwable $exception) {
-            $inviteLimit->release($this->currentUser());
-
-            throw $exception;
-        }
+        UserActionLimit::invite()->around($this->currentUser(), 'email', fn (): Invitation => $inviteUser->handle(
+            $this->currentUser(),
+            $organisation,
+            $email,
+            array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles),
+            Locale::from($this->locale),
+        ));
 
         session()->flash('status', __('Invitation sent to :email.', ['email' => Str::lower($email)]));
         $this->redirectRoute($this->returnRoute(), navigate: true);

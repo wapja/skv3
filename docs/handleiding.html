@@ -1336,7 +1336,7 @@ Route::tenant(function (): void {
     <li>Componenten roepen acties aan; de domeinlogica staat in <code>App\Actions</code>.</li>
     <li>Een actie die alleen op een organisatiehost zin heeft, krijgt <code>#[RequiresTenant]</code>: centraal geeft hij 404, ook bij een vervalst Livewire-verzoek.</li>
     <li><code>password.confirm</code> op een route dekt geen Livewire-updates. Gevoelige acties beginnen daarom met de trait <code>App\Concerns\ConfirmsPasswords</code>.</li>
-    <li>Een Livewire-actie die mail verstuurt of een geheim controleert, begrenst zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie: <code>attempt()</code> vóór de controle van een geheim; <code>reserve()</code> vóór het versturen, met <code>release()</code> in een <code>catch (Throwable)</code> die de fout weer gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
+    <li>Een Livewire-actie die mail verstuurt of een geheim controleert, begrenst zichzelf met <code>App\Support\RateLimits\UserActionLimit</code> in het component, nooit in de actie: <code>attempt()</code> vóór de controle van een geheim; <code>around()</code> om het versturen heen: die reserveert de plek, voert de actie uit en geeft de plek terug als de actie een fout gooit. Nooit eerst controleren en pas na de actie tellen: parallelle verzoeken lopen daar langs. Code die de teller van een benoemde limiter leegmaakt, bouwt de sleutel met <code>ThrottleKey::of()</code>.</li>
   </ul>
 <pre><code>use App\Tenancy\Attributes\RequiresTenant;
 

@@ -43,7 +43,7 @@ new #[Title('Profile settings')] class extends Component
      * mailed link (E1). A new language reloads the page, so it renders in that language (§4.10); the result
      * is then flashed in that language for the reloaded page instead of a toast the reload would drop (G3-06).
      * Sending the confirmation link is limited per user (CD-3): the slot is reserved before anything is saved,
-     * so a refusal saves nothing, and given back when the request throws.
+     * so a refusal saves nothing, and given back when any part of the save throws (UserActionLimit::around()).
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
@@ -57,34 +57,30 @@ new #[Title('Profile settings')] class extends Component
         ]);
 
         $email = (string) $validated['email'];
-        $emailChangeLimit = UserActionLimit::emailChange();
-
-        if ($email !== $user->email) {
-            $emailChangeLimit->reserve($user, 'email');
-        }
-
-        $user->fill(['name' => $validated['name']])->save();
-
+        $changesEmail = $email !== $user->email;
         $locale = Locale::from((string) $validated['locale']);
         $localeChanged = $locale !== Impersonation::localeFor($user);
 
-        if ($localeChanged) {
-            $updateLocale->handle($user, $locale);
-        }
+        $save = function () use ($user, $validated, $email, $changesEmail, $locale, $localeChanged, $updateLocale, $requestEmailChange): void {
+            $user->fill(['name' => $validated['name']])->save();
 
-        if ($email !== $user->email) {
-            try {
-                $requestEmailChange->handle($user, $email);
-            } catch (Throwable $exception) {
-                $emailChangeLimit->release($user);
-
-                throw $exception;
+            if ($localeChanged) {
+                $updateLocale->handle($user, $locale);
             }
 
-            $this->email = $user->email;
+            if ($changesEmail) {
+                $requestEmailChange->handle($user, $email);
+            }
+        };
 
+        if ($changesEmail) {
+            UserActionLimit::emailChange()->around($user, 'email', $save);
+
+            $this->email = $user->email;
             $status = __('We sent a confirmation link to :email.', ['email' => $email], $locale->value);
         } else {
+            $save();
+
             $status = __('Profile updated.', [], $locale->value);
         }
 

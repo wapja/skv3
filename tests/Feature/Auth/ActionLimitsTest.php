@@ -65,6 +65,26 @@ it('sends at most three email-change links per ten minutes and saves nothing whe
         ->and($member->fresh()?->name)->toBe('Eve');
 });
 
+it('gives the email-change slot back when saving the name throws (CD-3)', function (): void {
+    // The slot was reserved before the name save and the language, but only the send gave it back on a throw.
+    Notification::fake();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create(['name' => 'Ada', 'email' => 'old@example.com']);
+    onTenant($organisation);
+    $this->actingAs($member);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+    User::saving(function (User $user): void {
+        if ($user->name === 'Boom') {
+            throw new RuntimeException('The name save failed.');
+        }
+    });
+
+    callPageAction($snapshot, 'updateProfileInformation', updates: ['name' => 'Boom', 'email' => 'new@example.com'])->assertServerError();
+
+    expect(RateLimiter::attempts(UserActionLimit::emailChange()->key($member)))->toBe(0);
+    Notification::assertNothingSent();
+});
+
 it('counts every password change attempt before it checks the current password (CD-3, G1-01)', function () use ($errorsOf, $throttled): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();

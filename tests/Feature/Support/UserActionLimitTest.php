@@ -81,6 +81,37 @@ it('reserves without a hit in between, refuses past the limit and takes a releas
         ->and(fn () => $limit->reserve($user, 'email'))->toThrow(ValidationException::class);
 });
 
+it('gives nothing back into the next window when the reservation\'s window has passed (CD-3)', function (): void {
+    // The window ended between reserve() and a throwing action: a blind decrement re-created the key at -cost, so the
+    // next window admitted the limit plus the cost.
+    $user = User::factory()->create();
+    $limit = new UserActionLimit('test-send', 3, 60);
+
+    $limit->reserve($user, 'email', cost: 2);
+    $this->travel(61)->seconds();
+    $limit->release($user, cost: 2);
+
+    foreach (range(1, 3) as $reservation) {
+        $limit->reserve($user, 'email');
+    }
+
+    expect(fn () => $limit->reserve($user, 'email'))->toThrow(ValidationException::class);
+});
+
+it('reserves around an action, returns its result and gives the slot back when it throws (CD-3)', function (): void {
+    $user = User::factory()->create();
+    $limit = new UserActionLimit('test-send', 2, 60);
+
+    expect($limit->around($user, 'email', fn (): string => 'sent'))->toBe('sent')
+        ->and(fn () => $limit->around($user, 'email', fn () => throw new RuntimeException('refused')))->toThrow(RuntimeException::class, 'refused')
+        ->and(RateLimiter::attempts($limit->key($user)))->toBe(1);
+
+    $limit->around($user, 'email', fn (): null => null);
+
+    expect(fn () => $limit->around($user, 'email', fn (): string => 'never'))->toThrow(ValidationException::class)
+        ->and(RateLimiter::attempts($limit->key($user)))->toBe(3);
+});
+
 it('weighs a batch by its cost and refuses a batch that would pass the limit (M7d)', function (): void {
     $user = User::factory()->create();
     $limit = new UserActionLimit('test-batch', 10, 3600);
