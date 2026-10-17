@@ -35,7 +35,7 @@ Decisions live in `docs/decisions.md`: DEC-27 (auth), DEC-28 (administration), D
 - **Versions:**
   - PHP floor `^8.4`; `laravel/framework ^13.35`; Pest `^5.3`.
   - Larastan level **8**, **no baseline**, no new `ignoreErrors` entries. This includes the multi-file component `.php` files under `resources/views/**`.
-- **PHP files:** every one starts with `declare(strict_types=1);`. Pint uses the `laravel` preset plus `declare_strict_types`, `strict_comparison` and `ordered_class_elements`. Run `composer fix` after editing PHP.
+- **PHP files:** every one starts with `declare(strict_types=1);`. A whole-file code block in this plan starts with `<?php` on its first line; nothing, not even a blank line, may come before it (plan review K3/K10). Pint uses the `laravel` preset plus `declare_strict_types`, `strict_comparison` and `ordered_class_elements`. Run `composer fix` after editing PHP.
 - **Dependencies:**
   - M7d adds exactly one: `intervention/image ^4` (spec §3, GD driver, `ext-gd` is already required by §5.4 and the `gd` doctor check), used through Laravel 13's first-party `Illuminate\Image` API, which requires `^4`. Only Task 6 runs `composer require intervention/image:^4`. No npm dependency, no other `ext-*` requirement.
   - `livewire/flux-pro` and `composer.fluxui.dev` never appear in the committed `composer.json` or `composer.lock`.
@@ -199,6 +199,7 @@ Not in scope:
   - The guideline's and the handleiding's "without a limit" sentences are removed (Task 8).
 - **CD-9, new audit events:** `security.other_sessions_ended` (Task 1, group `security`) and `audit.exported` (Task 4, new group `audit`). The second-factor flag rides on `organisation.updated` (Task 2). Avatar changes ride on `user.updated` with `changes.avatar` = `["set" | "removed"]`, never the path (Task 6). Bulk sends record one `invitation.sent` per row through `InviteUser`.
 - **CD-10, the Pro variants:** both uploads have a free `flux:input type="file"` and a Pro `flux:file-upload`; the bulk page's roles reuse `users.invite`'s free/Pro pair. Pro branches are covered by `FluxProLayerTest` (static) and a line in the existing `ProVariantsTest` (which runs only with Pro installed and skips otherwise); the free branches by a line in `FreeVariantsTest`. Rendering with `Skv::useFluxPro(true)` does not work without the package, because `AppServiceProvider::configureFluxProBranches()` strips Pro branches at compile time based on `InstalledVersions`. No test installs Pro.
+- **Plan review (2026-10-17, wf_85e29ad9-310):** five dimensions with a skeptic each; 18 findings, 15 confirmed (two pairs were duplicates: K3/K10 and K6/K14; K5/K8 were merged into one memory guard), all folded in: K0 (Task 2, a stale page no longer reverts the rule), K1 (Task 3's `routes/web.php` step), K2 (Task 5's header detection), K3/K10 (no blank line before `<?php`), K4 (Task 5 gives back a reservation a parallel send outran), K5/K8 (Task 6's `ensureMemoryFor()`), K6/K14 (Task 9's purge check), K7 (Task 3, `EnsureSecondFactor` also Livewire persistent middleware), K9 (Task 4, year 0 ignored), K11-K13 (Task 8's checks and guideline). Refuted: the bulk "Check" as an address oracle (FM-18, accepted for v1 with its probe limit in M8, covers it; the bulk preview checks up to 100 addresses a request, so DEC-35 records that M8's probe limit must cover "Check" too), the MAIL_MAILER edit naming no file, and the `boost:update` command.
 
 ## Requirement traceability
 
@@ -1186,7 +1187,7 @@ This task also creates `App\Tenancy\Auth\SecondFactor` with `satisfiedBy()`, bec
 - Test:
   - `tests/Feature/Auth/SecondFactorTest.php` (new: `satisfiedBy()`)
   - `tests/Feature/Organisations/UpdateOrganisationTest.php` (every existing call passes `false`; the audit and the own-second-factor rule)
-  - `tests/Feature/Organisations/OrganisationEditTest.php` (the RL-17 test rewritten into four tests of the setting, over HTTP where the password confirmation matters)
+  - `tests/Feature/Organisations/OrganisationEditTest.php` (the RL-17 test rewritten into five tests of the setting, over HTTP where the password confirmation matters)
   - `tests/Feature/Authorization/LockOrderTest.php` (its one `UpdateOrganisation` call passes `false`)
 
 **Interfaces:**
@@ -1333,7 +1334,7 @@ it('asks for an own second factor only when an organisation admin turns the rule
 
 `tests/Feature/Organisations/OrganisationEditTest.php`:
 - The docblock becomes `/** covers §4.3, §6.2, §6.4, §6.6 */`.
-- Replace the whole test `it('has no second-factor setting yet (RL-17)', …);` (:112-127 on `main`) with these four tests. They rewrite it, never delete it: the first one keeps its RL-17 tag and now pins the setting the RL-17 test said did not exist yet.
+- Replace the whole test `it('has no second-factor setting yet (RL-17)', …);` (:112-127 on `main`) with these five tests. They rewrite it, never delete it: the first one keeps its RL-17 tag and now pins the setting the RL-17 test said did not exist yet.
 
 ```php
 it('offers the second-factor rule to organisation admins and super admins, set as stored (§6.6, RL-17, CD-3)', function (string $actor): void {
@@ -1402,6 +1403,20 @@ it('tells an organisation admin without a second factor to set one up before ask
 
     expect($acme->fresh()?->require_second_factor)->toBeFalse();
 });
+
+it('keeps a rule another admin changed meanwhile when a page loaded before only renames (CD-3, plan review K0)', function (bool $shown): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => $shown]);
+    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('organisations.edit', $acme->id), 'pages::organisations.edit');
+
+    $acme->forceFill(['require_second_factor' => ! $shown])->save();
+
+    callPageAction($snapshot, 'save', updates: ['name' => 'Acme Renamed'])->assertOk();
+
+    expect($acme->fresh()?->require_second_factor)->toBe(! $shown)
+        ->and($acme->fresh()?->name)->toBe('Acme Renamed');
+})->with(['shown off, turned on meanwhile' => false, 'shown on, turned off meanwhile' => true]);
 ```
 
 The password-confirmation test runs over HTTP (`pageSnapshot()` + `callPageAction()`), as `UsersEditTest`'s RL-18 tests do. The last test may use `Livewire::test()`: it proves the error comes before the confirmation (no session confirmation is set, so a confirmation first would redirect), not a middleware rule. The existing 'edits the own organisation as its admin' keeps proving that a save without a flag change asks for no confirmation (`assertNoRedirect()` without a confirmed password).
@@ -1546,19 +1561,27 @@ After `public ?string $description = null;` add:
 ```php
 
     public bool $requireSecondFactor = false;
+
+    /** What the switch showed when the page was rendered: a save that did not touch it keeps what is stored now (plan review K0). */
+    #[Locked]
+    public bool $shownRequireSecondFactor = false;
 ```
 
 In `mount()`, after `$this->description = $model->description;` add:
 
 ```php
         $this->requireSecondFactor = $model->require_second_factor;
+        $this->shownRequireSecondFactor = $model->require_second_factor;
 ```
 
 In `save()`, between `$this->authorize('update', $organisation);` and `$previousSlug = $organisation->slug;`, insert:
 
 ```php
 
-        if ($this->requireSecondFactor !== $organisation->require_second_factor) {
+        if ($this->requireSecondFactor === $this->shownRequireSecondFactor) {
+            // The switch was not touched: keep what is stored now, which another admin may have changed meanwhile.
+            $this->requireSecondFactor = $organisation->require_second_factor;
+        } elseif ($this->requireSecondFactor !== $organisation->require_second_factor) {
             // Before the password: a confirmation the action would then refuse is a wasted round trip.
             if ($this->requireSecondFactor && ! $actor->isSuperAdmin() && ! SecondFactor::satisfiedBy($actor)) {
                 throw ValidationException::withMessages(['requireSecondFactor' => __('Set up a second factor for your own account first.')]);
@@ -1580,7 +1603,10 @@ And at the end of `save()`, after `$this->slug = $updated->slug;`:
 
 ```php
         $this->requireSecondFactor = $updated->require_second_factor;
+        $this->shownRequireSecondFactor = $updated->require_second_factor;
 ```
+
+If `Livewire\Attributes\Locked` is not imported yet in `edit.php`, add `use Livewire\Attributes\Locked;` (the page already locks `$organisationId`, so it normally is).
 
 `$organisation` is the page's per-request read (`organisation()`), so the comparison uses the stored value, never a client-sent one; the action compares again with the locked row.
 
@@ -1643,6 +1669,7 @@ Revert each change locally, run the named test, expect it to fail, then restore 
 10. In `edit.blade.php`, negate `Skv::passkeysEnabled()`. Expect both rows of 'names a passkey in the rule's description…' to fail.
 11. In `SecondFactor::satisfiedBy()`, drop `Skv::passkeysEnabled() &&`. Expect the row 'a passkey, passkeys off' to fail.
 12. In `SecondFactor::satisfiedBy()`, replace `$user->hasEnabledTwoFactorAuthentication()` with `$user->two_factor_secret !== null`. Expect the row 'an unconfirmed TOTP secret' to fail.
+13. In `edit.php`, drop the first branch (`if ($this->requireSecondFactor === $this->shownRequireSecondFactor) { … } else`), leaving the `if` on the stored value. Expect both rows of 'keeps a rule another admin changed meanwhile…' to fail.
 
 - [ ] **Step 9: CHANGELOG**
 
@@ -1693,6 +1720,7 @@ The rule Task 2 stores is enforced here. `App\Http\Middleware\EnsureSecondFactor
   - `.env.example` (`REQUIRE_SECOND_FACTOR_SUPER_ADMINS=false`)
   - `phpunit.xml` (the same key, forced `false`, so the owner's `.env` cannot switch it on for the suite)
   - `routes/web.php`, `routes/settings.php`, `routes/admin.php` (the `auth` groups become `['auth', EnsureSecondFactor::class]`)
+  - `app/Providers/TenancyServiceProvider.php` (`EnsureSecondFactor` becomes Livewire persistent middleware, next to the host rules; plan review K7)
   - `resources/views/pages/settings/security/security.php` (a `#[Computed] secondFactorNotice()`)
   - `resources/views/pages/settings/security/security.blade.php` (Task 1's version: the callout at the top of the settings layout; Task 1's `<livewire:pages::settings.sessions />` line below the passkeys section is not touched)
   - `lang/nl.json`, `lang/en.json` (four keys)
@@ -1720,7 +1748,7 @@ Background for the implementer:
 - **Which routes get it.** Appending the middleware to the three `auth` groups puts it on exactly these routes (`php artisan route:list` after this task): `dashboard`; the unnamed `settings` redirect (any method), `profile.edit`, `appearance.edit`, `security.edit`, `email-change.confirm`; `users.index`, `users.edit`, `users.invite`, `invitations.pending`, `organisations.index`, `organisations.create`, `system.index`, `organisations.edit`, `roles.index`, `activity.index`. Of the exempt names only `security.edit` is among them; the others (`password.confirm*`, `two-factor.*`, `passkey.*`, `well-known.passkeys`, `logout`, `auth.handoff*`, `impersonation.stop`, `setup.*`) live in Fortify's, the passkeys, the impersonation and the setup route files, outside these groups, so they are never blocked; the exemption keeps them open if someone moves them into a group or appends the middleware wider. Tasks 4 and 5 add `activity.export` and `invitations.bulk` inside `routes/admin.php`'s group, so they get the middleware without any change, and the coverage test below keeps holding for them.
 - **Order.** The group's middleware runs before the route's own `password.confirm` and `can:` (`Authorize` is in the priority list after it, and `RequirePassword` comes from the route), so a user without a factor is redirected before a permission check answers 403. `VerifyTenantMembership`, `EnforceImpersonation` and `AuthenticateSession` run earlier, in the `web` group.
 - **No loop.** `security.edit` is exempt; its own `password.confirm` sends the user to `password.confirm` (not in any group) and back to `security.edit`. The flash from the first redirect does not survive that extra request, which is why the security page shows the same text as a callout, read on every render.
-- **Livewire.** The factor is set up through Livewire updates on the security page (the 2FA setup modal) and through the `passkey.*` JSON routes. Livewire's update, upload and preview routes are outside the groups, and `EnsureSecondFactor` is not Livewire persistent middleware, so updates never run it. The middleware still lets those routes through by **route name** (`*livewire.update`, `livewire.upload-file`, `livewire.preview-file`). It never uses `Livewire::isLivewireRequest()`: that is `request()->hasHeader('X-Livewire')` (`vendor/livewire/livewire/src/Mechanisms/HandleRequests/HandleRequests.php:119-122`), so any client could skip the rule by sending the header with `GET /dashboard`. A test pins that.
+- **Livewire.** The factor is set up through Livewire updates on the security page (the 2FA setup modal) and through the `passkey.*` JSON routes. Livewire's update, upload and preview routes are outside the groups, so the outer update request never meets the group middleware. `EnsureSecondFactor` is also registered as Livewire persistent middleware (as `EnsureTenantHost`/`EnsureCentralHost` are in `TenancyServiceProvider`): Livewire replays it against the page the component's snapshot came from (`vendor/livewire/livewire/src/Mechanisms/PersistentMiddleware/PersistentMiddleware.php:100-193`), so an update passes only for a component of an exempt page (the security page) or during an impersonation. Without that, a tab loaded before the rule applied could keep calling `users.edit` or `users.index` actions (an impersonation start included) indefinitely, because snapshots do not expire (plan review K7). A redirect from replayed middleware becomes `abort($response)` (`Drawer/Utils.php:183-194`). The middleware still lets Livewire's own routes through by **route name** (`*livewire.update`, `livewire.upload-file`, `livewire.preview-file`). It never uses `Livewire::isLivewireRequest()`: that is `request()->hasHeader('X-Livewire')` (`vendor/livewire/livewire/src/Mechanisms/HandleRequests/HandleRequests.php:119-122`), so any client could skip the rule by sending the header with `GET /dashboard`. A test pins that.
 - **Impersonation.** During an impersonation the impersonator acts and cannot set up the target's factor, so the session passes (§6.6). `Impersonation::isActive()` reads the session.
 - **Super admins.** `requiredFor()` checks `isSuperAdmin()` first: a super admin promoted from an organisation keeps its `organisation_id` (`SetSuperAdmin`), and that organisation's rule no longer applies to them. CD-4's copy ("Your organisation requires…") does not fit a super admin, who has no organisation, so `explanation()` has a super-admin sentence too.
 - **Removing the last factor** stays allowed (CD-4): the security page's `disable()` and passkey removal are unchanged; the next page request sends the user back.
@@ -1906,6 +1934,21 @@ it('does not take a page request\'s X-Livewire header as a Livewire request (CD-
     $memberUnderTheRule();
 
     $this->get(route('dashboard'), ['X-Livewire' => '1'])->assertRedirect(route('security.edit'));
+});
+
+it('refuses a Livewire update from a page the rule now blocks (CD-4, plan review K7)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    asOrgAdmin($acme);
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $member = User::factory()->for($acme)->create(['name' => 'Before']);
+    $snapshot = pageSnapshot(route('users.edit', ['user' => $member->id]), 'pages::users.edit');
+
+    $acme->forceFill(['require_second_factor' => true])->save();
+
+    // The replayed persistent middleware answers with abort(redirect): check the exact status Livewire returns and
+    // assert it (a redirect to security.edit); the point is that the action did not run.
+    callPageAction($snapshot, 'saveAccount', updates: ['name' => 'After'])->assertRedirect(route('security.edit'));
+    expect($member->fresh()?->name)->toBe('Before');
 });
 
 it('lets the configured exempt routes through, and only those (CD-4)', function () use ($memberUnderTheRule): void {
@@ -2123,7 +2166,8 @@ use Symfony\Component\HttpFoundation\Response;
  * confirm a password, sign out, finish a handoff, end an impersonation or run the setup wizard.
  *
  * Livewire requests are recognised by their route, never by the X-Livewire header, which any client can send with
- * an ordinary page request. This middleware is not Livewire persistent middleware, so updates never run it.
+ * an ordinary page request. Livewire's own routes pass by name; the middleware is also Livewire persistent middleware
+ * (TenancyServiceProvider), so an update passes only for a component of an exempt page.
  */
 final class EnsureSecondFactor
 {
@@ -2211,7 +2255,7 @@ REQUIRE_SECOND_FACTOR_SUPER_ADMINS=false
 
 - [ ] **Step 6: The route groups**
 
-`routes/web.php`: add `use App\Http\Middleware\EnsureSecondFactor;` after `use App\Http\Controllers\LocaleController;`, and replace the dashboard group's first line:
+`routes/web.php`: add `use App\Http\Middleware\EnsureSecondFactor;` after `use App\Http\Controllers\LocaleController;`, and replace the whole dashboard group (the three lines from `Route::middleware(['auth'])->group(function (): void {` to its `});`) with:
 
 ```php
 // §6.6: every authenticated group also runs EnsureSecondFactor (CD-4); the global web group does not.
@@ -2234,7 +2278,17 @@ Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void 
 Route::middleware(['auth', EnsureSecondFactor::class])->group(function (): void {
 ```
 
-`bootstrap/app.php` is not touched: the middleware is not in the `web` group and not Livewire persistent middleware.
+`bootstrap/app.php` is not touched: the middleware is not in the `web` group.
+
+`app/Providers/TenancyServiceProvider.php`: add `use App\Http\Middleware\EnsureSecondFactor;` to the imports (sorted), and directly after the line `Livewire::addPersistentMiddleware([EnsureTenantHost::class, EnsureCentralHost::class]);` add:
+
+```php
+
+        // §6.6, CD-4: an update is replayed against its page's rule, so a tab loaded before the rule applied stops working.
+        Livewire::addPersistentMiddleware([EnsureSecondFactor::class]);
+```
+
+Check after this step that the security page's own updates (the 2FA setup modal, the sessions component, the recovery codes) still pass for a user under the rule: they do, because the replayed request carries the `security.edit` route name, which is exempt. The test 'confirms the password on the way without a loop…' and the TOTP test cover that.
 
 - [ ] **Step 7: The security page's callout**
 
@@ -2317,13 +2371,14 @@ Revert each change locally, run `tests/Feature/Auth/EnsureSecondFactorTest.php` 
 11. In `routes/admin.php`, drop `EnsureSecondFactor::class` from the group. Expect seven rows of 'keeps sending…', the three 'required' super-admin rows and 'runs on every authenticated route that is not exempt…' to fail.
 12. In `security.blade.php`, replace the callout's condition with `false`. Expect 'confirms the password on the way without a loop…' to fail on `data-test="second-factor-required"`.
 13. In `EnsureSecondFactor::handle()`, drop `->with('status', …)`. Expect the dashboard test, the module-off test and the three 'required' rows to fail on `assertSessionHas('status', …)`.
+14. In `TenancyServiceProvider`, drop the `Livewire::addPersistentMiddleware([EnsureSecondFactor::class]);` line. Expect 'refuses a Livewire update from a page the rule now blocks' to fail (the action runs and the name becomes "After").
 
 - [ ] **Step 11: CHANGELOG**
 
 Under `## [Unreleased]`, `### Added`, append:
 
 ```markdown
-- Members of an organisation that requires a second factor are sent to Settings → Security, with an explanation, until they set up two-factor authentication or a passkey (with passkeys off, two-factor authentication only). `REQUIRE_SECOND_FACTOR_SUPER_ADMINS=true` applies the same rule to super admins on every host. Impersonation sessions, Livewire requests and the routes that set up a factor, confirm the password, sign out or hand off are let through.
+- Members of an organisation that requires a second factor are sent to Settings → Security, with an explanation, until they set up two-factor authentication or a passkey (with passkeys off, two-factor authentication only). `REQUIRE_SECOND_FACTOR_SUPER_ADMINS=true` applies the same rule to super admins on every host. Impersonation sessions and the routes that set up a factor, confirm the password, sign out or hand off are let through; Livewire updates pass only for components of those pages.
 ```
 
 - [ ] **Step 12: The gate, then commit**
@@ -2343,7 +2398,7 @@ The `match` arms in the new test file end with `default =>` (Larastan `match.unh
 
 ```bash
 git add app/Http/Middleware/EnsureSecondFactor.php app/Tenancy/Auth/SecondFactor.php config/skv.php .env.example phpunit.xml \
-    routes/web.php routes/settings.php routes/admin.php \
+    routes/web.php routes/settings.php routes/admin.php app/Providers/TenancyServiceProvider.php \
     resources/views/pages/settings/security/security.php resources/views/pages/settings/security/security.blade.php \
     lang/nl.json lang/en.json CHANGELOG.md \
     tests/Feature/Auth/EnsureSecondFactorTest.php tests/Feature/Auth/SecondFactorTest.php
@@ -2437,7 +2492,6 @@ How the export works:
 `tests/Feature/Audit/ActivityExportTest.php` (new):
 
 ```php
-
 <?php
 
 declare(strict_types=1);
@@ -2644,6 +2698,11 @@ it('answers 200 with every entry for a hostile query string', function (string $
         ->assertOk();
 
     expect($byMarker($csv($response)))->toHaveKey('some-entry');
+
+    // Year 0 round-trips through createFromFormat(), but PostgreSQL refuses it mid-stream (plan review K9).
+    $yearZero = $this->get(route('activity.export', ['from' => '0000-01-01', 'until' => '0000-01-01']))->assertOk();
+
+    expect($byMarker($csv($yearZero)))->toHaveKey('some-entry');
 })->with(['tenant', 'admin']);
 
 it('exports only the organisation\'s own entries on a tenant host, whatever the query says (AUD-3, RK-I4, RK-M4)', function () use ($record, $csv, $byMarker): void {
@@ -2779,7 +2838,7 @@ it('records the export with the filters it applied, before the first byte', func
     $admin = asOrgAdmin($organisation);
 
     // The body is never read: the entry exists as soon as the response does.
-    $this->get(route('activity.export', ['event' => 'organisation.updated', 'from' => '2026-10-01', 'until' => 'not-a-date', 'organisation' => '99']))
+    $this->get(route('activity.export', ['event' => 'organisation.updated', 'from' => '2026-10-01', 'until' => '0000-01-01', 'organisation' => '99']))
         ->assertOk();
 
     $entry = recordedActivity(ActivityEvent::ActivityExported)->sole();
@@ -2923,7 +2982,6 @@ Two details keep it exact:
 `app/Support/Audit/ActivityFilters.php` (new):
 
 ```php
-
 <?php
 
 declare(strict_types=1);
@@ -3139,13 +3197,14 @@ final readonly class ActivityFilters
     }
 
     /**
-     * A Y-m-d filter value as the start of that day in the app timezone; anything else is ignored.
+     * A Y-m-d filter value as the start of that day in the app timezone; anything else, and a year before 1 (which
+     * PostgreSQL refuses: "date/time field value out of range"), is ignored (plan review K9).
      */
     private function day(string $value): ?DateTimeImmutable
     {
         $day = DateTimeImmutable::createFromFormat('!Y-m-d', $value, new DateTimeZone((string) config('app.timezone')));
 
-        return $day !== false && $day->format('Y-m-d') === $value ? $day : null;
+        return $day !== false && $day->format('Y-m-d') === $value && (int) $day->format('Y') >= 1 ? $day : null;
     }
 }
 ```
@@ -3153,7 +3212,6 @@ final readonly class ActivityFilters
 `app/Support/Audit/ActivityRows.php` (new):
 
 ```php
-
 <?php
 
 declare(strict_types=1);
@@ -3442,7 +3500,6 @@ final class ActivityRows
 `resources/views/pages/activity/index/index.php`: replace the whole file with:
 
 ```php
-
 <?php
 
 declare(strict_types=1);
@@ -3786,7 +3843,6 @@ Middleware priority runs `ThrottleRequests` before `Authorize`, so a refused 403
 `app/Http/Controllers/ActivityExportController.php` (new):
 
 ```php
-
 <?php
 
 declare(strict_types=1);
@@ -3998,6 +4054,7 @@ Revert each change locally (copy the file aside with `cp`, never `git stash`), r
 13. **`ActivityEvent::tagsByHost()`:** drop `'audit'`. Expect `ActivityLogTest`'s 'gives every activity event a Dutch label and a group' to fail for `ActivityExported`.
 14. **`ActivityFilters::query()`:** `$until` instead of `$until->add(new DateInterval('P1D'))`. Expect the export's 'until, inclusive of the whole day' row and the viewer's 'filters by date range …' to fail.
 15. **The controller:** replace `HostScope::read(function () … { … });` in the stream with a plain immediately-invoked closure. Expect 'exports every entry … to a super admin on a central host …' to error with "No tenant is bound while querying [App\Models\Activity]": strict mode throws without the bypass.
+16. **`ActivityFilters::day()`:** drop `&& (int) $day->format('Y') >= 1`. Expect 'records the export with the filters it applied…' to fail (`until` appears in `filters`) on SQLite, and 'answers 200 with every entry for a hostile query string' to fail on PostgreSQL (plan review K9).
 
 - [ ] **Step 10: The gate, then commit**
 
@@ -4077,7 +4134,7 @@ Two small pieces are shared with `users.invite` instead of copied:
 Background for the implementer:
 - **Why the preview is locked and reviewed twice.** `check()` stores what the server parsed and decided; the client can neither add a row nor flip a reason (a forged update throws `CannotUpdateLockedPropertyException`). Any change to the addresses, the file, the language, the roles or the organisation drops the preview (`updated()`), so "Send" never sends a list other than the one on screen. `send()` reviews the locked rows again against the organisation it resolves now, because an address may have been taken since.
 - **The generic message (§4.5).** `AvailableEmail` names in-organisation conflicts ("already used in this organisation", "already has an open invitation") and gives everything else "This address can't be used." On a list, a page that differs per row would still enumerate, so every failure of `InviteUser::addressRules()` is "This address can't be invited." in the preview, and an `email` error from `InviteUser` at send time (a unique violation from a concurrent sign-up) is shown the same way. Other refusals from the action (an organisation archived meanwhile, a role gone) keep the action's own message.
-- **The limit.** `ensureAvailable()` first, so a list larger than what is left of the hour is refused without counting (a smaller list still fits); then `reserve()` counts all ready rows atomically, so a parallel send cannot overrun the limit; the `finally` gives back the rows that were not sent (refused by the action, or not reached because something else threw). The refusal is "Too many attempts. Try again in :seconds seconds." on `addresses`, and nothing is sent. The cost of a batch is at most 100 (`MAX_ROWS`), which `assertCost()` accepts.
+- **The limit.** `ensureAvailable()` first, so a list larger than what is left of the hour is refused without counting (a smaller list still fits); then `reserve()` counts all ready rows atomically, so a parallel send cannot overrun the limit, and a reservation that a parallel send outran is given back at once (a send limit, unlike a secret check, does not keep counting a refused attempt; plan review K4); the `finally` gives back the rows that were not sent (refused by the action, or not reached because something else threw). The refusal is "Too many attempts. Try again in :seconds seconds." on `addresses`, and nothing is sent. The cost of a batch is at most 100 (`MAX_ROWS`), which `assertCost()` accepts.
 - **Uploads.** The CSV is read as text (`TemporaryUploadedFile::get()`) and parsed with `str_getcsv`; nothing is stored. `mimes:csv,txt` accepts what Laravel guesses as `csv` or `txt` from the content (a CSV is `text/plain` or `text/csv`), so a PDF renamed to `.csv` is still refused. Livewire's upload endpoint (`livewire.upload-file`) is exempt from `EnsureSecondFactor` (Task 3), like every Livewire request.
 - **Pro (CD-10, corrected).** Rendering a Pro branch with `Skv::useFluxPro(true)` throws without `livewire/flux-pro`: `AppServiceProvider::configureFluxProBranches()` strips the Pro branches at compile time and puts a `LogicException` ("Flux Pro was installed after this view was compiled…") in their place. So the Pro upload is covered by `tests/Arch/FluxProLayerTest.php` (it scans every view: Pro tags only inside the branch, a free `@else`, the same `wire:model` names, here `[csv]` and `[roles]`) and by one line in `ProVariantsTest`, which runs only where Pro is installed. The free branch is covered by one line in `FreeVariantsTest`. The Pro markup follows the Flux docs for `flux:file-upload` (`wire:model`, `label`, `description`), `flux:file-upload.dropzone` (`heading`, `text`, `inline`) and `flux:file-item` (`heading`, `size`, `icon`, the `actions` slot with `flux:file-item.remove`).
 
@@ -4150,6 +4207,10 @@ it('reads a CSV file with or without a header, comma- or semicolon-separated (CD
     'a mistyped first address is a row, not a header' => ["ada.example.com,nl\nbob@example.com\n", [
         ['email' => 'ada.example.com', 'locale' => 'nl'],
         ['email' => 'bob@example.com', 'locale' => null],
+    ]],
+    'a first address without an @ that contains "mail" is a row' => ["ada.gmail.com,nl\nbob@example.com,en\n", [
+        ['email' => 'ada.gmail.com', 'locale' => 'nl'],
+        ['email' => 'bob@example.com', 'locale' => 'en'],
     ]],
     'only a header' => ["email,locale\n", []],
     'empty' => ['', []],
@@ -4416,6 +4477,25 @@ it('refuses a list larger than what is left of the bulk limit and sends nothing 
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(100);
 });
 
+it('gives back a reservation a parallel send outran (CD-6, plan review K4)', function () use ($templateRoleId, $deliveredMails): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    UserActionLimit::bulkInvite()->hit($admin, cost: 98);
+    // A parallel send passed the same pre-check a moment earlier: ensureAvailable() sees room, reserve() does not.
+    RateLimiter::partialMock()->shouldReceive('tooManyAttempts')->andReturnFalse();
+
+    Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
+        ->call('check')
+        ->call('send')
+        ->assertHasErrors(['addresses'])
+        ->assertSet('summary', null);
+
+    expect($deliveredMails())->toBe([])
+        ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(98);
+});
+
 it('sends only the rows the server checked, whatever a forged update says (CD-6)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $beta = Organisation::factory()->create(['slug' => 'beta']);
@@ -4598,7 +4678,7 @@ final class InvitationList
 
     private const string BOM = "\u{FEFF}";
 
-    /** Header cells that name the locale column; the email column is the first header cell that contains "mail". */
+    /** Header cells that name the locale column; the email column is the first header cell that contains "mail" and no ".". */
     private const array LOCALE_HEADERS = ['locale', 'language', 'lang', 'taal'];
 
     /**
@@ -4669,7 +4749,8 @@ final class InvitationList
 
     /**
      * The columns a header row names, or null when the record is not a header: it holds an "@", or none of its cells
-     * names a column. The email column is the first cell that contains "mail" (email, e-mail, e-mailadres …) and
+     * names a column. The email column is the first cell that contains "mail" and no "." (email, e-mail, e-mailadres …;
+     * an address that lost its "@", such as ada.gmail.com, keeps its domain dot and stays a row) and
      * defaults to the first column; a header that names no locale column means the file has none.
      *
      * @param  array<int, string|null>  $record
@@ -4686,7 +4767,7 @@ final class InvitationList
                 return null;
             }
 
-            if ($email === null && str_contains($name, 'mail')) {
+            if ($email === null && str_contains($name, 'mail') && ! str_contains($name, '.')) {
                 $email = $index;
             } elseif ($locale === null && in_array($name, self::LOCALE_HEADERS, true)) {
                 $locale = $index;
@@ -5124,10 +5205,19 @@ new #[Title('Invite several people')] class extends Component
         }
 
         // A list larger than what is left of the window is refused before it counts, so a smaller one still fits;
-        // reserve() then counts atomically, and refuses a parallel send that took the room meanwhile.
+        // reserve() then counts atomically, and refuses a parallel send that took the room meanwhile. That refused
+        // list sent nothing, so its cost is given back at once (plan review K4).
         $limit = UserActionLimit::bulkInvite();
         $limit->ensureAvailable($actor, 'addresses', count($ready));
-        $limit->reserve($actor, 'addresses', count($ready));
+
+        try {
+            $limit->reserve($actor, 'addresses', count($ready));
+        } catch (ValidationException $exception) {
+            $limit->release($actor, count($ready));
+
+            throw $exception;
+        }
+
         $sent = [];
 
         try {
@@ -5498,6 +5588,8 @@ For each mutation: copy the file aside with `cp` (into the scratchpad), make the
 12. In `check()`, replace `if (count($entries) > InvitationList::MAX_ROWS) {` with `if (false) {`. Expect the `101 rows` row of 'refuses an empty list…' to fail ("Component has no errors.").
 13. In `InvitationList::withoutBom()`, return `$text`. Expect the BOM rows of `InvitationListTest` to fail.
 14. In `InvitationList::header()`, return `[$email ?? 0, $locale]` unconditionally. Expect 'addresses only, no header' and the other header-less rows to fail (the first address is dropped as a header).
+14a. In `InvitationList::header()`, drop `&& ! str_contains($name, '.')`. Expect the row 'a first address without an @ that contains "mail" is a row' to fail (plan review K2).
+14b. In `send()`, drop the `catch` that releases a refused reservation (keep the bare `reserve()` call). Expect the bulk test 'gives back a reservation a parallel send outran' to fail on the remaining room.
 15. In `bulk.blade.php`'s free branch, change `type="file"` to `type="text"`. Expect `FreeVariantsTest` to fail.
 16. In `RouteHostMatrixTest::matrixRoutes()`, remove `'invitations.bulk'`. Expect 'lists every named GET route in the matrix or the exclusions' to fail with `['invitations.bulk']`.
 
@@ -5596,7 +5688,8 @@ Background for the implementer:
     - an `ImageException` without a previous exception
     - one whose previous is an intervention `DecoderException`
   - Any other `ImageException`, such as a GD build without WebP support, is rethrown and reported as a server error. The user's image was not at fault.
-  - `getimagesizefromstring()` reads only the header. The action uses it before decoding, so a small file that declares a huge canvas never reaches GD.
+  - `getimagesizefromstring()` reads only the header. The action uses it before decoding, so a small file that declares a canvas over 4096 px never reaches GD.
+  - A canvas within 4096 px still decodes in full: a 12 MP phone photo with an EXIF orientation needs about 200 MB, a 4096 × 4096 one about 270 MB, more than PHP's default `memory_limit` of 128M, and running out is a fatal error no `catch` sees. So `ensureMemoryFor()` raises `memory_limit` for that request from the header's pixel count (16 bytes a pixel plus 64 MB), and refuses the photo ("This image could not be processed.") when the host forbids raising it. Herd runs 1024M, so neither the suite nor the real run would show the problem (plan review K5/K8).
   - WebP from GD carries no EXIF or XMP chunk. The test checks that neither `Exif` nor `EXIF` appears in the stored bytes.
 - **The lock (CD-5):**
   - Both actions write only the user's own row, but they read the previous path to delete it. Without a lock, two parallel saves both read the same old path: both delete it, and one new file stays orphaned.
@@ -5831,6 +5924,24 @@ it('refuses an image wider than 4096 pixels in the action itself, before decodin
         ->toThrow(ValidationException::class, __('This image could not be processed.'));
 
     expect(Storage::disk('public')->allFiles())->toBe([]);
+});
+
+it('raises the memory limit before it decodes a large photo (plan review K5/K8)', function (): void {
+    $member = User::factory()->for(Organisation::factory())->create();
+    $file = UploadedFile::fake()->image('photo.png', 4096, 4096);
+    $original = (string) ini_get('memory_limit');
+    // Enough to decode this PNG, less than the action asks for: only the action's own raise moves the limit up.
+    ini_set('memory_limit', (string) (memory_get_usage() + 200 * 1024 * 1024));
+
+    try {
+        app(UpdateAvatar::class)->handle($member, $file);
+        $limit = ini_parse_quantity((string) ini_get('memory_limit'));
+    } finally {
+        ini_set('memory_limit', $original);
+    }
+
+    expect($limit)->toBeGreaterThanOrEqual(4096 * 4096 * UpdateAvatar::BYTES_PER_PIXEL)
+        ->and(Storage::disk('public')->allFiles())->toHaveCount(1);
 });
 
 it('leaves a failure of the server\'s image processing a server error, not the user\'s image', function (): void {
@@ -6210,6 +6321,14 @@ final readonly class UpdateAvatar
     /** The longest side decoded: the page's dimensions rule, checked again here before GD allocates the pixels. */
     public const int MAX_SIDE = 4096;
 
+    /**
+     * Bytes GD and intervention hold per pixel while a photo is decoded, turned and cropped (measured with
+     * intervention/image 4.3: a 4032 × 3024 JPEG with EXIF orientation 6 peaks at 198 MB, ~16 per pixel).
+     */
+    public const int BYTES_PER_PIXEL = 16;
+
+    private const int MEMORY_HEADROOM = 64 * 1024 * 1024;
+
     public function __construct(
         private RecordActivity $recordActivity,
         private ImageManager $images,
@@ -6268,6 +6387,8 @@ final readonly class UpdateAvatar
             throw $this->unreadable();
         }
 
+        $this->ensureMemoryFor($size[0] * $size[1]);
+
         try {
             return $this->images->fromBytes($contents)
                 ->usingGd()
@@ -6286,6 +6407,27 @@ final readonly class UpdateAvatar
             }
 
             throw $exception;
+        }
+    }
+
+    /**
+     * Running out of memory is a fatal error no catch sees, and an ordinary 12 MP phone photo needs about 200 MB: raise
+     * memory_limit for this request when the photo needs more, or refuse the photo when the host forbids raising it
+     * (php_admin_value). Plan review K5/K8.
+     *
+     * @throws ValidationException
+     */
+    private function ensureMemoryFor(int $pixels): void
+    {
+        $needed = memory_get_usage() + $pixels * self::BYTES_PER_PIXEL + self::MEMORY_HEADROOM;
+        $limit = ini_parse_quantity((string) ini_get('memory_limit'));
+
+        if ($limit === -1 || $limit >= $needed) {
+            return;
+        }
+
+        if (ini_set('memory_limit', (string) $needed) === false) {
+            throw $this->unreadable();
         }
     }
 
@@ -6775,6 +6917,7 @@ Copy each file aside with `cp`, never `git stash`. Run `php artisan view:clear` 
 | 5 | `UpdateAvatar`: in the `catch (ImageException …)`, remove the `if` that throws `unreadable()` | 'refuses an image it cannot read…' | `Illuminate\Image\ImageException: Failed to process image: Failed to decode unsupported image format from binary data` |
 | 5a | `UpdateAvatar`: make that `if` always true (`if (true) {`) | 'leaves a failure of the server's image processing a server error…' | the message is "This image could not be processed." instead of "GD broke." |
 | 6 | `UpdateAvatar`: drop `\|\| $size[0] > self::MAX_SIDE \|\| $size[1] > self::MAX_SIDE` | 'refuses an image wider than 4096 pixels in the action itself…' | "Exception [ValidationException] not thrown" |
+| 6a | `UpdateAvatar`: empty the body of `ensureMemoryFor()` | 'raises the memory limit before it decodes a large photo' | the limit stays below `4096 * 4096 * 16` (plan review K5/K8) |
 | 7 | profile page: drop `'dimensions:max_width=4096,max_height=4096'` | the 'wider than 4096 pixels' row | "Component has no matching failed rule … [dimensions]": the action's own guard answers "could not be processed" instead, which is why both exist |
 | 8 | `PurgeOrganisation`: remove the avatars `DB::afterCommit(...)` | 'deletes the purged users' photo files…' | "true is false" |
 | 9 | `PurgeOrganisation`: also collect `$row->avatar_path` for a super admin row | the same test | the promoted admin's file is gone |
@@ -7321,6 +7464,7 @@ Write each statement in the section named, in the README's existing register (sh
 - **Profile photo (Task 6):**
   - Upload a JPEG, PNG or WebP of at most 2 MB and 4096 × 4096 px. It is turned upright, cropped to 512 × 512 and stored as WebP without metadata.
   - It is stored at `APP_URL/storage/avatars/{organisation id|platform}/{id}-{random}.webp`: a public but unguessable URL.
+  - Processing a photo close to 4096 px needs up to about 270 MB; `UpdateAvatar` raises `memory_limit` for that request, and refuses the photo when the host forbids raising it (`php_admin_value`).
   - It needs `public/storage` (setup creates the link; the doctor's `storage-link` check repairs it) and GD with WebP support. Without WebP support an upload fails with a reported server error. ext-exif is optional; without it a photo keeps the orientation it was stored with.
   - Initials show wherever there is no photo.
   - Purging an organisation deletes its users' photos. Deleting a user keeps the photo for a restore.
@@ -7346,6 +7490,7 @@ Write each statement in the section named, in the README's existing register (sh
   - `REQUIRE_SECOND_FACTOR_SUPER_ADMINS`
   - a newly invited member of such an organisation lands on Beveiliging right after accepting, and is asked for the password they just chose
 - Activiteitenlog: "CSV exporteren".
+  - At :1254, replace the closing sentence "Een CSV-export komt in M7d." with "Met <span class=\"ui\">CSV exporteren</span> download je wat de filters tonen (zie hieronder).", and put the export bullets after that item (plan review K12).
   - It exports exactly what the filters show and opens directly in Excel.
   - IP and browser stay empty where the log hides them for platform staff.
   - Cells starting with `=`, `+`, `-`, `@`, a tab or a CR get a leading `'`.
@@ -7364,11 +7509,13 @@ Write each statement in the section named, in the README's existing register (sh
 - [ ] **Step 3: Kit guideline**
 
 `.ai/guidelines/skv3.md`, in the sections named. Then run `php artisan boost:update` (or the command the README names) to regenerate the git-ignored `AGENTS.md`, and check it shows the new lines.
+Where the bullets go: the guideline's headings are only the untitled top, `## Tenancy and authorization`, `## UI`, `## Setup` and `## Ops`. The Limits bullets extend the existing `UserActionLimit` bullet; the Sessions, Audit, Invitations and avatar bullets go at the end of `## Tenancy and authorization`; the `flux:avatar` and Pro-upload bullets go in `## UI`; `sessionRowFor()` is appended to the existing "Tests: `onTenant($organisation)`, …" bullet (plan review K13).
 - **Tenancy and authorization:**
+  - Extend the `password.confirm` bullet (line 25) to read "…switches super admin, changes another user's address or changes an organisation's second-factor rule starts with `if ($this->passwordConfirmationRequired($returnUrl)) { return; }`…" (CD-3, plan review K13).
   - "Who has or needs a second factor" is `App\Tenancy\Auth\SecondFactor` (`satisfiedBy`, `requiredFor`); never re-implement it.
   - A new authenticated route group adds `EnsureSecondFactor` to its middleware.
   - A route that must stay reachable without a second factor goes into `config('skv.second_factor.exempt_routes')`.
-  - Never detect a Livewire request by the `X-Livewire` header; use the route name.
+  - Never detect a Livewire request by the `X-Livewire` header; use the route name. `EnsureSecondFactor` is also Livewire persistent middleware (`TenancyServiceProvider`), so a Livewire update passes only for a component of an exempt page (plan review K7).
   - `UpdateOrganisation::handle()` takes `bool $requireSecondFactor` last.
   - Tests set `config(['skv.second_factor.super_admins' => …])`.
 - **Limits:** extend the `UserActionLimit` bullet with:
@@ -7418,7 +7565,7 @@ Write each statement in the section named, in the README's existing register (sh
 - **§6.6 second factor:**
   - The exempt list becomes `security.edit`, `password.confirm`, `password.confirm.store`, `password.confirmation`, `two-factor.*`, `passkey.*`, `well-known.passkeys`, `logout`, `auth.handoff`, `auth.handoff.store`, `impersonation.stop`, `setup.*`. This replaces `passkeys.*`, which names no route.
   - A non-GET request gets a 403.
-  - Livewire requests are recognised by route name, never by the header.
+  - Livewire requests are recognised by route name, never by the header. "It is a Livewire update/upload request" becomes "it is a Livewire upload or preview request, or a Livewire update of a component on an exempt page (`EnsureSecondFactor` is also Livewire persistent middleware, which Livewire replays against the component's page)". This keeps "navigating away is blocked" true for Livewire actions too (plan review K7).
   - Super admins follow `config('skv.second_factor.super_admins')` only, whatever their `organisation_id`.
   - An organisation admin can switch the rule on only with a second factor of their own; changing it either way asks for the password.
   - The security page shows the explanation as a callout. Super admins get their own message.
@@ -7485,7 +7632,7 @@ Add `### DEC-35 — Account extras build rulings (M7d)` after DEC-34, in DEC-34'
   - **(7) CD-7, avatars:**
     - the one-row lock, because two parallel saves would both delete the same old file and orphan one new file
     - the deletes after commit, and the cleanup of the new file when the save fails
-    - the header guard against decompression bombs
+    - the header guard against decompression bombs, and `ensureMemoryFor()` raising `memory_limit` per request (plan review K5/K8)
     - the audit shape `attributes.avatar`
     - the `User::$attributes` default `avatar_path => null`, needed in strict mode
     - ext-exif is optional, and the orientation test skips without it
@@ -7518,13 +7665,14 @@ Read `CHANGELOG.md`'s `[Unreleased]` section. Each of Tasks 1–7 added its own 
 
 ```bash
 command grep -n "komt in M7d\|nog geen limiet\|no limit yet" docs/handleiding.html .ai/guidelines/skv3.md README.md   # prints nothing
-command grep -nF 'passkeys.*' docs/superpowers/specs/2026-10-10-skv3-design.md                                    # prints nothing
+command grep -nF '`passkey.*`, `passkeys.*`' docs/superpowers/specs/2026-10-10-skv3-design.md                      # prints nothing (the old exempt-list entry is gone)
+command grep -cF '`passkey.*`, `well-known.passkeys`, `logout`, `auth.handoff`, `auth.handoff.store`' docs/superpowers/specs/2026-10-10-skv3-design.md   # at least 1
 command grep -c "DEC-35" docs/decisions.md                                                                         # at least 3 (index row, heading, amendments)
 php artisan test --compact tests/Feature/Tooling tests/Arch
 composer check
 ```
 
-Expected: the first two print nothing; the tests pass. Then run the full per-task gate.
+Expected: the first two print nothing, the third and fourth print at least 1; the tests pass. Then run the full per-task gate. Never edit spec :111 (the `passkeys.*` config keys) or Appendix finding P1 (`fortify.passkeys.*`): they are not the exempt list (plan review K11).
 
 - [ ] **Step 8: Commit**
 
@@ -7599,7 +7747,7 @@ Every command names the throwaway site by its absolute path; artisan runs from i
    - The stored file under `storage/app/public/avatars/{organisation id}/` is a 512×512 WebP (`sips -g pixelWidth -g pixelHeight -g format`).
    - Its URL loads over `https://m7d-e2e.test/storage/…`.
    - Replace it: the old file is gone. Remove it: the initials show.
-7. **FM-19 (Task 7).** As `superadmin@…`, the 11th address change within an hour is refused, and the 11th `organisations.create` within a minute is refused on the first-admin address. Organisations created for this check are archived and purged afterwards. The purge also removes their users' avatar files, which checks §4.3.
+7. **FM-19 (Task 7).** As `superadmin@…`, the 11th address change within an hour is refused, and the 11th `organisations.create` within a minute is refused on the first-admin address. Organisations created for this check are archived and purged afterwards. Before that, open one of them and accept its first admin's invitation (read the accept link from the log mailer and never record it). Sign in as that admin, upload a photo and note its path under `storage/app/public/avatars/{organisation id}/`. After the purge, confirm with `ls` on the absolute path that the file is gone and the folder is empty. This checks §4.3 on the real stack (plan review K6).
 8. **Record** every output in the ledger, never a password, secret, token, session id or accept URL.
 
 Clean up as M7c's Task 15 did:
