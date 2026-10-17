@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Pest\Browser\Api\PendingAwaitablePage;
 use Pest\Browser\Playwright\Playwright;
+use Tests\Fixtures\RequiredPostgres;
 
 beforeEach(function (): void {
     Process::preventStrayProcesses();
@@ -109,4 +110,4 @@ it('sets a super-admin install up on PostgreSQL and signs the owner in once (§7
         ->click('@setup-login')
         ->assertPathIs('/organisations')
         ->assertNoJavaScriptErrors();
-})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => RequiredPostgres::skips(fn (): bool => new Detector(new Toolchain)->postgresReachable()), 'PostgreSQL is not reachable');

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Spatie\Backup\BackupDestination\BackupDestination;
 use Spatie\Backup\Config\Config;
 use Tests\Fixtures\PgSslModeSnapshot;
+use Tests\Fixtures\RequiredPostgres;
 
 /** The pg_dump directory when it can dump the test server, else null (an older client refuses a newer server). */
 $usablePgDump = function (): ?string {
@@ -55,11 +56,14 @@ afterEach(function (): void {
 });
 
 it('backs up the database into an encrypted archive on the backups disk (§4.9)', function () use ($usablePgDump): void {
+    $pgDump = $usablePgDump();
+    // CD-10: under REQUIRE_POSTGRES the test runs without a usable pg_dump too, and fails here instead of skipping.
+    expect($pgDump)->not->toBeNull('no pg_dump on the toolchain PATH can dump the PostgreSQL test server');
     Storage::fake('backups');
     // The package creates, empties and deletes its working directory: a sandbox, never the repository's storage/app/backup-temp.
     $sandbox = setupSandbox();
     config([
-        'database.connections.pgsql.dump.dump_binary_path' => $usablePgDump(),
+        'database.connections.pgsql.dump.dump_binary_path' => $pgDump,
         'backup.backup.password' => 'correct-horse-battery',
         'backup.backup.temporary_directory' => $sandbox->path('backup-temp'),
     ]);
@@ -82,4 +86,4 @@ it('backs up the database into an encrypted archive on the backups disk (§4.9)'
     expect($entry)->toBeArray()
         ->and($entry['encryption_method'] ?? 0)->not->toBe(0)
         ->and($output)->not->toContain('correct-horse-battery');
-})->skip(fn (): bool => $usablePgDump() === null, 'needs PostgreSQL and a pg_dump at least as new as the server');
+})->skip(fn (): bool => RequiredPostgres::skips(fn (): bool => $usablePgDump() !== null), 'needs PostgreSQL and a pg_dump at least as new as the server');
