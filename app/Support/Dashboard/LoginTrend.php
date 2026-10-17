@@ -15,7 +15,8 @@ final class LoginTrend
     /** @return list<array{date: string, logins: int}> */
     public static function lastDays(int $days = 14): array
     {
-        $start = now()->startOfDay()->subDays($days - 1);
+        // Immutable whatever Date::use() chose: addDays() below must not move the start itself (G5-08).
+        $start = now()->toImmutable()->startOfDay()->subDays($days - 1);
 
         /** @var list<CarbonInterface> $moments */
         $moments = HostScope::read(fn (): array => Activity::query()
