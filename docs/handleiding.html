@@ -1250,7 +1250,7 @@ php artisan skv:bootstrap</code></pre>
   <ul>
     <li>Op een organisatiehost zie je alleen de eigen organisatie. Centraal ziet een superbeheerder alles, ook gearchiveerde organisaties en platformregels.</li>
     <li>Gaat een regel over iemand die geen gewoon lid van je organisatie is (bijvoorbeeld een superbeheerder die hielp), dan zie je als organisatiebeheerder geen IP-adres en browser. De naam blijft zichtbaar.</li>
-    <li>Wachtwoorden, tokens en links worden nooit opgeslagen. Bij een mislukte inlogpoging staat het getypte e-mailadres er alleen als het een geldig e-mailadres is. Van de browser (user agent) bewaart het log hooguit 500 tekens, als geldige UTF-8.</li>
+    <li>Wachtwoorden, tokens en links worden nooit opgeslagen. Bij een mislukte inlogpoging staat het getypte e-mailadres er alleen als het een geldig e-mailadres is. Van de browser (user agent) bewaart het log hooguit 500 tekens, als geldige UTF-8 zonder NUL-tekens.</li>
     <li>Het log kan niet uit. Regels ouder dan 365 dagen ruimt de planner elke nacht om 01:00 op (<code>php artisan activitylog:clean --force</code>, zie <a href="#systeemstatus">Systeemstatus</a>). Een CSV-export komt in M7d.</li>
   </ul>
   <h4>Wat er wordt vastgelegd</h4>

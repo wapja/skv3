@@ -51,12 +51,13 @@ final class LogActivity extends LogActivityAction
 
     /**
      * The header as Laravel's database session handler keeps it (G4-03): valid UTF-8, invalid bytes replaced by "?",
-     * at most 500 characters. A failed sign-in writes an entry for any visitor, so the raw header must neither fill
-     * the log nor make PostgreSQL refuse the insert.
+     * at most 500 characters, and without NUL bytes, which are valid UTF-8 but which PostgreSQL's text type cannot
+     * hold (pdo_pgsql cut the value at the first one). A failed sign-in writes an entry for any visitor, so the raw
+     * header must neither fill the log nor make PostgreSQL refuse or truncate the insert.
      */
     private function boundedUserAgent(?string $userAgent): ?string
     {
-        return $userAgent === null ? null : mb_substr(mb_scrub($userAgent, 'UTF-8'), 0, 500, 'UTF-8');
+        return $userAgent === null ? null : mb_substr(str_replace("\0", '', mb_scrub($userAgent, 'UTF-8')), 0, 500, 'UTF-8');
     }
 
     private function organisationIdFor(Model $activity): ?int

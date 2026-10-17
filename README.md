@@ -102,7 +102,7 @@ Audit entries written while an Artisan command runs are tagged with it (`via: co
 - **Impersonation.** A language or appearance chosen during an impersonation lasts until it ends and never changes the target's account. An impersonation cannot start an email change for the target. An impersonation that ends because the impersonator is disabled, deleted, archived or purged writes no `impersonation.stop` entry: their session is gone, and the start entry and the status change are the record.
 - **Languages.** The user menu's language switch reloads the current page, query string and filters included. The message after a forced sign-out or an ended impersonation is in the language of the page that shows it. The email-change mails and the notice after an administrator changed your address are in the account's language, also from a queue worker.
 - **Error pages.** 401, 402, 403, 404, 419, 429, 500 and 503 have their own page, and every other 4xx and 5xx status (405, 413, 502 …) a fallback, all in the visitor's language. *Try again* reloads the page (inside Livewire's error dialog, the top page); *Back* never leaves the site.
-- **Audit log.** The stored user agent is cut to 500 characters of valid UTF-8. Invitation mails skip an invitation that was cancelled, accepted or expired before the queue worker ran; a mail for an organisation archived meanwhile still fails, by design.
+- **Audit log.** The stored user agent is cut to 500 characters of valid UTF-8, without NUL bytes. Invitation mails skip an invitation that was cancelled, accepted or expired before the queue worker ran; a mail for an organisation archived meanwhile still fails, by design.
 
 ## Health check
 

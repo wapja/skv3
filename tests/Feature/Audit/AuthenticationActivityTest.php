@@ -207,7 +207,7 @@ it('records nothing in its own organisation\'s log when a promoted super admin\'
         ->and(recordedActivity(ActivityEvent::PasswordResetCompleted))->toHaveCount(0);
 });
 
-it('stores at most 500 characters of valid UTF-8 as the user agent, also for a failed sign-in (G4-03)', function (string $userAgent, string $stored): void {
+it('stores at most 500 characters of valid UTF-8 without NUL bytes as the user agent, also for a failed sign-in (G4-03)', function (string $userAgent, string $stored): void {
     $organisation = Organisation::factory()->create();
     onTenant($organisation);
 
@@ -223,6 +223,8 @@ it('stores at most 500 characters of valid UTF-8 as the user agent, also for a f
     'over-long' => [str_repeat('a', 5000), str_repeat('a', 500)],
     'invalid UTF-8' => ["Probe\xffAgent/1.0", 'Probe?Agent/1.0'],
     'multibyte at the limit' => [str_repeat('é', 600), str_repeat('é', 500)],
+    // Valid UTF-8 that PostgreSQL's text type refuses (SQLSTATE 22021).
+    'NUL byte' => ["Probe\0Agent/1.0", 'ProbeAgent/1.0'],
 ]);
 
 it('records enabling and disabling two-factor authentication', function (): void {

@@ -162,7 +162,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - A pending invitee keeps the roles they were invited with, also after their only role was deleted.
 - Saving a user's name, address and status is all or nothing: a refused status change no longer saves the new name or address, and an address change that fails keeps a pending self-service change link.
 - A password reset of a super admin who was promoted from an organisation is no longer recorded in that organisation's audit log.
-- The audit log keeps at most 500 characters of a visitor's user agent, as valid UTF-8, so an unusual browser header can no longer break the entry of a failed sign-in.
+- The audit log keeps at most 500 characters of a visitor's user agent, as valid UTF-8 without NUL bytes, so an unusual browser header can no longer break the entry of a failed sign-in.
 - A queued invitation mail or reminder whose invitation was cancelled, accepted or has expired before the queue worker ran is dropped instead of ending as a failed job.
 - Jobs dispatched while a web request runs an Artisan command itself (the setup wizard's migrations and seeders) no longer write *Command line* entries in the audit log.
 - The sign-in pages show the organisation's name under the mark on its own address, and the platform name on the central addresses; until now the name was there for screen readers only.
