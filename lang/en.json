@@ -390,6 +390,7 @@
     "Not an email address": "Not an email address",
     "Not chosen": "Not chosen",
     "Not reachable": "Not reachable",
+    "Not sent: something went wrong.": "Not sent: something went wrong.",
     "Nothing accepts mail at :address": "Nothing accepts mail at :address",
     "Nothing changes until the link sent to that address is followed.": "Nothing changes until the link sent to that address is followed.",
     "OTP Code": "OTP Code",

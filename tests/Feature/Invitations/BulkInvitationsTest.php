@@ -18,6 +18,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\TestResponse;
@@ -224,6 +225,42 @@ it('skips a row the action refuses at send time with the generic message, sends 
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(2);
 });
 
+it('stops at an unexpected failure, reports it, summarises what was sent and gives the unsent rows their attempts back (E12, E16)', function () use ($templateRoleId, $deliveredMails): void {
+    Exceptions::fake();
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    // Anything InviteUser throws that is not a ValidationException: a queue that refuses the mail, an authorisation
+    // lost halfway through the list. The second row's transaction rolls back.
+    User::creating(function (User $user): void {
+        if ($user->email === 'bob@example.com') {
+            throw new RuntimeException('The queue is unavailable.');
+        }
+    });
+
+    Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
+        ->call('check')
+        ->call('send')
+        ->assertHasNoErrors()
+        ->assertSet('rows', [])
+        ->assertSet('summary', [
+            'sent' => ['ada@example.com'],
+            'skipped' => [
+                ['email' => 'bob@example.com', 'reason' => __('Not sent: something went wrong.')],
+                ['email' => 'cleo@example.com', 'reason' => __('Not sent: something went wrong.')],
+            ],
+        ])
+        ->assertSee(__('Sent: :count', ['count' => 1]))
+        ->assertSee(__('Skipped: :count', ['count' => 2]));
+
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === 'The queue is unavailable.');
+    expect(collect($deliveredMails())->map(fn (Email $mail): string => $mail->getTo()[0]->getAddress())->all())->toBe(['ada@example.com'])
+        ->and(DB::table('users')->whereIn('email', ['bob@example.com', 'cleo@example.com'])->exists())->toBeFalse()
+        // E16: only the sent row keeps its attempt; the failed and the unsent rows give theirs back.
+        ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(1);
+});
+
 it('reviews the rows again when it sends and skips an organisation archived meanwhile with the action\'s message (CD-6)', function () use ($templateRoleId, $deliveredMails): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($acme);
@@ -407,11 +444,14 @@ it('lets a super admin on a central host invite after picking an organisation (Â
 
     $this->get(route('invitations.bulk'))->assertOk()->assertSee('data-test="bulk-organisation"', false)->assertSee('Acme Corp');
 
+    // E11: without a pick the organisation is what the page asks for first, also before a role is chosen; the
+    // picker shows the message itself.
     $page = Livewire::test('pages::invitations.bulk')
         ->set('addresses', 'first@example.com')
-        ->set('roles', [$templateRoleId()])
         ->call('check')
-        ->assertHasErrors(['organisationId' => __('Choose an organisation first.')]);
+        ->assertHasErrors(['organisationId' => __('Choose an organisation first.')])
+        ->assertHasNoErrors('roles')
+        ->assertSee(__('Choose an organisation first.'));
 
     // A new pick clears the roles and the preview.
     $page->set('organisationId', $acme->id)

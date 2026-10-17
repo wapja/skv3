@@ -390,6 +390,7 @@
     "Not an email address": "Geen e-mailadres",
     "Not chosen": "Niet gekozen",
     "Not reachable": "Niet bereikbaar",
+    "Not sent: something went wrong.": "Niet verstuurd: er ging iets mis.",
     "Nothing accepts mail at :address": "Niets neemt mail aan op :address",
     "Nothing changes until the link sent to that address is followed.": "Er verandert niets totdat de link naar dat adres wordt gevolgd.",
     "OTP Code": "Eenmalige code",
