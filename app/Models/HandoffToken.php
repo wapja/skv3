@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Auth;
  * @property Carbon|null $updated_at
  */
 #[Fillable(['user_id', 'token_hash', 'target_host', 'path', 'password_hash', 'expires_at'])]
+#[Hidden(['token_hash', 'password_hash'])]
 final class HandoffToken extends Model
 {
     use MassPrunable;

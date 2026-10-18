@@ -104,24 +104,32 @@ new class extends Component
             throw $e;
         }
 
-        DB::transaction(function () use ($user, $recordActivity): void {
-            Auth::logoutOtherDevices($this->password);
+        $previousId = session()->getId();
 
-            // The response sets the new id's cookie; the session keeps its data and its CSRF token.
-            $previousId = session()->getId();
-            session()->migrate();
-            DB::table('sessions')->where('id', $previousId)->update(['id' => session()->getId()]);
+        try {
+            DB::transaction(function () use ($user, $recordActivity, $previousId): void {
+                Auth::logoutOtherDevices($this->password);
 
-            $ended = DB::table('sessions')
-                ->where('user_id', $user->id)
-                ->where('id', '!=', session()->getId())
-                ->delete();
+                // The response sets the new id's cookie; the session keeps its data and its CSRF token.
+                session()->migrate();
+                DB::table('sessions')->where('id', $previousId)->update(['id' => session()->getId()]);
 
-            // A handoff link issued by another session would sign that browser in again with the new hash (§6.4).
-            HandoffToken::query()->where('user_id', $user->id)->whereNull('consumed_at')->delete();
+                $ended = DB::table('sessions')
+                    ->where('user_id', $user->id)
+                    ->where('id', '!=', session()->getId())
+                    ->delete();
 
-            $recordActivity->handle(ActivityEvent::OtherSessionsEnded, $user, ['count' => $ended]);
-        });
+                // A handoff link issued by another session would sign that browser in again with the new hash (§6.4).
+                HandoffToken::query()->where('user_id', $user->id)->whereNull('consumed_at')->delete();
+
+                $recordActivity->handle(ActivityEvent::OtherSessionsEnded, $user, ['count' => $ended]);
+            });
+        } catch (Throwable $e) {
+            // The row move rolled back: keep the old id, or the session would be saved as a second row under the new one.
+            session()->setId($previousId);
+
+            throw $e;
+        }
 
         $this->reset('password');
         unset($this->sessions);

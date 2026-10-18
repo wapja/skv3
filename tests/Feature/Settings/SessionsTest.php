@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\RateLimits\UserActionLimit;
 use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Hosts;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -222,6 +223,28 @@ it('gives this device a new session id, so a copy of its old cookie is signed ou
     $this->assertAuthenticatedAs($member);
     expect($rowsOf($member))->toBe($after);
 });
+it('keeps this device\'s session id when the transaction rolls back, so no second row is left (§6.6, CD-18)', function () use ($signIn, $useBrowser, $rowsOf): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $thisDevice = $signIn($member);
+    $useBrowser($thisDevice);
+    $before = $rowsOf($member);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.sessions');
+    // A serialization failure after the row moved: the handoff delete throws, so the whole transaction rolls back.
+    DB::listen(function (QueryExecuted $query): void {
+        if (str_starts_with(strtolower($query->sql), 'delete') && str_contains($query->sql, 'handoff_tokens')) {
+            throw new RuntimeException('could not serialize access');
+        }
+    });
+
+    $response = callPageAction($snapshot, 'logoutOtherDevices', updates: ['password' => 'password']);
+
+    $response->assertServerError();
+    expect($rowsOf($member))->toBe($before)
+        ->and(recordedActivity(ActivityEvent::OtherSessionsEnded)->count())->toBe(0);
+});
+
 it('ends only the user\'s other sessions and records how many (§4.8, CD-9)', function () use ($signIn, $useBrowser, $errorsOf, $rowsOf): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = User::factory()->for($organisation)->create();

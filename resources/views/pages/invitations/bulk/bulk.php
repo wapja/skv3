@@ -121,8 +121,11 @@ new #[Title('Invite several people')] class extends Component
 
         // FM-18: review() looks every row up with InviteUser's address rules, so each row counts, an invalid or a
         // repeated one included, and is never given back (CD-2); during an impersonation the impersonator pays.
-        // send() re-reviews only these #[Locked] rows.
-        UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $this->currentUser(), 'addresses', count($entries));
+        // A list the limit refuses is refused first by ensureAvailable() and costs nothing, because nothing was looked
+        // up; attempt() stays the atomic check. send() re-reviews only these #[Locked] rows.
+        $payer = Impersonation::impersonator() ?? $this->currentUser();
+        UserActionLimit::addressLookup()->ensureAvailable($payer, 'addresses', count($entries));
+        UserActionLimit::addressLookup()->attempt($payer, 'addresses', count($entries));
 
         $this->rows = $this->review($entries, $organisation, $inviteUser);
     }

@@ -286,3 +286,15 @@ it('refuses a handoff link issued before a password change or reset, or before l
     $this->assertGuest();
     expect(HandoffToken::query()->sole()->consumed_at)->toBeNull();
 })->with(['changed on the security page', 'reset', 'issued before the binding']);
+
+it('never serialises the token hash or the password binding (§6.4, CD-3)', function (): void {
+    Organisation::factory()->create(['slug' => 'acme']);
+    $superAdmin = User::factory()->superAdmin()->create();
+    app(IssueHandoff::class)->handle($superAdmin, Hosts::tenant('acme'));
+
+    $token = HandoffToken::query()->sole();
+
+    expect($token->toArray())->not->toHaveKeys(['token_hash', 'password_hash'])
+        ->and($token->toJson())->not->toContain($token->token_hash)
+        ->and($token->toJson())->not->toContain((string) $token->password_hash);
+});

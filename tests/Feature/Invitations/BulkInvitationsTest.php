@@ -352,7 +352,7 @@ it('gives back a reservation a parallel send outran (CD-6, plan review K4)', fun
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(98);
 });
 
-it('refuses a Check whose rows would pass the address-lookup limit before it reviews a row, and counts it (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf): void {
+it('refuses a Check whose rows would pass the address-lookup limit before it reviews a row, and charges it nothing (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($acme);
     $lookups = UserActionLimit::addressLookup()->key($admin);
@@ -364,13 +364,16 @@ it('refuses a Check whose rows would pass the address-lookup limit before it rev
 
     expect($refused['memo']['errors'] ?? [])->toBe(['addresses' => [__('Too many attempts. Try again in :seconds seconds.', ['seconds' => 86400])]])
         ->and($refused['data']['rows'])->toBe([[], ['s' => 'arr']])
-        // attempt() counts the refused list too, so the next Check of one row is refused as well.
-        ->and(RateLimiter::attempts($lookups))->toBe(550);
+        // ensureAvailable() refuses the list before attempt() counts it: nothing was looked up, so nothing is charged.
+        ->and(RateLimiter::attempts($lookups))->toBe(450);
 
-    $single = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => 'ada@example.com', 'roles' => [$templateRoleId()]]));
+    // The 50 lookups left still fit a smaller list, which counts as usual.
+    $fifty = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 50)));
+    $smaller = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $fifty, 'roles' => [$templateRoleId()]]));
 
-    expect($single['memo']['errors'] ?? [])->toHaveKey('addresses')
-        ->and($single['data']['rows'])->toBe([[], ['s' => 'arr']]);
+    expect($smaller['memo']['errors'] ?? [])->toBe([])
+        ->and($smaller['data']['rows'][0])->toHaveCount(50)
+        ->and(RateLimiter::attempts($lookups))->toBe(500);
 });
 
 it('charges a Check one lookup per row after the list checks, and never charges the Send that follows (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {
