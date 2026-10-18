@@ -638,12 +638,12 @@ Every command in Part B runs in the main session, one at a time, and its result 
 - **Scratch files.** Every command that uses the scratchpad starts with `SCRATCH=<absolute session scratchpad>/m8b && mkdir -p "$SCRATCH" &&` in the same Bash call; the shell keeps no variables between calls.
 - **Watching a run.** Never in a foreground call (a run outlives the tool's 10-minute limit and floods the output). Start `gh run watch <id> --repo frankcornet/skv3 --exit-status --interval 60 > "$SCRATCH"/watch-<id>.log 2>&1` in the background, and read the result with `gh run view <id> --repo frankcornet/skv3 --json status,conclusion,jobs --jq '.conclusion, (.jobs[] | "\(.name) \(.conclusion)")'`.
 - **Pull request bodies** go in a file, `"$SCRATCH"/pr-<slug>.md` (cause, fix and evidence, a blank line, then `🤖 Generated with [Claude Code](https://claude.com/claude-code)`), passed with `--body-file`.
-- **The Packagist wait**, before every release-check dispatch and before the tag push, once Packagist has the package (Task 11): wait until Packagist serves `main`'s HEAD as `dev-main`.
+- **The Packagist wait**, before every release-check dispatch and before the tag push, once Packagist has the package (Task 11): wait until Packagist serves `main`'s HEAD as `dev-main`. The jq filters expand Packagist's minified p2 format first (a version inherits the fields of the one before it, and `__unset` removes one), as the release check's own *Packagist serves main* step does.
 
   ```bash
   for attempt in $(seq 1 20); do
-    served="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.reference')"
-    url="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.url')"
+    served="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '[foreach .packages["frankcornet/skv3"][] as $v ({}; . + $v | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main"))[0] | .source.reference')"
+    url="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '[foreach .packages["frankcornet/skv3"][] as $v ({}; . + $v | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main"))[0] | .source.url')"
     [ "$url" = "https://github.com/frankcornet/skv3.git" ] || { echo "Packagist names another source: $url"; break; }
     [ "$served" = "$(git rev-parse main)" ] && { echo "Packagist serves main"; break; }
     sleep 30
@@ -882,11 +882,11 @@ Claude never signs in to Packagist.
 - [ ] **Step 2: Verify (read-only, public URLs)**
 
 ```bash
-curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.reference'
+curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '[foreach .packages["frankcornet/skv3"][] as $v ({}; . + $v | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main"))[0] | .source.reference'
 git rev-parse main
 ```
 
-Also `curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.url'` must print `https://github.com/frankcornet/skv3.git`: any other source means someone else claimed the name, and Part B stops.
+Also `curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '[foreach .packages["frankcornet/skv3"][] as $v ({}; . + $v | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main"))[0] | .source.url'` must print `https://github.com/frankcornet/skv3.git`: any other source means someone else claimed the name, and Part B stops.
 
 Expected: the same hash. Whether the hook follows later pushes is checked by the Packagist wait (Part B conventions) before Task 12 and before the tag.
 
