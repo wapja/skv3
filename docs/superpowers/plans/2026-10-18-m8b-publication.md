@@ -4,9 +4,9 @@
 
 **Goal:** Publish skv3 as `frankcornet/skv3` on GitHub and Packagist, prove CI and the release check green there, and tag `v1.0.0`, each outward-facing step only after the owner's explicit approval.
 
-**Architecture:** Part A is local and changes code: the export-ignored release-check workflow (CD-22 of M8a), the two kit-only paths a Packagist install leaves out, and the `Tests\Fixtures\KitRepository` marker that lets the kit-only tests skip in a generated app. Part A ends on branch `m8b-publication`, which the owner merges into `main` like every milestone. Part B publishes `main` and works only through GitHub (pull requests, Actions, rulesets), Packagist and the owner's Herd GUI. It follows DEC-36's Consequence (1)–(13) in that order, and records the outcome in a DEC-36 addendum.
+**Architecture:** Part A is local and changes code: the export-ignored release-check workflow (CD-22 of M8a), the two kit-only paths a Packagist install leaves out, and the `Tests\Fixtures\KitRepository` marker that lets the kit-only tests skip in a generated app. Part A ends on branch `m8b-publication`, which the owner merges into `main` like every milestone. Part B publishes `main` and works only through GitHub (pull requests, Actions, rulesets), Packagist and the owner's Herd GUI. It follows DEC-36's Consequence (1)–(13) in that order, with two exceptions the addendum records: (10)'s workflow file lands in Part A and reaches GitHub with the first push instead of through its own pull request (Task 12 still proves it green on dispatch, and any fix to it goes through a pull request), and the optional secrets (4) come after the first CI loop (5), so the free path goes green first. It records the outcome in a DEC-36 addendum.
 
-**Tech Stack:** Laravel 13.35, Livewire 4, Flux 2, Pest 5.3, Symfony Yaml (workflow tests), GitHub Actions, the `gh` CLI 2.x, Packagist, Laravel Herd (Pro) and the Laravel installer 5.25.
+**Tech Stack:** Laravel 13.35, Livewire 4, Flux 2, Pest 5.3, Symfony Yaml (workflow tests), GitHub Actions, the `gh` CLI 2.96, Packagist, Laravel Herd (Pro) and the Laravel installer (CI installs the latest, 5.32 at planning; Herd bundles 5.31; `~/.composer` has 5.25).
 
 **Spec:** `docs/superpowers/specs/2026-10-10-skv3-design.md` (§5.1 entry points, §8 CI and release-check, §10 docs, §11.2 M8, §12 success criteria). Decisions: `docs/decisions.md` DEC-36 (its Consequence lists M8b's thirteen steps; this plan follows them).
 
@@ -20,19 +20,22 @@
 - `livewire/flux-pro` and `composer.fluxui.dev` never appear in the committed or tagged `composer.json` / `composer.lock`.
 - Every action in a workflow is pinned by full commit SHA with a `# vX.Y.Z` comment. Every checkout has `persist-credentials: false`, every job has `timeout-minutes` ≤ 60, and every workflow has `permissions: contents: read`.
 - Never `git stash`, never rewrite published history, never force-push, never delete a test, never read `.env`, never `herd sites`.
-- Secrets, licence keys, passwords and tokens are entered by the owner (`! gh auth login`, `! gh secret set …`, the Packagist and GitHub web UIs) and never appear in chat, in a command line Claude types, in the ledger or in a commit.
+- Secrets, licence keys, passwords, tokens and logins are entered by the owner in their own terminal window (Terminal or iTerm, outside Claude Code, never with the `!` prefix, which captures output and gives the command no TTY, so gh's masked prompts would not run) or in the Packagist and GitHub web UIs. They never appear in chat, in a command line Claude types, in the ledger or in a commit.
 - Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Pull request bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 
 ## Controller decisions
 
 - **CD-1, two parts.** Part A (Tasks 1–3) is local code on `m8b-publication` and needs no approval: it changes nothing outside this machine. Part B (Tasks 4–15) publishes. The owner merges Part A into `main` before Task 5. What is published is `main` as merged.
-- **CD-2, how a test knows it runs in the kit.** The Laravel installer keeps the kit's `composer.json` name in a generated app (`laravel/installer` 5.25 runs `composer create-project <kit> <dir> --stability=dev` and never rewrites `name`), so the name tells nothing. The marker is `.github/workflows/release-check.yml`: it is export-ignored, so no Packagist install has it. `Tests\Fixtures\KitRepository::isKit()` reads it. A test of kit-only metadata or of the release check skips when `isKit()` is false. In the kit's own repository, a missing marker fails CI (`tests.yml`, step *Kit keeps its release check*, `if: github.repository == 'frankcornet/skv3'`) instead of skipping quietly.
+- **CD-2, how a test knows it runs in the kit.** The Laravel installer keeps the kit's `composer.json` name in a generated app (it runs `composer create-project <kit> <dir> --stability=dev` and never rewrites `name`), so the name tells nothing. The marker is `.github/workflows/release-check.yml`: it is export-ignored, so no Packagist install has it. `Tests\Fixtures\KitRepository::isKit()` reads it. A test of kit-only metadata or of the release check skips when `isKit()` is false. In the kit's own repository, a missing marker fails CI (`tests.yml`, step *Kit keeps its release check*, `if: github.repository == 'frankcornet/skv3'`) instead of skipping quietly. An app made with `git clone` or from the GitHub template (§5.1's fourth entry) keeps the marker and the plans; Task 2's docs tell such an app to delete both, after which the kit-only tests skip there too.
 - **CD-3, what a Packagist install leaves out.** Exactly `/.github/workflows/release-check.yml` and `/docs/superpowers/plans` (13 milestone plans, 4.7 MB of build history no app reads; M8a final-review minor 13). The spec, the manual, `docs/decisions.md`, `scripts/traceability.php`, `tests.yml` and `.ai/skills` keep shipping: `TraceabilityTest` and `traceability.php` read the spec in every app. A gitattributes pattern does not match a trailing-slash directory form, so the lines name the directory without a slash; `git archive` then skips the whole tree (proved in the prototype: `git archive HEAD | tar -t` lists no `docs/superpowers/plans/` entry).
-- **CD-4, the Packagist metadata pins in generated apps** (M8a final-review minor 10). `PackageMetadataTest`'s MIT-licence test and its Packagist-description test (keywords, homepage, support) skip outside the kit (CD-2). A generated app chooses its own licence and description. The shipped-files test and the new export-ignore test keep running everywhere: a generated app still ships what it points its users to.
-- **CD-5, what the release check installs.** `laravel new --using=frankcornet/skv3` runs `composer create-project frankcornet/skv3 <dir> --stability=dev`. Composer then picks the default branch (`dev-main`), also after `v1.0.0` exists, so "the installed reference equals `main` HEAD" holds as §8 words it. The reference comes from Composer's `Installing frankcornet/skv3 (dev-main <sha>)` line in the installer's log. If the first dispatch (Task 12) shows Composer prints it differently, the fix-forward adapts the `sed` and its test in one pull request.
+- **CD-4, the Packagist metadata pins in generated apps** (M8a final-review minor 10). `PackageMetadataTest`'s MIT-licence test and its Packagist-description test (keywords, homepage, support) skip outside the kit (CD-2). An app installed from Packagist chooses its own licence and description (a clone or template app after deleting the marker, CD-2). The shipped-files test and the new export-ignore test keep running everywhere: a generated app still ships what it points its users to.
+- **CD-5, what the release check installs.** `laravel new --using=frankcornet/skv3` runs `composer create-project frankcornet/skv3 <dir> --stability=dev`. Composer then picks the default branch (`dev-main`, its 9999999-dev alias wins at stability dev), also after `v1.0.0` exists, so "the installed reference equals `main` HEAD" holds as §8 words it. The reference comes from Composer's `Installing frankcornet/skv3 (dev-main <sha>)` line in the installer's log. Two installer behaviours hide that line, and the plan counters both:
+  - From installer 5.31 on, at normal verbosity in a pipe, create-project runs as a Laravel Prompts task whose logger drops every Composer line (only "✔ Creating Laravel application..." is left, also when Composer fails). The release check therefore passes `-v`. The e2e and phase1 jobs keep their command (their assertions count the hooks' lines), so a failed install there shows only the ✔ line (Task 7 Step 4).
+  - When the installer detects an AI agent (`AI_AGENT`, `CLAUDECODE`, … — the list is `AGENT_VARIABLES` in `scripts/e2e-local.sh`) it prints only a JSON line. A run from Claude Code unsets those variables (Task 11 Step 3). GitHub Actions is not detected as an agent.
+  If the first dispatch (Task 12) still finds no line, the fix-forward adapts the step and its test in one pull request.
 - **CD-6, approvals.** Every **[APPROVAL]** step is asked in chat with exactly what will happen, and runs only after the owner's explicit yes to that step. A yes never carries over to another step.
-  - The approval for the first push (Task 6) names its scope: it also covers the pull requests, pushes and merges of the fix-forward loops in Tasks 7 and 12 and of the release pull request in Task 13. Those loops change only this repository through reviewed pull requests.
-  - The repository, the secrets, the ruleset, Packagist, the tag and a GitHub release are each asked separately.
+  - The approval for the first push (Task 6) also covers, on `frankcornet/skv3` only and nothing else: the `workflow_dispatch` runs of `ci` and `release-check` (Tasks 7, 8, 9 and 12); the branches, pull requests, pushes and merges of the fix-forward loops (Tasks 7, 8 and 12), of the path-filter pull request `ci/1-first-pr` (Task 7 Step 5) and of the DEC-36 addendum pull request (Task 15 Step 2); and pushing and opening, not merging, the release pull request (Task 13). Claude opens and merges these itself; the ruleset requires no review, so nobody else reviews them.
+  - The repository (with its settings), the secrets, the ruleset, Packagist, the release pull request's merge together with the tag, and a GitHub release are each asked separately.
 - **CD-7, history.** The published history is the local history as it is: 397 commits by one author, Frank Cornet, at a `@gemraad.nl` address. The milestone plans contain local paths such as `/Users/frankcornet/…`. Nothing is rewritten: rewriting is destructive and the owner has not asked for it. Task 4 names both facts in the publication approval, so the owner decides with them in view.
 - **CD-8, branch protection.**
   - **Required checks:** one ruleset on `main` with no bypass actors. It requires a pull request with 0 approvals, because the owner is the only maintainer and GitHub does not let an author approve their own pull request. It blocks deletion and non-fast-forward updates. It requires these 11 checks, up to date with `main`: the three check rows, the browser job, `phase1` ×4 and `e2e` ×3.
@@ -44,9 +47,9 @@
 - **CD-10, the CHANGELOG cut.**
   - **Heading:** `## [1.0.0] - <tag date>`, with an empty `## [Unreleased]` above it.
   - **Links:** link definitions at the end of the file, `[Unreleased]: https://github.com/frankcornet/skv3/compare/v1.0.0...HEAD` and `[1.0.0]: https://github.com/frankcornet/skv3/releases/tag/v1.0.0`.
-  - **Date:** the date is the day the owner approves the tag. If the tag slips to another day, the pull request is updated before it merges.
+  - **Date:** the date is the day the owner approves the tag. The release pull request merges only after that approval (Task 14), so `main`, which every `laravel new` installs, never says "released" before the owner has said yes; if the date in the pull request differs from the approval day, it is updated before the merge.
 - **CD-11, pull requests.** Pull requests are merged with a merge commit (`gh pr merge <n> --merge --delete-branch`), like the kit's milestone merges. Before Task 10, a fix still goes through a pull request, so the loop is the same before and after the ruleset.
-- **CD-12, logins.** `gh` is installed but not signed in. The owner signs in with `! gh auth login` (GitHub.com, HTTPS, browser) at the start of Task 5. Claude never handles the token.
+- **CD-12, logins.** `gh` is installed but not signed in, and this machine's global git credential helper is Git Credential Manager with no GitHub account. At the start of Task 5 the owner signs in in their own terminal window and lets gh authenticate git, so Claude's `git push` uses gh's token with the `workflow` scope (pushing `.github/workflows/*` needs it). Claude never handles the token, and pushes with `GCM_INTERACTIVE=never`, so a missing credential fails at once instead of opening a sign-in window from Claude's shell.
 
 ## Owner actions in this plan
 
@@ -54,21 +57,21 @@
 |---|---|
 | 3 | Merge `m8b-publication` into `main` (or ask Claude to) |
 | 4 | Approve publication itself, having read the facts it lists |
-| 5 | `! gh auth login`; approve creating the repository |
+| 5 | In their own terminal: `gh auth login --hostname github.com --git-protocol https --web --scopes workflow`, answering Yes to "Authenticate Git with your GitHub credentials?"; approve creating the repository |
 | 6 | Approve the first push (and the fix-forward scope, CD-6) |
-| 8 | Optional: `! gh secret set FLUX_USERNAME --repo frankcornet/skv3` and `! gh secret set FLUX_LICENSE_KEY --repo frankcornet/skv3` |
+| 8 | Optional, in their own terminal: `gh secret set FLUX_USERNAME --repo frankcornet/skv3` and `gh secret set FLUX_LICENSE_KEY --repo frankcornet/skv3` |
 | 10 | Approve the ruleset |
-| 11 | Approve Packagist, then submit the package and turn on the GitHub hook at packagist.org; time criterion 1 in the Herd GUI |
-| 14 | Approve the tag; optionally approve a GitHub release |
+| 11 | Approve Packagist, then submit the package and turn on the GitHub hook at packagist.org; time criterion 1 in the Herd GUI and report whether it was met |
+| 14 | Approve merging the release pull request and the tag; optionally approve a GitHub release |
 
 ## File ownership
 
 | File | Task |
 |---|---|
 | `.github/workflows/release-check.yml` (create), `.gitattributes`, `.github/workflows/tests.yml` (one step), `tests/Fixtures/KitRepository.php` (create), `tests/Feature/Tooling/ReleaseCheckWorkflowTest.php` (create), `tests/Feature/Tooling/PackageMetadataTest.php` | 1 |
-| `README.md`, `docs/handleiding.html`, `CHANGELOG.md`, `.ai/guidelines/skv3.md` (and the regenerated, git-ignored `AGENTS.md`), `docs/decisions.md` (the DEC-36 M8b addendum skeleton) | 2 |
+| `README.md`, `docs/handleiding.html`, `CHANGELOG.md`, `CLAUDE.md`, `.ai/guidelines/skv3.md` (and the regenerated, git-ignored `AGENTS.md`), `docs/decisions.md` (the DEC-36 M8b addendum skeleton) | 2 |
 | Fix-forward files (whatever the first CI runs name) | 7, 12 |
-| `CHANGELOG.md` (the cut), `README.md` (status), `docs/handleiding.html` (lede, status, roadmap, limitations, colophon) | 13 |
+| `CHANGELOG.md` (the cut), `README.md` (status), `docs/handleiding.html` (eyebrow, lede, status, roadmap, limitations, colophon) | 13 |
 | `docs/decisions.md` (filling the addendum) | 15 |
 
 ---
@@ -89,7 +92,7 @@ Release-check gets its own export-ignored workflow (spec §8, CD-22 of M8a). Its
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
-- Produces: `Tests\Fixtures\KitRepository::MARKER` (`'.github/workflows/release-check.yml'`) and `KitRepository::isKit(): bool`; the workflow `release-check` with one job `release-check`, whose steps are named *Checkout*, *Kit commits no Flux Pro*, *Setup PHP*, *Setup Node*, *Install the Laravel installer*, *laravel new from Packagist*, *The installed reference is main* and *A dist install*; the `tests.yml` check-job step *Kit keeps its release check*. Task 2 documents them; Tasks 10–12 use the job names.
+- Produces: `Tests\Fixtures\KitRepository::MARKER` (`'.github/workflows/release-check.yml'`) and `KitRepository::isKit(): bool`; the workflow `release-check` with one job `release-check`, whose steps are named *Checkout*, *Setup PHP*, *Kit commits no Flux Pro*, *Setup Node*, *Install the Laravel installer*, *laravel new from Packagist*, *The installed reference is main* and *A dist install*; the `tests.yml` check-job step *Kit keeps its release check*. Task 2 documents them; Tasks 10–12 use the job names.
 
 - [ ] **Step 1: Write the marker fixture**
 
@@ -207,15 +210,22 @@ it('runs the release check in the kit\'s own repository only, after a release or
     }
 })->skip($skipOutsideKit, $outsideKit);
 
-it('repeats the kit\'s Flux Pro guard on the released commit (D115)', function () use ($step): void {
+it('repeats the kit\'s Flux Pro guard on the released commit, after Setup PHP (D115)', function () use ($workflow, $step): void {
+    $names = array_column($workflow('release-check.yml')['jobs']['release-check']['steps'], 'name');
+    // Where a step sits; a missing one sorts last. The guard pipes into php -r, so it runs after Setup PHP.
+    $position = fn (string $name): int => is_int($index = array_search($name, $names, true)) ? $index : PHP_INT_MAX;
+
     expect($step('release-check.yml', 'release-check', 'Kit commits no Flux Pro')['run'] ?? null)
-        ->toBe($step('tests.yml', 'check', 'Kit commits no Flux Pro')['run'] ?? false);
+        ->toBe($step('tests.yml', 'check', 'Kit commits no Flux Pro')['run'] ?? false)
+        ->and($position('Kit commits no Flux Pro'))->toBeGreaterThan($position('Setup PHP'));
 })->skip($skipOutsideKit, $outsideKit);
 
 it('installs the published package as a user does, never the commit under test (§8)', function () use ($step, $package): void {
     $install = (string) ($step('release-check.yml', 'release-check', 'laravel new from Packagist')['run'] ?? '');
 
+    // -v keeps Composer's Installing line in the log (the installer hides it in a pipe at normal verbosity).
     expect($install)->toContain("laravel new app --using={$package()} --no-interaction")
+        ->toContain(' -v ')
         ->not->toContain(':dev-')
         ->not->toContain('repositories.');
 })->skip($skipOutsideKit, $outsideKit);
@@ -409,7 +419,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # D115: the tagged commit never names Flux Pro either; the same lines as tests.yml's check job.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, gd, zip
+          tools: composer:v2
+          coverage: none
+
+      # D115: the tagged commit never names Flux Pro either; the same lines as tests.yml's check job, after Setup PHP like there.
       - name: Kit commits no Flux Pro
         run: |
           committed="$(git show HEAD:composer.json HEAD:composer.lock)"
@@ -418,14 +436,6 @@ jobs:
             exit 1
           fi
           git show HEAD:composer.json | php -r '$c = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR); exit(isset($c["extra"]["skv"]) ? 1 : 0);' || { echo "FAIL: the committed composer.json carries extra.skv"; exit 1; }
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-        with:
-          php-version: '8.4'
-          extensions: pdo_sqlite, gd, zip
-          tools: composer:v2
-          coverage: none
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -440,10 +450,12 @@ jobs:
           composer global require laravel/installer --no-interaction
           echo "$(composer global config bin-dir --absolute)" >> "$GITHUB_PATH"
 
-      # Herd's exact command (§8), from Packagist: no local repository, no version constraint.
+      # Herd's exact command (§8), from Packagist: no local repository, no version constraint. -v: at normal verbosity in
+      # a pipe the installer (5.31 and later) runs create-project as a Laravel Prompts task, which drops Composer's output,
+      # including the Installing line the next step reads.
       - name: laravel new from Packagist
         run: |
-          cd "$RUNNER_TEMP" && laravel new app --using=frankcornet/skv3 --no-interaction --no-ansi --database=sqlite --npm --pest --git --boost 2>&1 | tee install.log
+          cd "$RUNNER_TEMP" && laravel new app --using=frankcornet/skv3 --no-interaction -v --no-ansi --database=sqlite --npm --pest --git --boost 2>&1 | tee install.log
 
       # §8: the installed reference equals main's HEAD. The installer runs `composer create-project --stability=dev`,
       # which picks the default branch, and Composer's log names its commit.
@@ -478,7 +490,7 @@ jobs:
 - [ ] **Step 6: Run the tests to see them pass**
 
 Run: `vendor/bin/pest tests/Feature/Tooling`
-Expected: PASS, nothing skipped. The prototype reported 121 passed and 818 assertions on `470d0de` plus this task.
+Expected: PASS, nothing skipped. The prototype (after the plan review) reported 175 passed for `tests/Feature/Tooling tests/Arch` on `470d0de` plus this task.
 
 - [ ] **Step 7: Prove the skips and the mutations**
 
@@ -491,6 +503,8 @@ Each check uses `cp` to park a file and `cp` to restore it. Never `git stash`.
 | In release-check's Flux Pro guard, `flux-pro\|composer` → `flux-pro-x\|composer` | `repeats the kit's Flux Pro guard` fails |
 | Delete the `/docs/superpowers/plans export-ignore` line | `leaves only the kit-only files out` fails |
 | Delete the *Kit keeps its release check* step | `fails the kit's CI when the release check goes missing` fails |
+| Remove ` -v` from *laravel new from Packagist* | `installs the published package as a user does` fails |
+| Move *Kit commits no Flux Pro* before *Setup PHP* | `repeats the kit's Flux Pro guard on the released commit, after Setup PHP` fails |
 
 Then the archive check, after the commit in Step 9:
 `git archive HEAD | tar -t | grep -cE '^docs/superpowers/plans/|release-check\.yml'` prints `0`, and `git archive HEAD | tar -t | grep -cE '^(README\.md|LICENSE|CHANGELOG\.md|docs/superpowers/specs/2026-10-10-skv3-design\.md|\.github/workflows/tests\.yml)$'` prints `5`.
@@ -521,6 +535,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `README.md` (§ *Develop the kit*, the paragraph after the command block)
 - Modify: `docs/handleiding.html` (the CI bullet in the developers' chapter, about line 1638)
 - Modify: `CHANGELOG.md` (`## [Unreleased]`: one *Added* and one *Changed* line)
+- Modify: `CLAUDE.md` (line 9, the plans pointer)
 - Modify: `.ai/guidelines/skv3.md` (one rule), then regenerate `AGENTS.md`
 - Modify: `docs/decisions.md` (append the M8b addendum to DEC-36)
 
@@ -533,7 +548,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 In `README.md`, § *Develop the kit*, append this sentence to the end of the paragraph that starts "The tests never touch your development database":
 
 ```markdown
-A Packagist install leaves out `.github/workflows/release-check.yml` (the kit's own release check, which installs the published package and checks it is `main`) and the milestone plans under `docs/superpowers/plans`; the tests that read kit-only files skip in an app generated from the kit (`Tests\Fixtures\KitRepository`), and the kit's CI fails when the release check goes missing.
+A Packagist install leaves out `.github/workflows/release-check.yml` (the kit's own release check, which installs the published package and checks it is `main`) and the milestone plans under `docs/superpowers/plans`; the tests that read kit-only files skip in such an app (`Tests\Fixtures\KitRepository`), and the kit's CI fails when the release check goes missing. A `git clone` or a repository made from the GitHub template keeps both: delete `.github/workflows/release-check.yml` and `docs/superpowers/plans` in such an app, and the kit-only tests skip there too.
 ```
 
 - [ ] **Step 2: Manual**
@@ -541,7 +556,7 @@ A Packagist install leaves out `.github/workflows/release-check.yml` (the kit's 
 In `docs/handleiding.html`, the CI bullet that begins `<li>CI (<code>.github/workflows/tests.yml</code>) draait drie controlerijen`: insert this before its closing `</li>`:
 
 ```html
- De repository van de kit heeft ook een eigen release-check (<code>.github/workflows/release-check.yml</code>): na een release installeert hij het pakket van Packagist zoals een gebruiker dat doet en controleert hij dat het <code>main</code> is. Een installatie via Packagist krijgt dat bestand en de milestoneplannen onder <code>docs/superpowers/plans</code> niet mee; de tests die kit-bestanden lezen, slaan zichzelf daar over (<code>Tests\Fixtures\KitRepository</code>).
+ De repository van de kit heeft ook een eigen release-check (<code>.github/workflows/release-check.yml</code>): na een release installeert hij het pakket van Packagist zoals een gebruiker dat doet en controleert hij dat het <code>main</code> is. Een installatie via Packagist krijgt dat bestand en de milestoneplannen onder <code>docs/superpowers/plans</code> niet mee; de tests die kit-bestanden lezen, slaan zichzelf daar over (<code>Tests\Fixtures\KitRepository</code>). Een <code>git clone</code> of een repository uit de GitHub-template houdt beide; verwijder daar <code>.github/workflows/release-check.yml</code> en <code>docs/superpowers/plans</code>, dan slaan de kit-tests zich ook daar over.
 ```
 
 - [ ] **Step 3: CHANGELOG**
@@ -555,7 +570,7 @@ Under `## [Unreleased]` → `### Added`, append:
 Under `### Changed`, append:
 
 ```markdown
-- A Packagist install no longer ships the kit's milestone plans (`docs/superpowers/plans`) or its release check, and in an app generated from the kit the tests of the kit's own licence and Packagist description skip, so the app chooses its own.
+- A Packagist install no longer ships the kit's milestone plans (`docs/superpowers/plans`) or its release check, and in an app installed from Packagist the tests of the kit's own licence and Packagist description skip, so the app chooses its own (a clone or template app deletes `.github/workflows/release-check.yml` for the same effect).
 ```
 
 - [ ] **Step 4: Kit guideline**
@@ -563,25 +578,29 @@ Under `### Changed`, append:
 In `.ai/guidelines/skv3.md`, add this line after the bullet about test files that never declare classes:
 
 ```markdown
-- A test of a kit-only file or of the kit's own package metadata skips outside the kit with `->skip(fn (): bool => ! \Tests\Fixtures\KitRepository::isKit(), '…')`; never tell the kit from a generated app by `composer.json`'s name, which the installer keeps.
+- A test of a kit-only file or of the kit's own package metadata imports `Tests\Fixtures\KitRepository` and skips outside the kit with `->skip(fn (): bool => ! KitRepository::isKit(), '…')`; never tell the kit from a generated app by `composer.json`'s name, which the installer keeps.
 ```
 
 Regenerate `AGENTS.md` with `php artisan boost:update --no-discover --no-interaction`, as M8a's Task 17 did. `AGENTS.md` is git-ignored, so it is not committed. Check that `grep -c KitRepository AGENTS.md` prints `1`.
 
-- [ ] **Step 5: DEC-36 addendum skeleton**
+- [ ] **Step 5: CLAUDE.md**
 
-Append to the end of `docs/decisions.md` (DEC-36 is its last entry, a `###` heading that ends with its **Consequence:** paragraph), after one blank line:
+In `CLAUDE.md` line 9, replace `milestone plans in \`docs/superpowers/plans/\`.` with `the kit's milestone plans are in \`docs/superpowers/plans/\` in the kit's own repository only (a Packagist install leaves them out).`
+
+- [ ] **Step 6: DEC-36 addendum skeleton**
+
+Append to DEC-36 in `docs/decisions.md`, after its **Evidence:** paragraph and before the next `## DEC-`:
 
 ```markdown
-**Addendum (M8b, publication):** Part A (`docs/superpowers/plans/2026-10-18-m8b-publication.md` Tasks 1–3) added the export-ignored release check, `Tests\Fixtures\KitRepository` (the kit is the repository that has `release-check.yml`, because the installer keeps `composer.json`'s name; the kit's CI fails when it is missing) and left `docs/superpowers/plans` out of a Packagist install; `PackageMetadataTest`'s licence and Packagist pins skip in a generated app (M8a final-review minors 10 and 13). The approvals and their dates: (filled in after publication). The first CI runs and the fix-forward pull requests: (filled in after publication). The ruleset: (filled in after publication). Packagist and the dist install: (filled in after publication). Criterion 1 in the Herd GUI: (filled in after publication). The release check and `v1.0.0`: (filled in after publication).
+**Addendum (M8b, publication):** Part A (`docs/superpowers/plans/2026-10-18-m8b-publication.md` Tasks 1–3) added the export-ignored release check, `Tests\Fixtures\KitRepository` (the kit is the repository that has `release-check.yml`, because the installer keeps `composer.json`'s name; the kit's CI fails when it is missing) and left `docs/superpowers/plans` out of a Packagist install; `PackageMetadataTest`'s licence and Packagist pins skip in a generated app (M8a final-review minors 10 and 13); this lands DEC-36 (10)'s workflow file ahead of (1) and with the first push rather than through its own pull request, while its first dispatch stays at (10). The approvals and their dates: (filled in after publication). The first CI runs and the fix-forward pull requests, and the order of (4) and (5) (secrets after the first green run): (filled in after publication). The ruleset: (filled in after publication). Packagist and the dist install: (filled in after publication). Criterion 1 in the Herd GUI: (filled in after publication). The release check and `v1.0.0`: (filled in after publication).
 ```
 
-- [ ] **Step 6: Gate and commit**
+- [ ] **Step 7: Gate and commit**
 
 Run: `vendor/bin/pest tests/Feature/Tooling tests/Feature/LangCoverageTest.php` → PASS (nothing in this task adds a `__()` key).
 
 ```bash
-git add README.md docs/handleiding.html CHANGELOG.md .ai/guidelines/skv3.md docs/decisions.md
+git add README.md docs/handleiding.html CHANGELOG.md CLAUDE.md .ai/guidelines/skv3.md docs/decisions.md
 git commit -m "docs: describe the release check and the kit marker, and open the m8b addendum
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -614,18 +633,33 @@ Report Part A to the owner and stop. The owner merges `m8b-publication` into `ma
 
 ## Part B — publication (controller; [APPROVAL] steps wait for the owner's explicit yes)
 
-`SCRATCH` is the controller's session scratchpad directory (`m8b/` in it). Every command in Part B runs in the main session, one at a time, and its result goes into the ledger `.superpowers/sdd/2026-10-18-m8b-publication/progress.md`. Never record a token, a secret or a licence key there.
+Every command in Part B runs in the main session, one at a time, and its result goes into the ledger `.superpowers/sdd/2026-10-18-m8b-publication/progress.md`. Never record a token, a secret or a licence key there. Three conventions hold for every task below:
+
+- **Scratch files.** Every command that uses the scratchpad starts with `SCRATCH=<absolute session scratchpad>/m8b && mkdir -p "$SCRATCH" &&` in the same Bash call; the shell keeps no variables between calls.
+- **Watching a run.** Never in a foreground call (a run outlives the tool's 10-minute limit and floods the output). Start `gh run watch <id> --repo frankcornet/skv3 --exit-status --interval 60 > "$SCRATCH"/watch-<id>.log 2>&1` in the background, and read the result with `gh run view <id> --repo frankcornet/skv3 --json status,conclusion,jobs --jq '.conclusion, (.jobs[] | "\(.name) \(.conclusion)")'`.
+- **Pull request bodies** go in a file, `"$SCRATCH"/pr-<slug>.md` (cause, fix and evidence, a blank line, then `🤖 Generated with [Claude Code](https://claude.com/claude-code)`), passed with `--body-file`.
+- **The Packagist wait**, before every release-check dispatch and before the tag push, once Packagist has the package (Task 11): wait until Packagist serves `main`'s HEAD as `dev-main`.
+
+  ```bash
+  for attempt in $(seq 1 20); do
+    served="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.reference')"
+    [ "$served" = "$(git rev-parse main)" ] && { echo "Packagist serves main"; break; }
+    sleep 30
+  done
+  ```
+
+  Go ahead only after "Packagist serves main". Otherwise stop: the GitHub hook from Task 11 is not working. The owner checks the integration at packagist.org and presses *Update* on the package page. A release check that fails with "installed X, main is Y" where X is main's previous commit is this race, not a defect: wait, then `gh run rerun <id> --repo frankcornet/skv3`, and record both runs.
 
 ### Task 4: Pre-flight and **[APPROVAL] publication itself** (DEC-36 Consequence (1); CD-6, CD-7)
 
 - [ ] **Step 1: Scan the history for secrets (read-only)**
 
 ```bash
-git log --all -p --no-color | grep -nE 'APP_KEY=base64:[A-Za-z0-9+/=]{20,}|BEGIN ([A-Z]+ )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|FLUX_LICENSE_KEY=[^ "$]+|password[\x27"]? *[:=>]+ *[\x27"][^\x27"]{12,}' | grep -v -e 'APP_KEY=base64:$' | head -50
+git log --all -p --no-color -- . ':(exclude)lang/*.json' | grep -nE 'APP_KEY=base64:[A-Za-z0-9+/=]{20,}|BEGIN ([A-Z]+ )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|FLUX_LICENSE_KEY=[^ "$]+|password[\x27"]? *[:=>]+ *[\x27"][^\x27"]{12,}' | grep -v -e 'APP_KEY=base64:$' | sed -E 's/^[0-9]+:[+ -]?//' | sort | uniq -c | sort -rn
 git log --all --diff-filter=A --name-only --format= | grep -E '(^|/)(\.env(\..+)?|auth\.json|.+\.(pem|key|p12|sqlite))$' | grep -v -e '^\.env\.example$' | sort -u
 ```
 
-Expected: no line that is a real secret. Every hit is either a test fixture that is visibly fake or a documented example. Name each hit and say why it is harmless. The only `.env*` file ever added is `.env.example`. A real secret stops Part B: report it to the owner, because removing it from history is a rewrite the owner must decide on.
+Expected: no line that is a real secret. Every distinct hit (a few dozen; no `head`, so nothing is hidden) is either a test fixture that is visibly fake or a documented example; hits inside `docs/superpowers/plans` that are this plan's own regex are expected. Name each hit and say why it is harmless. The only `.env*` file ever added is `.env.example`. A real secret stops Part B: report it to the owner, because removing it from history is a rewrite the owner must decide on.
 
 - [ ] **Step 2: Facts for the approval**
 
@@ -649,7 +683,17 @@ Wait for an explicit yes. Record the date and the wording of the answer in the l
 
 - [ ] **Step 1: Owner signs in**
 
-Ask the owner to run `! gh auth login` (GitHub.com, HTTPS, sign in with a browser). Then run `gh auth status`. It must name the account `frankcornet` and the scopes `repo` and `workflow`. Never print the token. If `workflow` is missing, ask for `! gh auth refresh -s workflow`.
+Ask the owner to run, in their own terminal window (not with `!` in Claude Code, CD-12):
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web --scopes workflow
+```
+
+and to answer **Yes** to "Authenticate Git with your GitHub credentials?". If they answered No or are unsure, they also run `gh auth setup-git --hostname github.com` there (it adds a github.com-only credential helper to `~/.gitconfig`; tell them so). Then check, without printing a token:
+- `gh auth status` names the account `frankcornet` and the scopes include `repo` and `workflow`;
+- `git config --get-all credential.https://github.com.helper` ends with a line containing `gh auth git-credential`.
+
+If `workflow` is missing, the owner runs `gh auth refresh -h github.com -s workflow` in their own terminal.
 
 - [ ] **Step 2: Check the name is free**
 
@@ -657,7 +701,7 @@ Ask the owner to run `! gh auth login` (GitHub.com, HTTPS, sign in with a browse
 
 - [ ] **Step 3: Ask** ("[APPROVAL 2/7] Repository")
 
-Ask: create the public repository `frankcornet/skv3` with the description "Multi-tenant Laravel starter kit: organisations on subdomains, a setup wizard, Livewire 4 and Flux", no README, licence or gitignore of GitHub's own; mark it as a template; no push yet.
+Ask: create the public repository `frankcornet/skv3` with the description "Multi-tenant Laravel starter kit: organisations on subdomains, a setup wizard, Livewire 4 and Flux", no README, licence or gitignore of GitHub's own; mark it as a template; turn off the wiki and projects; delete head branches automatically after a merge; add it as the remote `origin`; no push yet.
 
 - [ ] **Step 4: Create**
 
@@ -674,25 +718,24 @@ Expected: `PUBLIC`, `isTemplate: true`, and no default branch yet.
 
 - [ ] **Step 1: Ask** ("[APPROVAL 3/7] Push")
 
-Ask: push `main` (the commit hash, no tags) to `origin`. Name the scope from CD-6: the same yes covers the pull requests, pushes and merges of the fix-forward loops (Tasks 7 and 12) and of the release pull request (Task 13), and nothing else.
+Ask: push `main` (the commit hash, no tags) to `origin`. Name the scope from CD-6 in full: the same yes covers the `ci` and `release-check` dispatches (Tasks 7, 8, 9, 12), the fix-forward loops (Tasks 7, 8, 12), the path-filter pull request `ci/1-first-pr`, the DEC-36 addendum pull request (Task 15), and pushing and opening (not merging) the release pull request (Task 13), all on `frankcornet/skv3`, and nothing else; Claude merges its own pull requests, nobody reviews them.
 
 - [ ] **Step 2: Push**
 
 ```bash
-git push -u origin main
+GCM_INTERACTIVE=never git push -u origin main
 gh repo view frankcornet/skv3 --json defaultBranchRef --jq .defaultBranchRef.name
 gh run list --repo frankcornet/skv3 --limit 5
 ```
 
-Expected: `main`; one `ci` run started by the push.
+Expected: `main`; one `ci` run started by the push. On an authentication error, stop and ask the owner to run `gh auth setup-git --hostname github.com` in their own terminal. Every later branch push also uses `GCM_INTERACTIVE=never`.
 
 ### Task 7: The first CI runs and the fix-forward loop (Consequence (5))
 
 - [ ] **Step 1: Watch the push run**
 
-Run `gh run watch <id> --repo frankcornet/skv3 --exit-status`, then `gh run view <id> --repo frankcornet/skv3 --log-failed | tail -200` for a failure. A push to `main` runs `check` ×3 and `browser`. `phase1` and `e2e` run, but their path filter skips their steps (`run=false` outside `schedule` and `workflow_dispatch`). Expected on the three check rows:
-- `REQUIRE_POSTGRES=true` on the PostgreSQL row;
-- `BackupRunTest` and the PostgreSQL wizard test running, not skipped (search the log for them);
+Watch it in the background (Part B conventions), then `gh run view <id> --repo frankcornet/skv3 --log-failed | tail -200` for a failure. A push to `main` runs `check` ×3 and `browser`. `phase1` and `e2e` run, but their path filter skips their steps (`run=false` outside `schedule` and `workflow_dispatch`). Expected on the three check rows:
+- `REQUIRE_POSTGRES: true` in the PostgreSQL row's and the browser job's step env, as the log prints it. `Tests\Fixtures\RequiredPostgres` turns the skips of `BackupRunTest` and the PostgreSQL wizard tests into failures there, so a green job means they ran. The parallel output prints dots, not test names, so do not search for them there; in the browser job's non-parallel output, `SetupWizardTest`'s PostgreSQL case shows as passed, not skipped;
 - *Kit commits no Flux Pro* and *Kit keeps its release check* ran (the `if` held);
 - the Pro steps skipped without secrets.
 
@@ -717,10 +760,10 @@ Do this only on a real failure. ubuntu-latest's systemd-resolved normally answer
 - [ ] **Step 4: The fix-forward protocol** (for any failure in Steps 1–3)
 
 For each failure:
-1. Find the root cause first (superpowers:systematic-debugging).
+1. Find the root cause first (superpowers:systematic-debugging). If an e2e or phase1 install fails with only "✔ Creating Laravel application..." in its log, the installer hid Composer's output (CD-5). Reproduce locally with `scripts/e2e-local.sh`'s command plus `-v` (agent variables unset) before you diagnose. If `-v` is added to `tests.yml`'s e2e install in a fix-forward, first check that the Phase 1 assertion `grep -c skv:install` still counts 1, because `-v` also raises Composer's and the hooks' verbosity.
 2. Create a branch `ci/<n>-<slug>`. Write a failing test where a test can catch it (`CiWorkflowTest`, `ReleaseCheckWorkflowTest` or the suite the failure is in), then the fix.
 3. Run the local gate for the files touched.
-4. `git push -u origin ci/<n>-<slug>`, then `gh pr create --repo frankcornet/skv3 --base main --title "<conventional title>" --body "<cause, fix, evidence>\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"`.
+4. `GCM_INTERACTIVE=never git push -u origin ci/<n>-<slug>`, then `gh pr create --repo frankcornet/skv3 --base main --title "<conventional title>" --body-file "$SCRATCH"/pr-<slug>.md` (Part B conventions).
 5. Wait for every check to pass, then `gh pr merge <n> --repo frankcornet/skv3 --merge --delete-branch` and `git switch main && git pull --ff-only`.
 
 Each round goes into the ledger. Stop and report to the owner after five rounds on the same failure.
@@ -738,9 +781,9 @@ Merge it as in Step 4.
 
 - [ ] **Step 1: Ask** ("[APPROVAL 4/7] Flux Pro secrets, optional")
 
-Ask whether the owner wants the Pro rows to run. If yes, the owner runs both commands themselves. Each prompts for the value, which never reaches the chat:
-- `! gh secret set FLUX_USERNAME --repo frankcornet/skv3`
-- `! gh secret set FLUX_LICENSE_KEY --repo frankcornet/skv3`
+Ask whether the owner wants the Pro rows to run. If yes, the owner runs both commands in their own terminal window (CD-12). Each prompts "Paste your secret:" with masked input; never `--body`, never a pipe:
+- `gh secret set FLUX_USERNAME --repo frankcornet/skv3`
+- `gh secret set FLUX_LICENSE_KEY --repo frankcornet/skv3`
 
 If no, record "no Pro secrets" and skip to Task 9.
 
@@ -751,15 +794,17 @@ If no, record "no Pro secrets" and skip to Task 9.
 - the `postgres-pro` e2e row runs *Enable Flux Pro*;
 - no log line shows the licence. GitHub masks secrets; also search the log for `FLUX_LICENSE_KEY=` to confirm it is never echoed.
 
+If *Enable Flux Pro* is skipped on the PostgreSQL row although both secrets are listed, treat a secret as empty and ask the owner to set it again. A Pro failure goes through Task 7 Step 4's fix-forward protocol (inside CD-6's scope); then dispatch `ci` again.
+
 ### Task 9: CI green on main
 
-- [ ] **Step 1:** `gh run list --repo frankcornet/skv3 --branch main --limit 3` shows the latest push run and the latest dispatch run both `success` on the same head as `git rev-parse main`. Record the run URLs.
+- [ ] **Step 1:** If the latest `workflow_dispatch` run of `ci` is not on `git rev-parse main` (a fix-forward merged after it), dispatch again (`gh workflow run ci --repo frankcornet/skv3 --ref main`) and watch it. Then `gh run list --repo frankcornet/skv3 --branch main --limit 5` shows the latest push run and the latest dispatch run both `success` on the same head as `git rev-parse main`. Record the run URLs.
 
 ### Task 10: **[APPROVAL] branch protection** (Consequence (6); CD-8)
 
 - [ ] **Step 1: Write the ruleset**
 
-Write the ruleset to the scratchpad as `ruleset.json` (not in the repository):
+Write the ruleset to `"$SCRATCH"/ruleset.json` (not in the repository):
 
 ```json
 {
@@ -813,7 +858,7 @@ Ask: apply the ruleset on `main`. Name its effect: no direct push for anyone, th
 - [ ] **Step 3: Apply and verify**
 
 ```bash
-gh api -X POST repos/frankcornet/skv3/rulesets --input ruleset.json --jq '.id, .enforcement'
+gh api -X POST repos/frankcornet/skv3/rulesets --input "$SCRATCH"/ruleset.json --jq '.id, .enforcement'
 gh api repos/frankcornet/skv3/rules/branches/main --jq '.[].type' | sort
 ```
 
@@ -837,12 +882,12 @@ curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packag
 git rev-parse main
 ```
 
-Expected: the same hash. After one more merge to `main`, the reference follows within minutes, which shows the hook works.
+Expected: the same hash. Whether the hook follows later pushes is checked by the Packagist wait (Part B conventions) before Task 12 and before the tag.
 
 - [ ] **Step 3: A real dist install (Consequence (8))**
 
 ```bash
-cd "$HOME/Herd" && laravel new m8b-packagist --using=frankcornet/skv3 --no-interaction --database=sqlite --npm --pest --git --boost 2>&1 | tee "$SCRATCH"/packagist-install.log
+cd "$HOME/Herd" && env -u AI_AGENT -u CLAUDECODE -u CLAUDE_CODE -u CLAUDE_CODE_ENTRYPOINT laravel new m8b-packagist --using=frankcornet/skv3 --no-interaction -v --database=sqlite --npm --pest --git --boost 2>&1 | tee "$SCRATCH"/packagist-install.log
 grep -E 'Installing frankcornet/skv3 \(dev-main [0-9a-f]+\)' "$SCRATCH"/packagist-install.log
 cd "$HOME/Herd/m8b-packagist" && ls README.md LICENSE CHANGELOG.md docs/handleiding.html && test ! -e docs/superpowers/plans && test ! -e .github/workflows/release-check.yml && echo "dist contents ok"
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://m8b-packagist.test/
@@ -850,7 +895,7 @@ cd "$HOME/Herd/m8b-packagist" && php artisan config:clear && vendor/bin/pest tes
 ```
 
 Expected:
-- the `Installing … (dev-main <hash of main>)` line, which confirms CD-5's format before Task 12;
+- the `Installing … (dev-main <hash of main>)` line, which confirms CD-5's format before Task 12. The installer prints only a JSON line when it detects an AI agent and drops Composer's lines at normal verbosity in a pipe (CD-5), so both `env -u` and `-v` are needed; unset any other variable from `AGENT_VARIABLES` in `scripts/e2e-local.sh` that `env` shows in this session;
 - `dist contents ok`;
 - `302` to `/welcome-setup?token=…`, not recorded;
 - the Tooling tests pass, with the kit-only cases skipped and their reason printed.
@@ -868,6 +913,8 @@ Ask the owner to time two runs in the Herd app, each from clicking *Create* to t
 
 Record the two durations, and whether B ran with Herd Pro's services stopped.
 
+Expected, per configuration (§12 (1)): under 5:00 from *Create* to the dashboard; the owner opened no terminal and edited no file; the wizard's summary lists no `manual()` command the app needs to work (optional ones are recorded by name). If a run misses any of these, stop before Task 12 and report it to the owner. Continue only on the owner's explicit ruling, which the addendum's "Criterion 1 in the Herd GUI" records.
+
 Clean up both sites afterwards:
 - `herd unsecure` each;
 - `rm -rf` each;
@@ -876,7 +923,7 @@ Clean up both sites afterwards:
 
 ### Task 12: The release check green on dispatch (Consequence (10))
 
-- [ ] **Step 1:**
+- [ ] **Step 1:** Run the Packagist wait (Part B conventions) first, and again after every fix-forward merge in this loop.
 
 ```bash
 gh workflow run release-check --repo frankcornet/skv3 --ref main
@@ -891,7 +938,7 @@ A failure goes through Task 7's fix-forward protocol, with the test in `ReleaseC
 
 - [ ] **Step 1: Branch and date**
 
-`git switch -c release/1.0.0 main`. The date is `date +%F` on the day of Task 14's approval. If the tag slips, update the date before the merge.
+`git switch -c release/1.0.0 main`. Use today's `date +%F` as the expected date; Task 14 updates it if the owner approves on another day (CD-10).
 
 - [ ] **Step 2: CHANGELOG**
 
@@ -923,6 +970,7 @@ Replace the status line (line 5) with:
 - [ ] **Step 4: Manual**
 
 In `docs/handleiding.html`:
+- **The eyebrow:** replace `<span>M8a</span><span>M0–M8a in main</span><span>bijgewerkt 18-10-2026</span>` with `<span>v1.0.0</span><span>M0–M8b in main</span><span>bijgewerkt <date as DD-MM-YYYY></span>`.
 - **The lede:** replace `Geschreven voor de stand na milestone M8a: klaar voor de release van v1.0.0.` with `Geschreven voor v1.0.0.`.
 - **Chapter 7's opening paragraph:** replace it with `<p>Milestones M0 tot en met M8b zitten in <code>main</code>. De kit is uitgebracht als v1.0.0 (<date>) en staat op GitHub en Packagist als <code>frankcornet/skv3</code>; wat er in die versie zit, staat onder <code>[1.0.0]</code> in de changelog.</p>`.
 - **The status table:** after the M8a row, add `<tr><td class="tabnum">M8b</td><td>Publicatie: de repository op GitHub, CI groen (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td><td><span class="badge b-ok">klaar</span></td></tr>`.
@@ -932,20 +980,30 @@ In `docs/handleiding.html`:
 
 - [ ] **Step 5: Pull request**
 
-Run `vendor/bin/pest tests/Feature/Tooling`, then commit with "docs: cut the changelog for v1.0.0 and mark the release in the readme and the manual" and the Co-Authored-By line. Push, open the pull request, wait for all 11 checks, then merge (Task 7 Step 4).
+Run `vendor/bin/pest tests/Feature/Tooling`, then commit with "docs: cut the changelog for v1.0.0 and mark the release in the readme and the manual" and the Co-Authored-By line. Push (`GCM_INTERACTIVE=never`), open the pull request with a body file (Part B conventions) and wait for all 11 checks. **Do not merge**: the merge belongs to Task 14's approval.
 
 ### Task 14: **[APPROVAL] the tag `v1.0.0`** and the optional GitHub release (Consequence (12))
 
-- [ ] **Step 1: Ask** ("[APPROVAL 7/7] Tag")
+- [ ] **Step 1: Ask** ("[APPROVAL 7/7] Release")
 
-Ask: tag `main` at `<hash>` (the merged release pull request) as `v1.0.0`, annotated, and push the tag. Separately: publish a GitHub release with the CHANGELOG's 1.0.0 section as its notes, yes or no.
+Precondition: Task 11 Step 4 met criterion 1 in both configurations, or the owner's ruling on it is recorded.
 
-- [ ] **Step 2: Tag**
+Ask: merge release pull request #<n> (dated <date>), then tag its merge commit on `main` as `v1.0.0` (annotated) and push the tag. Name the two criterion-1 durations in the question. Separately: publish a GitHub release with the CHANGELOG's 1.0.0 section as its notes, yes or no.
+
+- [ ] **Step 2: Merge and tag**
+
+On the day of the yes: if `date +%F` differs from the date in the pull request, update the date in `CHANGELOG.md`, `README.md` and `docs/handleiding.html` (both forms, `YYYY-MM-DD` and the eyebrow's `DD-MM-YYYY`), push and wait for the checks again. Then:
 
 ```bash
+gh pr merge <n> --repo frankcornet/skv3 --merge --delete-branch
 git switch main && git pull --ff-only
+```
+
+Run the Packagist wait (Part B conventions), then:
+
+```bash
 git tag -a v1.0.0 -m "skv3 v1.0.0"
-git push origin v1.0.0
+GCM_INTERACTIVE=never git push origin v1.0.0
 ```
 
 - [ ] **Step 3: The release, only with its own yes**
@@ -959,7 +1017,7 @@ gh release create v1.0.0 --repo frankcornet/skv3 --title "v1.0.0" --notes-file "
 
 - [ ] **Step 1: Release check after the tag**
 
-`gh run list --repo frankcornet/skv3 --workflow release-check --limit 2`. The tag push and the release, if any, each start a run, and the later one cancels the earlier (concurrency). Watch the last one. Expected: green. Also check `curl -s https://repo.packagist.org/p2/frankcornet/skv3.json | jq -r '.packages["frankcornet/skv3"][].version'`, which lists `v1.0.0` (or `1.0.0`).
+`gh run list --repo frankcornet/skv3 --workflow release-check --limit 2`. The tag push and the release, if any, each start a run, and the later one cancels the earlier (concurrency). Watch the last one in the background. Expected: green. A failure only on *The installed reference is main* with the previous `main` commit is the Packagist race (Part B conventions): wait, rerun, record both runs. Also check `curl -s https://repo.packagist.org/p2/frankcornet/skv3.json | jq -r '.packages["frankcornet/skv3"][].version'`, which lists `v1.0.0` (or `1.0.0`).
 
 - [ ] **Step 2: Fill the addendum**
 
@@ -971,7 +1029,7 @@ Replace DEC-36's six "(filled in after publication)" markers with:
 - the two Herd GUI durations (with CD-9's note on configuration B);
 - the release-check runs before and after the tag.
 
-Commit on a branch, open a pull request and merge it (it is docs only, covered by CD-6).
+Commit on a branch, push it (`GCM_INTERACTIVE=never`), open a pull request with a body file and merge it once the checks are green (docs only; CD-6 names it in the push approval).
 
 - [ ] **Step 3: Memory and hand-off**
 
