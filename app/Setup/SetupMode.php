@@ -9,7 +9,10 @@ use App\Setup\Http\DirectRequest;
 use App\Setup\Http\SetupHostGuard;
 use App\Setup\Support\Toolchain;
 use App\Tenancy\Facades\Tenant;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter as RateLimiterFacade;
+use ReflectionProperty;
 use Spatie\Permission\PermissionRegistrar;
 use Throwable;
 
@@ -39,8 +42,9 @@ final readonly class SetupMode
 
     /**
      * A file session, a file cache and the sync queue: drivers that already need no database (array, file, cookie,
-     * sync) are kept, so tests keep theirs. The permission registrar, built at boot on the old cache store, is
-     * pointed at the new one.
+     * sync) are kept, so tests keep theirs. The permission registrar and the rate limiter, built at boot on the old
+     * cache store, are pointed at the new one: Livewire asks the limiter on every update (its checksum limit), which
+     * would reach a database that does not exist yet.
      */
     public function applyRuntime(): void
     {
@@ -68,6 +72,10 @@ final readonly class SetupMode
 
         if (app()->resolved(PermissionRegistrar::class)) {
             app(PermissionRegistrar::class)->initializeCache();
+        }
+
+        if (isset($runtime['cache.default']) && app()->resolved(RateLimiter::class)) {
+            $this->moveRateLimiter();
         }
     }
 
@@ -111,6 +119,20 @@ final readonly class SetupMode
         return $resolved['host'] !== null
             ? ['redirect' => $wizard, 'problem' => null]
             : ['redirect' => null, 'problem' => ['suggestion' => $resolved['suggestion'], 'problem' => (string) $resolved['problem']]];
+    }
+
+    /** A limiter on the setup cache that keeps the named limiters boot registered (Fortify's, the kit's). */
+    private function moveRateLimiter(): void
+    {
+        $limiters = new ReflectionProperty(RateLimiter::class, 'limiters')->getValue(app(RateLimiter::class));
+        $limiter = new RateLimiter(cache()->store('file'));
+
+        foreach (is_array($limiters) ? $limiters : [] as $name => $callback) {
+            $limiter->for($name, $callback);
+        }
+
+        app()->instance(RateLimiter::class, $limiter);
+        RateLimiterFacade::clearResolvedInstance(RateLimiter::class);
     }
 
     /** False when the database cannot be read yet (a first install): the wizard is what sets it up. */

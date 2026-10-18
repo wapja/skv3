@@ -18,9 +18,12 @@ use App\Setup\Wizard\WizardRunner;
 use App\Setup\Wizard\WizardState;
 use App\Tenancy\Facades\Tenant;
 use Illuminate\Cache\FileStore;
+use Illuminate\Cache\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Session\FileSessionHandler;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\RateLimiter as RateLimiterFacade;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -84,6 +87,28 @@ it('points the permission registrar at the setup cache, away from the database s
     $this->get('/login')->assertOk();
 
     expect(app(PermissionRegistrar::class)->getCacheStore())->toBeInstanceOf(FileStore::class);
+});
+
+it('points the rate limiter at the setup cache, away from the database store it booted with, and keeps its limiters (RL-1)', function (): void {
+    // Arrange: the limiter as boot builds it on the project's database cache (FortifyServiceProvider::configureRateLimiting()).
+    // Livewire asks it on every update (its checksum limit), so a wizard request must never reach that store.
+    useSetupWizard();
+    config(['cache.default' => 'database']);
+    $booted = new RateLimiter(cache()->store('database'));
+    $booted->for('booted-limiter', fn (): Limit => Limit::perMinute(1));
+    app()->instance(RateLimiter::class, $booted);
+    RateLimiterFacade::clearResolvedInstance(RateLimiter::class);
+
+    $this->get('/login')->assertOk();
+    RateLimiterFacade::hit('setup-mode-probe');
+
+    expect(RateLimiterFacade::getFacadeRoot())->toBe(app(RateLimiter::class))->not->toBe($booted)
+        ->and(app(RateLimiter::class)->limiter('booted-limiter'))->not->toBeNull()
+        ->and(cache()->store('file')->has('setup-mode-probe'))->toBeTrue()
+        ->and(cache()->store('database')->has('setup-mode-probe'))->toBeFalse();
+
+    cache()->store('file')->forget('setup-mode-probe');
+    cache()->store('file')->forget('setup-mode-probe:timer');
 });
 
 it('lets every host through the tenant resolver in setup mode (§5.3.4)', function (): void {
