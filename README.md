@@ -2,7 +2,7 @@
 
 An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, invitations, roles and permissions, impersonation, audit logging and a Flux UI — set up from Laravel Herd in minutes.
 
-> **Status:** ready for v1.0.0: milestones M0–M8a are done. Publication on GitHub and Packagist and the `v1.0.0` tag (M8b) follow once the owner approves them. The design is in `docs/superpowers/specs/2026-10-10-skv3-design.md`, the decisions are in `docs/decisions.md` and the changes in `CHANGELOG.md`.
+> **Status:** v1.0.0, released 2026-10-18: published on GitHub and Packagist as `wapja/skv3`. The design is in `docs/superpowers/specs/2026-10-10-skv3-design.md`, the decisions are in `docs/decisions.md` and the changes in `CHANGELOG.md`.
 
 ## Requirements
 

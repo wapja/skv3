@@ -451,9 +451,9 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
 <div class="wrap">
   <header class="masthead">
-    <div class="eyebrow"><span>M8a</span><span>M0–M8a in main</span><span>bijgewerkt 18-10-2026</span></div>
+    <div class="eyebrow"><span>v1.0.0</span><span>M0–M8b in main</span><span>bijgewerkt 18-10-2026</span></div>
     <h1>skv3 <span>handleiding</span></h1>
-    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor de stand na milestone M8a: klaar voor de release van v1.0.0.</p>
+    <p class="lede">Alles wat je nodig hebt om de multi-tenant Laravel starter kit te installeren, te beheren en erop verder te bouwen. Geschreven voor v1.0.0.</p>
   </header>
 
   <div class="page">
@@ -1644,7 +1644,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 <!-- ============================ 7 ============================ -->
 <section class="chapter" id="status">
   <h2><span class="num">7</span>Status en roadmap</h2>
-  <p>Milestones M0 tot en met M8a zitten in <code>main</code>: de kit is klaar voor de release van v1.0.0. Publicatie op GitHub en Packagist (M8b) volgt na akkoord van de eigenaar. Er is nog geen release: alles staat onder <code>[Unreleased]</code> in de changelog.</p>
+  <p>Milestones M0 tot en met M8b zitten in <code>main</code>. De kit is uitgebracht als v1.0.0 (2026-10-18) en staat op GitHub en Packagist als <code>wapja/skv3</code>; wat er in die versie zit, staat onder <code>[1.0.0]</code> in de changelog.</p>
 
   <h3 id="wat-er-is">Wat er nu is</h3>
   <div class="table-wrap">
@@ -1663,6 +1663,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
         <tr><td class="tabnum">M7c</td><td>Beveiliging verstevigd: limieten per gebruiker, links uit <code>APP_URL</code>, de passkeyacties en herstelcodes op de beveiligingspagina, voorkeuren tijdens &lsquo;inloggen als&rsquo;, meldingen en mails in de taal van de lezer, foutpagina&rsquo;s voor elke 4xx en 5xx, één volgorde van vergrendelen in het beheer, het activiteitenlog, de huisstijl op de inlogpagina&rsquo;s, en de restpunten van de installatie, de beheerlaag en de back-ups</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M7d</td><td>Extra&rsquo;s: sessieoverzicht met &lsquo;andere apparaten uitloggen&rsquo;, tweede factor verplicht per organisatie, CSV-export van het log, meerdere mensen tegelijk uitnodigen, profielfoto&rsquo;s, en limieten op adreswijzigingen door een beheerder en de uitnodiging uit de organisatiewizard</td><td><span class="badge b-ok">klaar</span></td></tr>
         <tr><td class="tabnum">M8a</td><td>Klaar voor de release: een limiet op het opzoeken van adressen, overdrachtslinks die bij je wachtwoord horen, een nieuw sessie-id bij &lsquo;andere apparaten uitloggen&rsquo;, het opruimen van tijdelijke uploads, strengere controles van de installatie en de diagnose, bewakingen in de testsuite, de kit-skills voor Claude Code, het traceerbaarheidsscript, de inhoud van CI, de licentie en deze handleiding</td><td><span class="badge b-ok">klaar</span></td></tr>
+        <tr><td class="tabnum">M8b</td><td>Publicatie: de repository op GitHub, CI groen (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td><td><span class="badge b-ok">klaar</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -1673,7 +1674,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M8b · Publicatie</strong></td><td>Na akkoord van de eigenaar: de repository op GitHub, de eerste groene CI-run (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist als <code>wapja/skv3</code>, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td></tr>
+        <tr><td><strong>Na v1</strong></td><td>De punten die DEC-36 voor na v1 noemt, elk met de reden waarom het kan wachten</td></tr>
       </tbody>
     </table>
   </div>
@@ -1681,7 +1682,6 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 
   <h3 id="beperkingen">Bekende beperkingen nu</h3>
   <ul>
-    <li>Installeren vanuit de Herd-app, met de deeplink, met <code>laravel new</code> of met <code>composer create-project</code> werkt pas na de publicatie (M8b); tot dan kloon je de code en open je de wizard zoals in <a href="#herd">Installeren via Herd</a>.</li>
     <li>Een paar teksten in Flux-onderdelen blijven in beide talen Engels: de knop die een wachtwoord toont, de knoppen om een veld te wissen of te kopiëren, de sluitknop van een venster, het label van een tekenvak bij een eenmalige code en het gratis bestandsveld (<span class="ui">Choose file</span>, <span class="ui">No file chosen</span>). Flux vouwt die onderdelen bij het compileren tot vaste tekst, dus een vertaling zou voor iedereen de taal van de eerste compilatie tonen (DEC-29).</li>
     <li>Huisstijl stel je in via <code>.env</code> (<code>BRANDING_ACCENT</code>, <code>BRANDING_LOGO</code>); de setup controleert de waarden, maar er is nog geen pagina voor. Het logo staat in de zijbalk; de inlogpagina&rsquo;s tonen het standaardmerkteken.</li>
     <li>Na een wijziging van het webadres van een organisatie wordt het oude webadres niet doorgestuurd of vastgehouden (ook niet in v1).</li>
@@ -1693,7 +1693,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
 </section>
 
       <footer class="colofon">
-        <p>Gebaseerd op de code en documentatie van <code>main</code> na milestone M8a. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
+        <p>Gebaseerd op de code en documentatie van <code>main</code> bij v1.0.0. Bronverwijzingen staan onder elk onderdeel (in hoofdstuk 4 en 5 ingeklapt achter <em>Bronnen</em>); &lsquo;spec&rsquo; is <code>docs/superpowers/specs/2026-10-10-skv3-design.md</code>. Labels met <span class="badge b-unv">niet geverifieerd</span> of <span class="badge b-unv">afgeleid</span> zijn niet in de repo bevestigd.</p>
         <p>De kit valt onder de MIT-licentie; zie <code>LICENSE</code>.</p>
       </footer>
     </main>
