@@ -21,7 +21,7 @@ concurrency:
 jobs:
   release-check:
     name: release-check
-    if: github.repository == 'frankcornet/skv3'
+    if: github.repository == 'wapja/skv3'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -77,7 +77,7 @@ jobs:
       # PACKAGIST_ATTEMPTS and PACKAGIST_INTERVAL (seconds) default to 10 × 30 s.
       - name: Packagist serves main
         env:
-          PACKAGE: frankcornet/skv3
+          PACKAGE: wapja/skv3
         run: |
           main="$(git -C "$GITHUB_WORKSPACE" ls-remote origin refs/heads/main | cut -f1)"
           [ -n "$main" ] || { echo "FAIL: origin has no main"; exit 1; }
@@ -107,14 +107,14 @@ jobs:
       # including the Installing line the next step reads.
       - name: laravel new from Packagist
         run: |
-          cd "$RUNNER_TEMP" && laravel new app --using=frankcornet/skv3 --no-interaction -v --no-ansi --database=sqlite --npm --pest --git --boost 2>&1 | tee install.log
+          cd "$RUNNER_TEMP" && laravel new app --using=wapja/skv3 --no-interaction -v --no-ansi --database=sqlite --npm --pest --git --boost 2>&1 | tee install.log
 
       # §8: the installed reference equals main's HEAD. The installer runs `composer create-project --stability=dev`,
       # which picks the default branch, and Composer's log names its commit.
       - name: The installed reference is main
         working-directory: ${{ runner.temp }}
         env:
-          PACKAGE: frankcornet/skv3
+          PACKAGE: wapja/skv3
         run: |
           installed="$(sed -nE "s#.*Installing ${PACKAGE} \(dev-main ([0-9a-f]{7,40})\).*#\1#p" install.log | head -n 1)"
           main="$(git -C "$GITHUB_WORKSPACE" ls-remote origin refs/heads/main | cut -f1)"
