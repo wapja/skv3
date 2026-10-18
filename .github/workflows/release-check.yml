@@ -25,6 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # One row: the lowest PHP version composer.json's require.php allows (ReleaseCheckWorkflowTest pins it).
+    strategy:
+      matrix:
+        php: ['8.4']
+
     defaults:
       run:
         shell: bash
@@ -33,13 +38,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup PHP
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
           extensions: pdo_sqlite, gd, zip
           tools: composer:v2
           coverage: none
@@ -66,6 +70,37 @@ jobs:
           git config --global user.email "release-check@example.com"
           composer global require laravel/installer --no-interaction
           echo "$(composer global config bin-dir --absolute)" >> "$GITHUB_PATH"
+
+      # Right after a merge or a tag, Packagist may still serve an older main: wait until its dev-main is main's HEAD,
+      # from the kit's own GitHub repository (another source claiming the name serves another url). Packagist's p2 files
+      # are minified (each version lists only what changed from the one before), so the filter expands them first.
+      # PACKAGIST_ATTEMPTS and PACKAGIST_INTERVAL (seconds) default to 10 × 30 s.
+      - name: Packagist serves main
+        env:
+          PACKAGE: frankcornet/skv3
+        run: |
+          main="$(git -C "$GITHUB_WORKSPACE" ls-remote origin refs/heads/main | cut -f1)"
+          [ -n "$main" ] || { echo "FAIL: origin has no main"; exit 1; }
+          repository="https://github.com/${PACKAGE}.git"
+          attempts="${PACKAGIST_ATTEMPTS:-10}"
+          interval="${PACKAGIST_INTERVAL:-30}"
+          filter='[foreach (.packages[$package] // [])[] as $version ({}; . + $version | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main")) | (.[0] // {}) | "\(.source.reference // "")\t\(.source.url // "")"'
+          for attempt in $(seq 1 "$attempts"); do
+            reference=""
+            url=""
+            if served="$(curl -fsS "https://repo.packagist.org/p2/${PACKAGE}~dev.json" | jq -r --arg package "$PACKAGE" "$filter")"; then
+              reference="$(cut -f1 <<< "$served")"
+              url="$(cut -f2 <<< "$served")"
+            fi
+            if [ "$reference" = "$main" ] && [ "$url" = "$repository" ]; then
+              echo "Packagist serves main ${main} from ${repository}"
+              exit 0
+            fi
+            echo "Attempt ${attempt} of ${attempts}: Packagist serves dev-main ${reference:-(none)} from ${url:-(none)}"
+            if [ "$attempt" -lt "$attempts" ]; then sleep "$interval"; fi
+          done
+          echo "FAIL: Packagist serves ${PACKAGE} dev-main ${reference:-(none)} from ${url:-(none)}; main is ${main} from ${repository}"
+          exit 1
 
       # Herd's exact command (§8), from Packagist: no local repository, no version constraint. -v: at normal verbosity in
       # a pipe the installer (5.31 and later) runs create-project as a Laravel Prompts task, which drops Composer's output,
@@ -100,5 +135,6 @@ jobs:
           for path in .github/workflows/release-check.yml docs/superpowers/plans; do
             if [ -e "$path" ]; then echo "FAIL: ${path} shipped"; exit 1; fi
           done
-          test -f storage/app/private/skv-setup-token || { echo "FAIL: the setup token is missing"; exit 1; }
+          token="$(php -r 'require "vendor/autoload.php"; echo App\Setup\SetupToken::PATH;')" || { echo "FAIL: cannot read SetupToken::PATH"; exit 1; }
+          test -f "$token" || { echo "FAIL: the setup token is missing"; exit 1; }
           php artisan route:list --path=welcome-setup --no-ansi | grep -q 'welcome-setup' || { echo "FAIL: the wizard route is missing"; exit 1; }
