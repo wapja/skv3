@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-18
+
 ### Added
 - Foundation scaffolded from the official Laravel Livewire starter kit (PHP 8.4, Laravel 13.35, Livewire 4, Flux 2, Pest 5).
 - Quality toolchain: strict Pint, Rector, Larastan level 8 (incl. component PHP), Pest arch presets and kit rules.
@@ -221,3 +223,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - A cross-host sign-in link's stored token hash and password binding never appear when the model is serialised.
 - The project's Claude settings deny the Herd MCP tools that return the local services' connection details or a debug session's captured queries, dumps and requests, and ask before a Herd tool changes a site, a service or a PHP version, now that the Herd server is approved up front.
 - CI: the steps that hand the Flux Pro licence to Composer unset `FLUX_USERNAME` and `FLUX_LICENSE_KEY` once `COMPOSER_AUTH` holds them, so no child process inherits them.
+
+[Unreleased]: https://github.com/wapja/skv3/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/wapja/skv3/releases/tag/v1.0.0
