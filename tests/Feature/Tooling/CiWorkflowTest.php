@@ -100,10 +100,15 @@ $bash = fn (string $script, string $path, array $env = []): ProcessResult => Pro
 /** A step's script with every line trimmed, so a block nested in an `if` compares like a top-level one. */
 $trimmed = fn (mixed $script): string => implode("\n", array_map(trim(...), explode("\n", is_string($script) ? $script : '')));
 
-/** The lines each step that needs the Flux credentials runs to hand them to Composer (CD-9), trimmed. */
+/**
+ * The lines each step that needs the Flux credentials runs to hand them to Composer (CD-9), trimmed. The variables go
+ * once COMPOSER_AUTH holds them: every child process inherits the step's environment (Toolchain::environment()),
+ * npm lifecycle scripts included.
+ */
 $composerAuth = <<<'SH'
     COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
     export COMPOSER_AUTH
+    unset FLUX_USERNAME FLUX_LICENSE_KEY
     SH;
 
 /** The kit's package name, read from composer.json: NameLeakTest scans tests/, so this file holds no kit name literal. */
@@ -515,9 +520,15 @@ it('hands the Flux credentials to Composer only in the steps that need them, nev
 it('builds COMPOSER_AUTH from the step\'s environment, so the licence key never reaches a command line (CD-9)', function () use ($bash, $composerAuth): void {
     $result = $bash($composerAuth."\nprintenv COMPOSER_AUTH", base_path(), ['FLUX_USERNAME' => 'dev@example.com', 'FLUX_LICENSE_KEY' => 'k"e\\y-1']);
 
+    // Once COMPOSER_AUTH holds them, the step's later commands and their children no longer see the variables.
+    $children = $bash($composerAuth."\nenv", base_path(), ['FLUX_USERNAME' => 'dev@example.com', 'FLUX_LICENSE_KEY' => 'k"e\\y-1']);
+
     expect(json_decode($result->throw()->output(), true))->toBe(['http-basic' => ['composer.fluxui.dev' => ['username' => 'dev@example.com', 'password' => 'k"e\\y-1']]])
         // PHP reads the variables itself: the shell never expands the key into php's arguments.
-        ->and($composerAuth)->not->toContain('$FLUX_');
+        ->and($composerAuth)->not->toContain('$FLUX_')
+        ->and($children->throw()->output())->toContain('COMPOSER_AUTH=')
+        ->not->toContain('FLUX_USERNAME=')
+        ->not->toContain('FLUX_LICENSE_KEY=');
 });
 
 it('runs the installer end to end in an e2e job (§8)', function () use ($package): void {

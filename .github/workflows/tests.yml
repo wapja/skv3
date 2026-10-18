@@ -132,8 +132,9 @@ jobs:
 
       # §6.7, §8: only the main (PostgreSQL) row enables Pro, before any view compiles; without the secrets the step is
       # skipped and the job runs on free Flux. CD-9: the credentials reach Composer through COMPOSER_AUTH in this step's
-      # environment alone, built by PHP from the variables (never argv); nothing writes an auth.json, so no later step
-      # finds them. The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull
+      # environment alone, built by PHP from the variables (never argv), which the step then unsets, so no child
+      # process (npm lifecycle scripts included) inherits them; nothing writes an auth.json, so no later step finds
+      # them. The step's own Composer cache keeps the Pro dist zip out of the cached files directory, which pull
       # requests (forks included) can restore; skv:flux-pro's composer inherits COMPOSER_CACHE_DIR and COMPOSER_AUTH.
       - name: Enable Flux Pro
         if: env.FLUX_PRO_SECRETS == 'true' && matrix.db == 'pgsql'
@@ -144,6 +145,7 @@ jobs:
         run: |
           COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
           export COMPOSER_AUTH
+          unset FLUX_USERNAME FLUX_LICENSE_KEY
           php artisan skv:flux-pro --no-interaction
 
       - name: Check (SQLite)
@@ -507,6 +509,7 @@ jobs:
         run: |
           COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
           export COMPOSER_AUTH
+          unset FLUX_USERNAME FLUX_LICENSE_KEY
           php artisan skv:flux-pro --no-interaction
 
       # CD-9: with Flux Pro the app lists the fluxui repository, so the Claude step's composer require needs the
@@ -522,6 +525,7 @@ jobs:
           if [ -n "$FLUX_LICENSE_KEY" ]; then
             COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
             export COMPOSER_AUTH
+            unset FLUX_USERNAME FLUX_LICENSE_KEY
           fi
           sed -i 's#^APP_URL=.*#APP_URL=http://localhost#' .env
           php artisan skv:install --no-interaction --answers=@"$RUNNER_TEMP/e2e-answers.json"
@@ -560,6 +564,7 @@ jobs:
           if [ -n "$FLUX_LICENSE_KEY" ]; then
             COMPOSER_AUTH="$(php -r 'echo json_encode(["http-basic" => ["composer.fluxui.dev" => ["username" => getenv("FLUX_USERNAME"), "password" => getenv("FLUX_LICENSE_KEY")]]], JSON_THROW_ON_ERROR);')"
             export COMPOSER_AUTH
+            unset FLUX_USERNAME FLUX_LICENSE_KEY
           fi
           php artisan skv:doctor --json
 

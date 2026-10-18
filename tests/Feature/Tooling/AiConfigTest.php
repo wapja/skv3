@@ -106,3 +106,26 @@ it('allows the doctor and the setup stylesheet build and enables the Boost and H
     expect($settings['permissions']['allow'])->toContain('Bash(composer doctor)', 'Bash(npm run build:setup)')
         ->and($settings['enabledMcpjsonServers'])->toBe(['laravel-boost', 'herd']);
 });
+
+it('denies the Herd tools that read secrets or captured requests and asks before one changes a site or a service (§9)', function (): void {
+    /** @var array{permissions: array{deny: list<string>, ask?: list<string>, allow: list<string>}} $settings */
+    $settings = json_decode((string) file_get_contents(base_path('.claude/settings.json')), true, flags: JSON_THROW_ON_ERROR);
+    $herd = fn (array $rules): array => array_values(array_filter($rules, fn (string $rule): bool => str_starts_with($rule, 'mcp__herd__')));
+
+    // enabledMcpjsonServers approves the server, so a tool neither denied nor asked would run in an accept or auto mode.
+    expect($herd($settings['permissions']['deny']))->toBe([
+        'mcp__herd__get_all_sites',
+        'mcp__herd__get_site_information',
+        'mcp__herd__get_forge_environment_variables',
+        'mcp__herd__get_last_deployment_information',
+        'mcp__herd__find_available_services',
+        'mcp__herd__start_debug_session',
+        'mcp__herd__stop_debug_session',
+    ])->and($herd($settings['permissions']['ask'] ?? []))->toBe([
+        'mcp__herd__install_service',
+        'mcp__herd__start_or_stop_service',
+        'mcp__herd__install_php_version',
+        'mcp__herd__secure_or_unsecure_site',
+        'mcp__herd__isolate_or_unisolate_site',
+    ])->and($herd($settings['permissions']['allow']))->toBe([]);
+});

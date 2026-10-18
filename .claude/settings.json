@@ -40,11 +40,21 @@
             "mcp__herd__get_site_information",
             "mcp__herd__get_forge_environment_variables",
             "mcp__herd__get_last_deployment_information",
+            "mcp__herd__find_available_services",
+            "mcp__herd__start_debug_session",
+            "mcp__herd__stop_debug_session",
             "Read(./.env)",
             "Read(./.env.testing)",
             "Read(./.env.backup)",
             "Read(./.env.production)",
             "Read(./.env.local)"
+        ],
+        "ask": [
+            "mcp__herd__install_service",
+            "mcp__herd__start_or_stop_service",
+            "mcp__herd__install_php_version",
+            "mcp__herd__secure_or_unsecure_site",
+            "mcp__herd__isolate_or_unisolate_site"
         ]
     },
     "enabledMcpjsonServers": [
