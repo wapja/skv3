@@ -643,6 +643,8 @@ Every command in Part B runs in the main session, one at a time, and its result 
   ```bash
   for attempt in $(seq 1 20); do
     served="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.reference')"
+    url="$(curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.url')"
+    [ "$url" = "https://github.com/frankcornet/skv3.git" ] || { echo "Packagist names another source: $url"; break; }
     [ "$served" = "$(git rev-parse main)" ] && { echo "Packagist serves main"; break; }
     sleep 30
   done
@@ -669,6 +671,8 @@ git log main --format='%an <%ae>' | sort | uniq -c | sed -E 's/<[^@]+@/<…@/'
 grep -rlE '/Users/[a-z]+/' docs/superpowers/plans | wc -l
 du -sh .git
 ```
+
+Also check that nobody holds the name on Packagist yet: `curl -s -o /dev/null -w '%{http_code}\n' https://repo.packagist.org/p2/frankcornet/skv3.json` prints `404`. The repository is public from Task 6 and the Packagist submission comes in Task 11, so tell the owner a third party could claim the name in between; the earlier Task 11 runs after Task 6, the smaller that window (the source-url check in Task 11 catches a claim).
 
 - [ ] **Step 3: Ask** ("[APPROVAL 1/7] Publication")
 
@@ -882,6 +886,8 @@ curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packag
 git rev-parse main
 ```
 
+Also `curl -s https://repo.packagist.org/p2/frankcornet/skv3~dev.json | jq -r '.packages["frankcornet/skv3"][] | select(.version == "dev-main") | .source.url'` must print `https://github.com/frankcornet/skv3.git`: any other source means someone else claimed the name, and Part B stops.
+
 Expected: the same hash. Whether the hook follows later pushes is checked by the Packagist wait (Part B conventions) before Task 12 and before the tag.
 
 - [ ] **Step 3: A real dist install (Consequence (8))**
@@ -930,7 +936,7 @@ gh workflow run release-check --repo frankcornet/skv3 --ref main
 gh run list --repo frankcornet/skv3 --workflow release-check --limit 1
 ```
 
-Watch it. Expected: every step green, and *The installed reference is main* prints `installed <short> is main <full>`.
+Watch it. Expected: every step green; *Packagist serves main* (added by Part A's minor fix wave) passes, and *The installed reference is main* prints `installed <sha> is main <sha>` (Composer's create-project header carries the full 40-character reference, so both are usually full).
 
 A failure goes through Task 7's fix-forward protocol, with the test in `ReleaseCheckWorkflowTest`. Example: Composer printing the install line differently, which CD-5 foresees. Then dispatch again.
 
@@ -1033,4 +1039,4 @@ Commit on a branch, push it (`GCM_INTERACTIVE=never`), open a pull request with 
 
 - [ ] **Step 3: Memory and hand-off**
 
-Update the memory notes: M8b done, the repository URL, the ruleset, and that `main` takes only pull requests. Report to the owner. Leftovers that are theirs: the Herd Pro mailboxes of the throwaway sites, and the stale plugin-registry entries.
+Update the memory notes: M8b done, the repository URL, the ruleset, and that `main` takes only pull requests. Report to the owner, and tell them the gh login stays active (scopes `repo`, `read:org`, `gist`, `workflow` on all their repositories) and gh is git's credential helper for github.com; offer, in their own terminal, `gh auth logout --hostname github.com` and removing the `credential.https://github.com.helper` lines from `~/.gitconfig`. Leftovers that are theirs: the Herd Pro mailboxes of the throwaway sites, and the stale plugin-registry entries.
