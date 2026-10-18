@@ -1,0 +1,140 @@
+name: release-check
+
+# §8, CD-22 (M8a): after a release, install the published package the way a user does and check it is main. This file
+# is export-ignored (.gitattributes), so an app generated from the kit never gets it, and the job runs in the kit's own
+# repository only. It installs from Packagist, never the commit under test: the e2e job in tests.yml covers that.
+on:
+  release:
+    types: [published]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A tag push and the release published for it start one run each; the later one replaces the earlier.
+concurrency:
+  group: release-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-check:
+    name: release-check
+    if: github.repository == 'frankcornet/skv3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # One row: the lowest PHP version composer.json's require.php allows (ReleaseCheckWorkflowTest pins it).
+    strategy:
+      matrix:
+        php: ['8.4']
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, gd, zip
+          tools: composer:v2
+          coverage: none
+
+      # D115: the tagged commit never names Flux Pro either; the same lines as tests.yml's check job, after Setup PHP like there.
+      - name: Kit commits no Flux Pro
+        run: |
+          committed="$(git show HEAD:composer.json HEAD:composer.lock)"
+          if grep -nE 'flux-pro|composer\.fluxui\.dev' <<< "$committed"; then
+            echo "FAIL: the committed composer.json or composer.lock names Flux Pro"
+            exit 1
+          fi
+          git show HEAD:composer.json | php -r '$c = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR); exit(isset($c["extra"]["skv"]) ? 1 : 0);' || { echo "FAIL: the committed composer.json carries extra.skv"; exit 1; }
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      # The installer commits the new app (--git); the runner has no git identity of its own.
+      - name: Install the Laravel installer
+        run: |
+          git config --global user.name "release-check"
+          git config --global user.email "release-check@example.com"
+          composer global require laravel/installer --no-interaction
+          echo "$(composer global config bin-dir --absolute)" >> "$GITHUB_PATH"
+
+      # Right after a merge or a tag, Packagist may still serve an older main: wait until its dev-main is main's HEAD,
+      # from the kit's own GitHub repository (another source claiming the name serves another url). Packagist's p2 files
+      # are minified (each version lists only what changed from the one before), so the filter expands them first.
+      # PACKAGIST_ATTEMPTS and PACKAGIST_INTERVAL (seconds) default to 10 × 30 s.
+      - name: Packagist serves main
+        env:
+          PACKAGE: frankcornet/skv3
+        run: |
+          main="$(git -C "$GITHUB_WORKSPACE" ls-remote origin refs/heads/main | cut -f1)"
+          [ -n "$main" ] || { echo "FAIL: origin has no main"; exit 1; }
+          repository="https://github.com/${PACKAGE}.git"
+          attempts="${PACKAGIST_ATTEMPTS:-10}"
+          interval="${PACKAGIST_INTERVAL:-30}"
+          filter='[foreach (.packages[$package] // [])[] as $version ({}; . + $version | with_entries(select(.value != "__unset")))] | map(select(.version == "dev-main")) | (.[0] // {}) | "\(.source.reference // "")\t\(.source.url // "")"'
+          for attempt in $(seq 1 "$attempts"); do
+            reference=""
+            url=""
+            if served="$(curl -fsS "https://repo.packagist.org/p2/${PACKAGE}~dev.json" | jq -r --arg package "$PACKAGE" "$filter")"; then
+              reference="$(cut -f1 <<< "$served")"
+              url="$(cut -f2 <<< "$served")"
+            fi
+            if [ "$reference" = "$main" ] && [ "$url" = "$repository" ]; then
+              echo "Packagist serves main ${main} from ${repository}"
+              exit 0
+            fi
+            echo "Attempt ${attempt} of ${attempts}: Packagist serves dev-main ${reference:-(none)} from ${url:-(none)}"
+            if [ "$attempt" -lt "$attempts" ]; then sleep "$interval"; fi
+          done
+          echo "FAIL: Packagist serves ${PACKAGE} dev-main ${reference:-(none)} from ${url:-(none)}; main is ${main} from ${repository}"
+          exit 1
+
+      # Herd's exact command (§8), from Packagist: no local repository, no version constraint. -v: at normal verbosity in
+      # a pipe the installer (5.31 and later) runs create-project as a Laravel Prompts task, which drops Composer's output,
+      # including the Installing line the next step reads.
+      - name: laravel new from Packagist
+        run: |
+          cd "$RUNNER_TEMP" && laravel new app --using=frankcornet/skv3 --no-interaction -v --no-ansi --database=sqlite --npm --pest --git --boost 2>&1 | tee install.log
+
+      # §8: the installed reference equals main's HEAD. The installer runs `composer create-project --stability=dev`,
+      # which picks the default branch, and Composer's log names its commit.
+      - name: The installed reference is main
+        working-directory: ${{ runner.temp }}
+        env:
+          PACKAGE: frankcornet/skv3
+        run: |
+          installed="$(sed -nE "s#.*Installing ${PACKAGE} \(dev-main ([0-9a-f]{7,40})\).*#\1#p" install.log | head -n 1)"
+          main="$(git -C "$GITHUB_WORKSPACE" ls-remote origin refs/heads/main | cut -f1)"
+          [ -n "$installed" ] || { echo "FAIL: install.log names no dev-main reference of ${PACKAGE}"; exit 1; }
+          [ -n "$main" ] || { echo "FAIL: origin has no main"; exit 1; }
+          case "$main" in
+            "$installed"*) echo "installed ${installed} is main ${main}" ;;
+            *) echo "FAIL: installed ${installed}, main is ${main}"; exit 1 ;;
+          esac
+
+      # F50, M8b: a dist install ships what the app points its users to and leaves the kit-only files out.
+      - name: A dist install
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          for file in README.md LICENSE CHANGELOG.md docs/handleiding.html docs/superpowers/specs/2026-10-10-skv3-design.md; do
+            test -f "$file" || { echo "FAIL: ${file} is missing"; exit 1; }
+          done
+          for path in .github/workflows/release-check.yml docs/superpowers/plans; do
+            if [ -e "$path" ]; then echo "FAIL: ${path} shipped"; exit 1; fi
+          done
+          token="$(php -r 'require "vendor/autoload.php"; echo App\Setup\SetupToken::PATH;')" || { echo "FAIL: cannot read SetupToken::PATH"; exit 1; }
+          test -f "$token" || { echo "FAIL: the setup token is missing"; exit 1; }
+          php artisan route:list --path=welcome-setup --no-ansi | grep -q 'welcome-setup' || { echo "FAIL: the wizard route is missing"; exit 1; }
