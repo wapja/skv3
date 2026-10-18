@@ -145,7 +145,8 @@ final class CreateSuperAdminCommand extends Command
      */
     private function newUserAttributes(string $email): array
     {
-        $name = $this->option('name') ?? ($this->input->isInteractive() ? text(__('Name'), required: true) : 'Super admin');
+        $givenName = $this->option('name');
+        $name = is_string($givenName) ? $givenName : ($this->input->isInteractive() ? text(__('Name'), required: true) : 'Super admin');
         $password = $this->givenPassword() ?? ($this->input->isInteractive() ? password(__('Password'), required: true) : null);
 
         /** @var array{email: string, name: string, password: string} $valid */
