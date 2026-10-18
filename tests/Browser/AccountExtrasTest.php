@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §7.2 */
+/** covers §6.6, §6.7, §7.2 */
 
 use App\Authorization\Role;
 use App\Models\Invitation;

@@ -69,6 +69,8 @@ it('checks every RL-12 test for catch-all fakes and strays once it ran (L7b-77, 
 
     expect($hooks)->toContain('})->afterEach(function (): void {')
         ->toContain('$factory = RecordingProcessFactory::current();')
+        // Either finding alone must reach the assertions: an `&&` here would switch both checks off.
+        ->toContain("\n    if (\$factory->catchAllPatterns() !== [] || \$factory->strays() !== []) {\n")
         ->toContain('expect($factory->catchAllPatterns())->toBe([]')
         ->toContain('->and($factory->strays())->toBe([]');
 });

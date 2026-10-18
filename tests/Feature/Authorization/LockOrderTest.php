@@ -323,8 +323,10 @@ it('saves the status before the name, after the organisation and users locks, in
 
 it('rehashes the password, then moves and ends the sessions, then deletes the handoff links, then records ("log out other devices", §6.6)', function (): void {
     // The kit's session driver, so the update moves and deletes real rows. No explicit lock: each write takes its
-    // row lock, so the order of the writes is the lock order.
+    // row lock, so the order of the writes is the lock order. The lottery is off, so no garbage collection deletes
+    // the inserted row.
     config(['session.driver' => 'database']);
+    config(['session.lottery' => [0, 100]]);
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $member = asMember($organisation);
     sessionRowFor($member);

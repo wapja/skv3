@@ -147,3 +147,20 @@ it('lists the user\'s own passkeys and deletes one after the confirmation (§4.2
         ->and($colleague->passkeys()->count())->toBe(1)
         ->and((string) $deleted->json('components.0.effects.html'))->toContain('No passkeys yet');
 });
+
+it('refuses a forged confirmation of a colleague\'s passkey and keeps it (§4.2.5)', function (): void {
+    usePasskeysModule(true);
+    $user = User::factory()->create();
+    $colleague = User::factory()->create(['organisation_id' => $user->organisation_id]);
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    $user->passkeys()->create(['name' => 'Work laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    $colleagueKey = $colleague->passkeys()->create(['name' => 'Colleague key', 'credential_id' => 'credential-2', 'credential' => []]);
+    $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+
+    $forged = callPageAction($snapshot, 'confirmDelete', [$colleagueKey->id]);
+
+    $forged->assertNotFound();
+    expect($colleague->passkeys()->whereKey($colleagueKey->id)->exists())->toBeTrue()
+        ->and($user->passkeys()->count())->toBe(1);
+});

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers Appendix A R2, §10 */
+/** covers §10, Appendix A R2 */
 
 use Database\Seeders\DemoSeeder;
 use Symfony\Component\Finder\Finder;
@@ -33,6 +33,12 @@ $namesDemoAccount = function (string $text): bool {
 /** Whether $line pairs a demo account with the demo password. */
 $pairsDemoCredentials = fn (string $line): bool => $namesDemoAccount($line)
     && preg_match('/\b'.preg_quote(DemoSeeder::PASSWORD, '/').'\b/i', $line) === 1;
+
+/**
+ * Whether $text holds the demo password as a token of its own: not part of a word, an option, a route name or a path
+ * (`--password-stdin`, `password.confirm`, `passwords.php` and `super_admin_password` are not it).
+ */
+$holdsDemoPassword = fn (string $text): bool => preg_match('/(?<![\w.\/:-])'.preg_quote(DemoSeeder::PASSWORD, '/').'(?![\w.\/:-])/i', $text) === 1;
 
 /** @return list<SplFileInfo> */
 $publicFiles = fn (): array => iterator_to_array(
@@ -76,6 +82,34 @@ it('never puts a demo account next to the demo password in the manual (Appendix 
 
     expect($manuals)->not->toBeEmpty()
         ->and($hits)->toBe([]);
+});
+
+it('never gives the demo password anywhere in a manual that names a demo account (Appendix A R2)', function () use ($namesDemoAccount, $holdsDemoPassword): void {
+    $manuals = glob(base_path('docs/handleiding.*')) ?: [];
+    $hits = [];
+
+    foreach ($manuals as $manual) {
+        $text = (string) file_get_contents($manual);
+        // The test examples' factory logins ('password' => 'password') sit in code blocks; a line there that also names
+        // a demo account is the previous test's to catch.
+        $prose = (string) preg_replace('#<pre\b.*?</pre>#is', '', $text);
+
+        // A paragraph after the accounts table can hand out the password as well as the table's own row can.
+        if ($namesDemoAccount($text) && $holdsDemoPassword($prose)) {
+            $hits[] = basename($manual);
+        }
+    }
+
+    expect($manuals)->not->toBeEmpty()
+        ->and($hits)->toBe([]);
+});
+
+it('recognises the demo password on its own and nowhere else (Appendix A R2)', function () use ($holdsDemoPassword): void {
+    expect($holdsDemoPassword('logt in met het wachtwoord <code>password</code>.'))->toBeTrue()
+        ->and($holdsDemoPassword('wachtwoord: password'))->toBeTrue()
+        ->and($holdsDemoPassword('<code>--password-stdin</code>'))->toBeFalse()
+        ->and($holdsDemoPassword('<code>security.edit, password.confirm</code>'))->toBeFalse()
+        ->and($holdsDemoPassword('lang/nl/passwords.php, <code>super_admin_password</code>, <code>auth.password_reset_requested</code>'))->toBeFalse();
 });
 
 it('recognises the demo accounts and the pairs the predecessor kit published (Appendix A R2)', function () use ($namesDemoAccount, $pairsDemoCredentials): void {

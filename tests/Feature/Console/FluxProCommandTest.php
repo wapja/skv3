@@ -22,6 +22,8 @@ beforeEach(function (): void {
     app()->instance(Toolchain::class, new Toolchain(storage_path('framework/testing/setup/home-'.Str::uuid())));
     // CI may have Pro installed before composer check: force the free branch unless a test says otherwise.
     Skv::useFluxPro(false);
+    // view:clear removes the parallel workers' compiled-view directories; recreate this worker's before the probe.
+    File::ensureDirectoryExists((string) config('view.compiled'));
     $this->probe = config('view.compiled').'/flux-pro-probe-'.getmypid().'.php';
     File::put($this->probe, '<?php');
 });
