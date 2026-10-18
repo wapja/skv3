@@ -84,7 +84,9 @@ new class extends Component
     /**
      * Logs out every other device (§6.6): the password is rehashed, so AuthenticateSession signs out every other
      * session and "remember me" cookie on its next request, and this device gets a fresh remember cookie
-     * (Auth::logoutOtherDevices()); then the user's other rows and their unused handoff links are deleted. Every attempt counts against the
+     * (Auth::logoutOtherDevices()). This device also gets a new session id (CD-18): its row moves to the new id, so
+     * a copy of its old cookie finds no session, while the list rendered by this update still marks this device.
+     * Then the user's other rows and their unused handoff links are deleted. Every attempt counts against the
      * user's limit before the password is checked (CD-2), so the form cannot be used to guess it. One transaction
      * in DEC-34's lock order: users, then sessions and handoff tokens, then the activity insert.
      */
@@ -102,19 +104,32 @@ new class extends Component
             throw $e;
         }
 
-        DB::transaction(function () use ($user, $recordActivity): void {
-            Auth::logoutOtherDevices($this->password);
+        $previousId = session()->getId();
 
-            $ended = DB::table('sessions')
-                ->where('user_id', $user->id)
-                ->where('id', '!=', session()->getId())
-                ->delete();
+        try {
+            DB::transaction(function () use ($user, $recordActivity, $previousId): void {
+                Auth::logoutOtherDevices($this->password);
 
-            // A handoff link issued by another session would sign that browser in again with the new hash (§6.4).
-            HandoffToken::query()->where('user_id', $user->id)->whereNull('consumed_at')->delete();
+                // The response sets the new id's cookie; the session keeps its data and its CSRF token.
+                session()->migrate();
+                DB::table('sessions')->where('id', $previousId)->update(['id' => session()->getId()]);
 
-            $recordActivity->handle(ActivityEvent::OtherSessionsEnded, $user, ['count' => $ended]);
-        });
+                $ended = DB::table('sessions')
+                    ->where('user_id', $user->id)
+                    ->where('id', '!=', session()->getId())
+                    ->delete();
+
+                // A handoff link issued by another session would sign that browser in again with the new hash (§6.4).
+                HandoffToken::query()->where('user_id', $user->id)->whereNull('consumed_at')->delete();
+
+                $recordActivity->handle(ActivityEvent::OtherSessionsEnded, $user, ['count' => $ended]);
+            });
+        } catch (Throwable $e) {
+            // The row move rolled back: keep the old id, or the session would be saved as a second row under the new one.
+            session()->setId($previousId);
+
+            throw $e;
+        }
 
         $this->reset('password');
         unset($this->sessions);

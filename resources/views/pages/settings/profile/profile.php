@@ -14,6 +14,7 @@ use App\Tenancy\Auth\Impersonation;
 use Flux\Flux;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
@@ -73,12 +74,25 @@ new #[Title('Profile settings')] class extends Component
      * is then flashed in that language for the reloaded page instead of a toast the reload would drop (G3-06).
      * Sending the confirmation link is limited per user (CD-3): the slot is reserved before anything is saved,
      * so a refusal saves nothing, and given back when any part of the save throws (UserActionLimit::around()).
+     * A typed address other than the stored one is looked up by AvailableEmail, so it first counts under
+     * UserActionLimit::addressLookup() (FM-18, CD-2), outside around(): a refused address is never given back.
+     * During an impersonation a new address is refused before any lookup: RequestEmailChange refuses it anyway, and
+     * AvailableEmail's answer would tell a taken address from a free one.
      */
     public function updateProfileInformation(RequestEmailChange $requestEmailChange, UpdateLocale $updateLocale): void
     {
         $user = $this->currentUser();
 
         $this->email = Str::lower($this->email);
+
+        // FM-18: an impersonation never changes the address (RequestEmailChange refuses it): look nothing up.
+        if ($this->email !== $user->email && Impersonation::isTarget($user)) {
+            throw ValidationException::withMessages(['email' => [__('The address can\'t be changed during an impersonation.')]]);
+        }
+
+        if ($this->email !== $user->email) {
+            UserActionLimit::addressLookup()->attempt($user, 'email');
+        }
 
         $validated = $this->validate([
             ...$this->profileRules($user->id, $user->organisation_id),
@@ -161,15 +175,23 @@ new #[Title('Profile settings')] class extends Component
         Flux::toast(variant: 'success', text: __('Profile photo saved.'));
     }
 
-    /** Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. */
+    /**
+     * Remove the user's own photo; the initials show again (§6.6). A chosen photo not saved yet is deleted too. Only a
+     * photo that was there is confirmed and re-renders the user menu (E55).
+     */
     public function removeAvatar(RemoveAvatar $removeAvatar): void
     {
         $this->ensureAvatarManageable();
 
-        $removeAvatar->handle($this->currentUser());
+        $removed = $removeAvatar->handle($this->currentUser());
 
         $this->avatar?->delete();
         $this->reset('avatar');
+
+        if (! $removed) {
+            return;
+        }
+
         unset($this->avatarUrl);
         $this->dispatch('avatar-updated');
         Flux::toast(variant: 'success', text: __('Profile photo removed.'));

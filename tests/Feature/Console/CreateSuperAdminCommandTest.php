@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.12 */
+/** covers §4.0.1, §4.12.2 */
 
 use App\Authorization\Role;
 use App\Console\Support\StreamTerminal;

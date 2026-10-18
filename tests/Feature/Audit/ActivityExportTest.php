@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.8, §6.6 */
+/** covers §4.8.8, §6.6 */
 
 use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
@@ -437,13 +437,15 @@ it('allows five exports a minute per user and refuses the sixth', function (): v
     $this->get(route('activity.export'))->assertOk();
 });
 
-it('refuses a user without the activity_log.view permission', function (): void {
+it('refuses a user without the activity_log.view permission, after counting the request against the limit (CD-5)', function (): void {
     $organisation = Organisation::factory()->create();
-    asMember($organisation);
+    $member = asMember($organisation);
 
     $this->get(route('activity.export'))->assertForbidden();
 
-    expect(recordedActivity(ActivityEvent::ActivityExported))->toHaveCount(0);
+    // The limiter runs before can:, so refused requests count too: a member cannot probe the export without limit.
+    expect(recordedActivity(ActivityEvent::ActivityExported))->toHaveCount(0)
+        ->and(RateLimiter::attempts(ThrottleKey::of('activity-export', 'activity-export:'.$member->id)))->toBe(1);
 });
 
 it('links "Export CSV" to the export with the page\'s current filters', function () use ($record): void {

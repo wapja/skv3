@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §6.8 */
+/** covers §4.2.4, §6.6, §6.8 */
 
 use App\Authorization\Role;
+use App\Enums\Appearance;
 use App\Http\Middleware\EnsureSecondFactor;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Support\Skv;
+use App\Tenancy\Auth\Impersonation;
+use App\Tenancy\Auth\SecondFactor;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
@@ -174,6 +178,12 @@ it('refuses any other method with 403 (§6.6)', function (string $method) use ($
     $this->call($method, url('settings'))->assertForbidden();
 })->with(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+it('sends a HEAD request to the security page like a GET (§6.6)', function (string $method) use ($memberUnderTheRule): void {
+    $memberUnderTheRule();
+
+    $this->call($method, route('dashboard'))->assertRedirect(route('security.edit'));
+})->with(['GET', 'HEAD']);
+
 it('counts only two-factor authentication and says so while the passkeys module is off (§6.8)', function () use ($memberUnderTheRule): void {
     usePasskeysModule(false);
     $member = $memberUnderTheRule();
@@ -252,6 +262,41 @@ it('lets an impersonation session through: the impersonator acts and cannot set 
     $this->assertAuthenticatedAs($member);
 });
 
+it('lets an impersonation session\'s Livewire update through on a page the rule now blocks (§6.6, CD-4)', function (): void {
+    useImpersonationModule(true);
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = User::factory()->for($acme)->create();
+    withPermissionsTeam($acme->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $member = User::factory()->for($acme)->create();
+    onTenant($acme);
+    startImpersonatingOverHttp($admin, $member);
+    $snapshot = pageSnapshot(route('dashboard'), 'user-menu');
+
+    $acme->forceFill(['require_second_factor' => true])->save();
+
+    // The replayed persistent middleware passes the impersonation, so the update runs.
+    callPageAction($snapshot, 'saveAppearance', ['dark'])->assertOk();
+    expect(Impersonation::appearanceFor($member))->toBe(Appearance::Dark);
+});
+
+it('shows no second-factor notice on the security page during an impersonation (§6.6, CD-4)', function (): void {
+    useImpersonationModule(true);
+    $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => true]);
+    $admin = User::factory()->for($acme)->create();
+    withPermissionsTeam($acme->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $member = User::factory()->for($acme)->create();
+    onTenant($acme);
+
+    startImpersonatingOverHttp($admin, $member);
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+
+    // The impersonator cannot set up the member's factor, so the page does not ask them to.
+    $this->get(route('security.edit'))
+        ->assertOk()
+        ->assertDontSee('data-test="second-factor-required"', escape: false)
+        ->assertDontSee(SecondFactor::explanation($member));
+});
+
 it('recognises Livewire\'s update, upload and preview requests by their route (CD-4)', function (string $name) use ($memberUnderTheRule): void {
     $member = $memberUnderTheRule();
     $route = app(Router::class)->getRoutes()->getByName($name) ?? throw new LogicException("No route [{$name}].");
@@ -280,8 +325,8 @@ it('refuses a Livewire update from a page the rule now blocks (CD-4, plan review
 
     $acme->forceFill(['require_second_factor' => true])->save();
 
-    // The replayed persistent middleware answers with abort(redirect): check the exact status Livewire returns and
-    // assert it (a redirect to security.edit); the point is that the action did not run.
+    // The replayed persistent middleware ends the update with abort(redirect()): Livewire answers with that redirect
+    // to the security page, and saveAccount() never runs.
     callPageAction($snapshot, 'saveAccount', updates: ['name' => 'After'])->assertRedirect(route('security.edit'));
     expect($member->fresh()?->name)->toBe('Before');
 });
@@ -315,6 +360,47 @@ it('exempts setting up a factor, the password confirmation, signing out, handoff
     ])->and((string) file_get_contents(base_path('.env.example')))->toContain("\nREQUIRE_SECOND_FACTOR_SUPER_ADMINS=false\n");
 });
 
+it('exempts by wildcard only the routes that set up or check a factor and the setup wizard\'s, so a new route never joins unnoticed (CD-4)', function (): void {
+    // The passkey routes exist only when the app booted with the module on (§6.8).
+    $passkeyRoutes = Skv::passkeysEnabled() ? [
+        'passkey.confirm',
+        'passkey.confirm-options',
+        'passkey.destroy',
+        'passkey.login',
+        'passkey.login-options',
+        'passkey.registration-options',
+        'passkey.store',
+    ] : [];
+    $names = [];
+
+    foreach (app(Router::class)->getRoutes()->getRoutes() as $route) {
+        $name = $route->getName();
+
+        if ($name !== null && Str::is(['two-factor.*', 'passkey.*', 'setup.*'], $name)) {
+            $names[] = $name;
+        }
+    }
+
+    sort($names);
+
+    expect($names)->toBe([
+        ...$passkeyRoutes,
+        'setup.finish',
+        'setup.herd-status',
+        'setup.login',
+        'setup.wizard',
+        'two-factor.confirm',
+        'two-factor.disable',
+        'two-factor.enable',
+        'two-factor.login',
+        'two-factor.login.store',
+        'two-factor.qr-code',
+        'two-factor.recovery-codes',
+        'two-factor.regenerate-recovery-codes',
+        'two-factor.secret-key',
+    ]);
+});
+
 it('runs on every authenticated route that is not exempt, and not in the global web group (§6.6, CD-4)', function (): void {
     $router = app(Router::class);
     /** @var list<string> $exempt */
@@ -346,3 +432,16 @@ it('never affects a member of an organisation without the rule (§6.6)', functio
 
     $this->get($page === 'organisations.edit' ? route('organisations.edit', $beta->id) : route($page))->assertOk();
 })->with(['dashboard', 'profile.edit', 'users.index', 'organisations.edit', 'activity.index']);
+
+it('lets a member under the rule turn off their only factor, and then sends them back to set one up (§6.6)', function () use ($memberUnderTheRule): void {
+    $member = $memberUnderTheRule();
+    $member->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_recovery_codes' => encrypt(json_encode(['recovery-code-1'])), 'two_factor_confirmed_at' => now()])->save();
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $this->get(route('dashboard'))->assertOk();
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+
+    callPageAction($snapshot, 'disable')->assertOk();
+
+    expect($member->fresh()?->hasEnabledTwoFactorAuthentication())->toBeFalse();
+    $this->get(route('dashboard'))->assertRedirect(route('security.edit'));
+});

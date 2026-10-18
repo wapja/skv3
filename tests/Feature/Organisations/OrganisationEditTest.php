@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2, §6.4, §6.6 */
+/** covers §4.3.1, §4.3.2, §4.3.5, §6.2, §6.4, §6.6 */
 
+use App\Actions\Organisations\CreateOrganisation;
+use App\Enums\Locale;
 use App\Models\HandoffToken;
 use App\Models\Organisation;
 use Illuminate\Support\Facades\DB;
@@ -144,9 +146,17 @@ it('names a passkey in the rule\'s description only while the passkeys module is
         ->assertDontSee($passkeys ? $totpOnly : $withPasskey);
 })->with(['passkeys on' => true, 'passkeys off' => false]);
 
-it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page with the unsaved form (CD-3)', function (bool $before): void {
+it('asks for a fresh password confirmation before changing the second-factor rule and comes back to this page with the unsaved form (CD-3)', function (string $actor, bool $before): void {
     $acme = Organisation::factory()->create(['name' => 'Acme', 'slug' => 'acme', 'description' => null, 'require_second_factor' => $before]);
-    asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+
+    if ($actor === 'a super admin') {
+        // No second factor of their own needed: the organisation's rule is not theirs.
+        asSuperAdmin();
+        onAdminHost();
+    } else {
+        asOrgAdmin($acme)->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
+    }
+
     $page = route('organisations.edit', $acme->id);
     $snapshot = pageSnapshot($page, 'pages::organisations.edit');
 
@@ -172,7 +182,7 @@ it('asks for a fresh password confirmation before changing the second-factor rul
 
     expect($acme->fresh()?->only(['name', 'description', 'require_second_factor']))
         ->toBe(['name' => 'Acme Renamed', 'description' => 'Parked', 'require_second_factor' => ! $before]);
-})->with(['turning it on' => false, 'turning it off' => true]);
+})->with(['an organisation admin', 'a super admin'])->with(['turning it on' => false, 'turning it off' => true]);
 
 it('shows the parked switch and a notice on the first render after the confirmation, and only then (CD-3)', function (): void {
     $acme = Organisation::factory()->create(['slug' => 'acme', 'require_second_factor' => false]);
@@ -270,4 +280,29 @@ it('shows the archived-organisation error on the edit page (FU4-1)', function ()
     $component->call('save')
         ->assertHasErrors('organisation')
         ->assertSee(__('This organisation is archived.'));
+});
+
+it('frees the old slug at once: the old host answers 404 without a redirect and a new organisation may take it (DEC-28 (33))', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+
+    // Resolves acme.localhost once, so the slug cache holds the organisation's id before the rename.
+    $this->get('http://acme.localhost/dashboard')->assertOk();
+
+    Livewire::test('pages::organisations.edit', ['organisation' => $acme->id])
+        ->set('slug', 'acme-new')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $this->get('http://acme.localhost/dashboard')->assertNotFound();
+    $this->get('http://acme-new.localhost/dashboard')->assertOk();
+
+    // The request bound acme-new as the tenant; the next organisation is created on the admin host again.
+    onAdminHost();
+    $again = app(CreateOrganisation::class)->handle($superAdmin, 'Acme Again', 'acme', null, 'second-admin@example.com', Locale::Dutch);
+
+    expect($again->slug)->toBe('acme')
+        ->and($again->id)->not->toBe($acme->id);
+    $this->get('http://acme.localhost/dashboard')->assertOk();
 });

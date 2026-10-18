@@ -8,6 +8,7 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ResolvesCurrentUser;
 use App\Enums\ActivityEvent;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use App\Tenancy\Auth\SecondFactor;
 use Flux\Flux;
 use Illuminate\Validation\ValidationException;
@@ -205,14 +206,15 @@ new #[Title('Security settings')] class extends Component
     /**
      * Why this page opened instead of the one asked for (§6.6, CD-4): the explanation while the second-factor rule
      * applies to the user and is unmet, otherwise null. Read on every render, so it goes away as soon as a factor is
-     * set up on this page.
+     * set up on this page. Null during an impersonation: EnsureSecondFactor lets it through, and the impersonator
+     * cannot set up the target's factor.
      */
     #[Computed]
     public function secondFactorNotice(): ?string
     {
         $user = $this->currentUser();
 
-        return SecondFactor::missingFor($user) ? SecondFactor::explanation($user) : null;
+        return Impersonation::isActive() || ! SecondFactor::missingFor($user) ? null : SecondFactor::explanation($user);
     }
 
     /**

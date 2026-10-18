@@ -41,7 +41,6 @@
                             <flux:select.option :value="$id">{{ $name }}</flux:select.option>
                         @endforeach
                     </flux:select>
-                    <flux:error name="organisation" />
                 </div>
             @endunless
 

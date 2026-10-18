@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.4 */
+/** covers §4.9.4, §6.4 */
 
 use App\Actions\Auth\IssueHandoff;
 use App\Enums\ActivityEvent;
@@ -17,8 +17,12 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Tests\Fixtures\CsrfEnforcingPreventRequestForgery;
+
+use function Pest\Laravel\withSession;
 
 it('signs a super admin in on another host with a single-use link', function (): void {
     Event::fake([HandoffConsumed::class]);
@@ -229,4 +233,68 @@ it('refuses a handoff for a member without a reachable organisation with an auth
 
     expect(fn () => app(IssueHandoff::class)->handle($member, Hosts::tenant('acme')))
         ->toThrow(AuthorizationException::class);
+});
+
+it('binds a handoff link to the password it was issued under, as the session\'s HMAC, and signs in while it is unchanged (CD-3)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+
+    $url = app(IssueHandoff::class)->handle($member, Hosts::tenant('acme'));
+
+    // The HMAC AuthenticateSession keeps in the session (SessionGuard::hashPasswordForCookie()), never the hash itself.
+    expect(HandoffToken::query()->sole()->password_hash)
+        ->toBe(hash_hmac('sha256', $member->getAuthPassword(), (string) config('app.key')))
+        ->not->toBe($member->getAuthPassword());
+    $this->get($url)->assertRedirect('http://acme.localhost/dashboard');
+    $this->assertAuthenticatedAs($member);
+});
+
+it('refuses a handoff link issued before a password change or reset, or before links were bound to the password (DEC-35 (12)(a), CD-3)', function (string $case): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $url = app(IssueHandoff::class)->handle($member, Hosts::tenant('acme'));
+    onTenant($organisation);
+
+    if ($case === 'changed on the security page') {
+        $this->actingAs($member);
+        withSession(['auth.password_confirmed_at' => time()]);
+        $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+        callPageAction($snapshot, 'updatePassword', updates: [
+            'current_password' => 'password',
+            'password' => 'new-password-123',
+            'password_confirmation' => 'new-password-123',
+        ])->assertOk();
+        auth()->logout();
+    } elseif ($case === 'reset') {
+        $this->post(route('password.update'), [
+            'token' => Password::broker()->createToken($member),
+            'email' => $member->email,
+            'password' => 'new-password-123',
+            'password_confirmation' => 'new-password-123',
+        ])->assertSessionHasNoErrors();
+    } else {
+        // 'issued before the binding': a link from before the password_hash column has none.
+        DB::table('handoff_tokens')->update(['password_hash' => null]);
+    }
+
+    expect(Hash::check($case === 'issued before the binding' ? 'password' : 'new-password-123', (string) $member->fresh()?->password))->toBeTrue();
+    $this->assertGuest();
+
+    $this->get($url)
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status', __('This sign-in link is invalid or has expired.'));
+    $this->assertGuest();
+    expect(HandoffToken::query()->sole()->consumed_at)->toBeNull();
+})->with(['changed on the security page', 'reset', 'issued before the binding']);
+
+it('never serialises the token hash or the password binding (§6.4, CD-3)', function (): void {
+    Organisation::factory()->create(['slug' => 'acme']);
+    $superAdmin = User::factory()->superAdmin()->create();
+    app(IssueHandoff::class)->handle($superAdmin, Hosts::tenant('acme'));
+
+    $token = HandoffToken::query()->sole();
+
+    expect($token->toArray())->not->toHaveKeys(['token_hash', 'password_hash'])
+        ->and($token->toJson())->not->toContain($token->token_hash)
+        ->and($token->toJson())->not->toContain((string) $token->password_hash);
 });

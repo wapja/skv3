@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.6, §6.3 */
+/** covers §4.3.6, §4.6.6, §6.3 */
 
 use App\Models\Organisation;
 use App\Models\User;

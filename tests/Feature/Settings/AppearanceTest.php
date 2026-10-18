@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.10, §6.5 */
+/** covers §4.4.8, §4.10.2, §6.5 */
 
 use App\Actions\Settings\UpdateAppearance;
 use App\Enums\ActivityEvent;

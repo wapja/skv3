@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.8 */
+/** covers §4.1.9, §4.3.3, §4.8.5, §4.8.7 */
 
 use App\Actions\Invitations\InviteUser;
 use App\Actions\Organisations\ArchiveOrganisation;
@@ -213,6 +213,7 @@ it('purges invitations already archived by the cascade, users incl. deleted ones
         'token_hash' => hash('sha256', 'handoff'),
         'target_host' => 'acme.localhost',
         'path' => '/dashboard',
+        'password_hash' => HandoffToken::passwordBindingFor($member),
         'expires_at' => now()->addMinute(),
     ]);
     // Another organisation's user with a direct permission, a session and a reset token: the purge leaves them.

@@ -8,9 +8,11 @@ use App\Setup\Answers;
 use App\Setup\Detection;
 use App\Setup\Marker;
 use App\Setup\SetupContext;
+use App\Setup\SetupRunner;
 use App\Setup\Steps\HerdSiteStep;
 use App\Setup\Summary;
 use App\Setup\Support\EnvFile;
+use App\Setup\Support\ShellArgument;
 use App\Setup\Support\Toolchain;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\File;
@@ -332,6 +334,9 @@ it('is complete once served, secured and on the https APP_URL, and not when herd
             ? fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result(''))
             : Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
         "*herd' 'secured'*" => Process::result(str_replace('{name}', $context->folderName(), $secured)),
+        // K9: complete also needs PHP 8.4 or newer for the site.
+        "*herd' 'isolated'*" => Process::result(''),
+        "*php' '-r'*" => Process::result('8.4.13'),
     ]);
 
     expect(new HerdSiteStep()->isComplete($context))->toBe($complete);
@@ -365,6 +370,64 @@ it('rewrites an http APP_URL of a site Herd already secured instead of skipping 
         ->and(new EnvFile($context->path('.env'))->get('APP_URL'))->toBe("https://{$name}.test")
         ->and(new HerdSiteStep()->isComplete($context))->toBeTrue();
     Process::assertDidntRun(fn ($process): bool => str_contains(implode(' ', (array) $process->command), "secure {$name}"));
+});
+
+it('is complete only while the site runs PHP 8.4 or newer, whether isolated or on Herd\'s global PHP (K9, DEC-34 (14))', function (string $global, ?string $isolatedTo, bool $complete): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+    $name = $context->folderName();
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'isolated'*" => Process::result($isolatedTo === null ? '' : "| Site | PHP Version |\n| {$name}.test | {$isolatedTo} |\n"),
+        "*php' '-r'*" => Process::result($global),
+    ]);
+
+    expect(new HerdSiteStep()->isComplete($context))->toBe($complete);
+    Process::assertRan(fn ($process): bool => array_slice((array) $process->command, 1) === ['isolated']);
+})->with([
+    'global 8.3, not isolated' => ['8.3.0', null, false],
+    'global 8.4, not isolated' => ['8.4.13', null, true],
+    'global 8.5, not isolated' => ['8.5.1', null, true],
+    'global 8.4, isolated to 8.3' => ['8.4.13', '8.3', false],
+    'global 8.3, isolated to 8.4' => ['8.3.20', '8.4', true],
+    'the PHP probe prints nothing' => ['', null, false],
+]);
+
+it('is not complete when the PHP check itself fails (K9)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        "*herd' 'isolated'*" => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result('')),
+    ]);
+
+    expect(new HerdSiteStep()->isComplete($context))->toBeFalse();
+});
+
+it('isolates on a re-run a served site still on an older PHP instead of reporting it already done (K9, L7b-16)', function (): void {
+    $context = setupSandbox($this->detection);
+    $context->answers = Answers::fromArray(['https' => false, 'modules' => []], $this->detection, $context->folderName());
+    $name = $context->folderName();
+
+    Process::fake([
+        "*herd' 'links'*" => Process::result(''),
+        "*herd' 'paths'*" => Process::result(json_encode([dirname($context->basePath)], JSON_THROW_ON_ERROR)),
+        // Not isolated for the completeness check and run()'s own check; listed with 8.4 once `herd isolate` ran.
+        "*herd' 'isolated'*" => Process::sequence()->push(Process::result(''))->push(Process::result(''))
+            ->whenEmpty(Process::result("| Site | PHP Version |\n| {$name}.test | 8.4 |\n")),
+        "*herd' 'isolate'*" => Process::result('Isolated'),
+        "*php' '-r'*" => Process::result('8.3.20'),
+    ]);
+
+    $result = new SetupRunner([new HerdSiteStep])->runStep($context, new HerdSiteStep);
+
+    expect($result->status)->toBe('done')
+        ->and($result->message)->toBe(__('Site served by Herd'));
+    Process::assertRan(fn ($process): bool => array_slice((array) $process->command, 1) === ['isolate', '8.4', '--site='.$name]);
 });
 
 it('names the one Herd command left to run: herd link while unserved, herd secure while HTTPS is missing (RL-7)', function (bool $served, bool $https, ?string $command): void {
@@ -424,11 +487,22 @@ it('names no Herd command without Herd (RL-7)', function (): void {
 it('names the command HTTPS asks for when Herd\'s listings fail (RL-7)', function (bool $https, string $command): void {
     $context = setupSandbox($this->detection);
     $context->answers = Answers::fromArray(['modules' => ['impersonation'], 'https' => $https], $this->detection, $context->folderName());
+    // L7b-21: every listing siteState() runs is faked and only `herd links` fails, so the answer comes from that failure,
+    // not from a stray the step's catch (Throwable) swallowed. The parked directory is elsewhere: without the links
+    // call the name would be free and the answer `herd link` for both rows. A fake that throws is not recorded, so
+    // the links fake notes its own call.
+    $askedForLinks = false;
     Process::fake([
-        "*herd' 'links'*" => fn () => throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result('')),
+        "*herd' 'links'*" => function () use (&$askedForLinks): never {
+            $askedForLinks = true;
+
+            throw new ProcessTimedOutException(new SymfonyTimeout(new SymfonyProcess(['herd']), SymfonyTimeout::TYPE_GENERAL), Process::result(''));
+        },
+        "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),
     ]);
 
-    expect(new HerdSiteStep()->manualCommand($context))->toBe(sprintf($command, $context->folderName()));
+    expect(new HerdSiteStep()->manualCommand($context))->toBe(sprintf($command, $context->folderName()))
+        ->and($askedForLinks)->toBeTrue();
 })->with([
     'HTTPS chosen' => [true, 'herd secure %s'],
     'no HTTPS' => [false, 'herd link %s'],
@@ -445,6 +519,9 @@ it('quotes a folder name with a space in the commands it prints, never in the ar
     expect($result->status)->toBe('manual')
         ->and($result->command)->toBe(str_replace('{name}', $name, $command));
     Process::assertRan(fn ($process): bool => in_array($name, (array) $process->command, true) || in_array('--site='.$name, (array) $process->command, true));
+    // L7b-22: and no command got the printed (quoted) form, whatever other command got the bare name.
+    Process::assertDidntRun(fn ($process): bool => in_array(ShellArgument::quote($name), (array) $process->command, true)
+        || in_array(ShellArgument::quote('--site='.$name), (array) $process->command, true));
 })->with([
     'herd link' => [fn (SetupContext $context): array => [
         "*herd' 'paths'*" => Process::result(json_encode(['/somewhere/else'], JSON_THROW_ON_ERROR)),

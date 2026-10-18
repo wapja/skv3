@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9, §6.8 */
+/** covers §4.9.3, §6.8 */
 
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;

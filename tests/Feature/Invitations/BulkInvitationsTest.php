@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §4.5, §6.2 */
+/** covers §6.6, §4.5.12, §6.2 */
 
 use App\Authorization\Permission;
 use App\Authorization\Role;
@@ -18,6 +18,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\TestResponse;
@@ -224,6 +225,42 @@ it('skips a row the action refuses at send time with the generic message, sends 
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(2);
 });
 
+it('stops at an unexpected failure, reports it, summarises what was sent and gives the unsent rows their attempts back (E12, E16)', function () use ($templateRoleId, $deliveredMails): void {
+    Exceptions::fake();
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    // Anything InviteUser throws that is not a ValidationException: a queue that refuses the mail, an authorisation
+    // lost halfway through the list. The second row's transaction rolls back.
+    User::creating(function (User $user): void {
+        if ($user->email === 'bob@example.com') {
+            throw new RuntimeException('The queue is unavailable.');
+        }
+    });
+
+    Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
+        ->call('check')
+        ->call('send')
+        ->assertHasNoErrors()
+        ->assertSet('rows', [])
+        ->assertSet('summary', [
+            'sent' => ['ada@example.com'],
+            'skipped' => [
+                ['email' => 'bob@example.com', 'reason' => __('Not sent: something went wrong.')],
+                ['email' => 'cleo@example.com', 'reason' => __('Not sent: something went wrong.')],
+            ],
+        ])
+        ->assertSee(__('Sent: :count', ['count' => 1]))
+        ->assertSee(__('Skipped: :count', ['count' => 2]));
+
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === 'The queue is unavailable.');
+    expect(collect($deliveredMails())->map(fn (Email $mail): string => $mail->getTo()[0]->getAddress())->all())->toBe(['ada@example.com'])
+        ->and(DB::table('users')->whereIn('email', ['bob@example.com', 'cleo@example.com'])->exists())->toBeFalse()
+        // E16: only the sent row keeps its attempt; the failed and the unsent rows give theirs back.
+        ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(1);
+});
+
 it('reviews the rows again when it sends and skips an organisation archived meanwhile with the action\'s message (CD-6)', function () use ($templateRoleId, $deliveredMails): void {
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($acme);
@@ -276,16 +313,17 @@ it('counts nothing for a list larger than what is left, not even for a moment, s
     $acme = Organisation::factory()->create(['slug' => 'acme']);
     $admin = asOrgAdmin($acme);
     UserActionLimit::bulkInvite()->hit($admin, cost: 98);
-    // A reservation that is given back still pushes the counter past the limit while it lasts; the pre-check refuses first.
+    $page = Livewire::test('pages::invitations.bulk')
+        ->set('roles', [$templateRoleId()])
+        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
+        ->call('check');
+    // A reservation that is given back still pushes the counter past the limit while it lasts; the pre-check refuses
+    // first. The mock starts after the Check, whose address lookups count with increment() (FM-18).
     $limiter = Mockery::mock(CacheRateLimiter::class, [Cache::store()])->makePartial();
     $limiter->shouldNotReceive('increment');
     RateLimiter::swap($limiter);
 
-    Livewire::test('pages::invitations.bulk')
-        ->set('roles', [$templateRoleId()])
-        ->set('addresses', 'ada@example.com, bob@example.com, cleo@example.com')
-        ->call('check')
-        ->call('send')
+    $page->call('send')
         ->assertHasErrors(['addresses' => __('Too many attempts. Try again in :seconds seconds.', ['seconds' => 3600])]);
 
     expect($deliveredMails())->toBe([])
@@ -312,6 +350,55 @@ it('gives back a reservation a parallel send outran (CD-6, plan review K4)', fun
 
     expect($deliveredMails())->toBe([])
         ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(98);
+});
+
+it('refuses a Check whose rows would pass the address-lookup limit before it reviews a row, and charges it nothing (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    UserActionLimit::addressLookup()->hit($admin, cost: 450);
+    $snapshot = pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk');
+    $hundred = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 100)));
+
+    $refused = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $hundred, 'roles' => [$templateRoleId()]]));
+
+    expect($refused['memo']['errors'] ?? [])->toBe(['addresses' => [__('Too many attempts. Try again in :seconds seconds.', ['seconds' => 86400])]])
+        ->and($refused['data']['rows'])->toBe([[], ['s' => 'arr']])
+        // ensureAvailable() refuses the list before attempt() counts it: nothing was looked up, so nothing is charged.
+        ->and(RateLimiter::attempts($lookups))->toBe(450);
+
+    // The 50 lookups left still fit a smaller list, which counts as usual.
+    $fifty = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 50)));
+    $smaller = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $fifty, 'roles' => [$templateRoleId()]]));
+
+    expect($smaller['memo']['errors'] ?? [])->toBe([])
+        ->and($smaller['data']['rows'][0])->toHaveCount(50)
+        ->and(RateLimiter::attempts($lookups))->toBe(500);
+});
+
+it('charges a Check one lookup per row after the list checks, and never charges the Send that follows (FM-18, CD-2)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($acme);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    $snapshot = pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk');
+    $tooMany = implode("\n", array_map(fn (int $index): string => "person{$index}@example.com", range(1, 101)));
+
+    // A list the page refuses before it reviews a row looks nothing up.
+    expect($snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => $tooMany, 'roles' => [$templateRoleId()]]))['memo']['errors'] ?? [])
+        ->toBe(['addresses' => [__('Add at most :max addresses at a time.', ['max' => 100])]])
+        ->and(RateLimiter::attempts($lookups))->toBe(0);
+
+    // Every row counts, an invalid and a repeated one included.
+    $checked = $snapshotOf(callPageAction($snapshot, 'check', updates: ['addresses' => 'ada@example.com, not-an-address, bob@example.com, ada@example.com', 'roles' => [$templateRoleId()]]));
+
+    expect($checked['memo']['errors'] ?? [])->toBe([])
+        ->and(RateLimiter::attempts($lookups))->toBe(4);
+
+    // Send reviews only the rows the server checked (#[Locked]), so it looks up nothing new.
+    expect($snapshotOf(callPageAction($checked, 'send'))['memo']['errors'] ?? [])->toBe([])
+        ->and($deliveredMails())->toHaveCount(2)
+        ->and(RateLimiter::attempts($lookups))->toBe(4)
+        ->and(RateLimiter::attempts(UserActionLimit::bulkInvite()->key($admin)))->toBe(2);
 });
 
 it('sends only the rows the server checked, whatever a forged update says (CD-6)', function () use ($templateRoleId, $snapshotOf, $deliveredMails): void {
@@ -360,11 +447,14 @@ it('lets a super admin on a central host invite after picking an organisation (�
 
     $this->get(route('invitations.bulk'))->assertOk()->assertSee('data-test="bulk-organisation"', false)->assertSee('Acme Corp');
 
+    // E11: without a pick the organisation is what the page asks for first, also before a role is chosen; the
+    // picker shows the message itself.
     $page = Livewire::test('pages::invitations.bulk')
         ->set('addresses', 'first@example.com')
-        ->set('roles', [$templateRoleId()])
         ->call('check')
-        ->assertHasErrors(['organisationId' => __('Choose an organisation first.')]);
+        ->assertHasErrors(['organisationId' => __('Choose an organisation first.')])
+        ->assertHasNoErrors('roles')
+        ->assertSee(__('Choose an organisation first.'));
 
     // A new pick clears the roles and the preview.
     $page->set('organisationId', $acme->id)

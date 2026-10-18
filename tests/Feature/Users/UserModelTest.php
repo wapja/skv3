@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §6.3 */
+/** covers §4.4.1, §4.4.2, §4.4.6, §4.4.7, §6.3 */
 
 use App\Enums\UserStatus;
 use App\Models\Organisation;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.5, §6.2 */
+/** covers §4.3.1, §4.3.6, §4.3.9, §4.5, §6.2 */
 
 use App\Actions\Organisations\CreateOrganisation;
 use App\Authorization\Role;
@@ -153,4 +153,14 @@ it('says to super admins when a name or slug is held by an archived organisation
             'slug' => [__('This address is used by an archived organisation.')],
         ]);
     }
+});
+
+it('creates the organisation without the second-factor rule (§4.3.1)', function () use ($createAcme): void {
+    $superAdmin = asSuperAdmin();
+    onAdminHost();
+
+    $organisation = $createAcme($superAdmin);
+
+    expect((bool) DB::table('organisations')->where('id', $organisation->id)->value('require_second_factor'))->toBeFalse()
+        ->and($organisation->fresh()?->require_second_factor)->toBeFalse();
 });

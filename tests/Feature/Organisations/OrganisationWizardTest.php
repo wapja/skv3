@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2 */
+/** covers §4.3.2, §4.3.8, §4.3.9, §6.2 */
 
 use App\Models\Organisation;
 use Illuminate\Support\Facades\DB;

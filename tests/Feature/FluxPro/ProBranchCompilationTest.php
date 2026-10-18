@@ -107,7 +107,9 @@ it('reads @forelse\'s @empty, escaped directives and @verbatim blocks as Blade d
 
     expect($stripped)->not->toContain('<flux:chart')->not->toContain('<flux:date-picker')
         ->toContain('<p>free</p>')
-        ->and(substr_count($stripped, "\n"))->toBe(substr_count($blade, "\n"));
+        ->and(substr_count($stripped, "\n"))->toBe(substr_count($blade, "\n"))
+        // The lint reads the same branches as the stripper on exactly these cases (§6.7, G5-09).
+        ->and(FluxProLint::violations($blade))->toBe([]);
 });
 
 it('compiles every view of the kit without Flux Pro, as view:cache does (§6.7)', function (): void {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.8, §6.4 */
+/** covers §4.8.2, §4.8.5, §6.4 */
 
 use App\Actions\Auth\IssueHandoff;
 use App\Authorization\SetSuperAdmin;

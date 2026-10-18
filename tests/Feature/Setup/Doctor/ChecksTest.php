@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §5.4 */
+/** covers §4.1.2, §4.2.10, §4.9.2, §5.4 */
 
 use App\Authorization\Permission;
 use App\Authorization\PermissionsTeam;
@@ -120,9 +120,21 @@ it('passes on a supported PHP and fails on an older one (§5.4)', function (): v
 it('needs the gd extension (§5.4)', function (): void {
     $missing = new GdCheck(loaded: false)->run($this->context);
 
-    expect(new GdCheck(loaded: true)->run($this->context)->status)->toBe(CheckStatus::Pass)
+    expect(new GdCheck(loaded: true, webp: true)->run($this->context)->status)->toBe(CheckStatus::Pass)
         ->and($missing->status)->toBe(CheckStatus::Fail)
         ->and($missing->fix)->toBe(__('Install the gd extension'));
+});
+
+it('warns when GD cannot write WebP, which profile photos need (§5.4, E3)', function (): void {
+    $withoutWebp = new GdCheck(loaded: true, webp: false)->run($this->context);
+
+    expect($withoutWebp->status)->toBe(CheckStatus::Warn)
+        ->and($withoutWebp->message)->toBe(__('GD has no WebP support: profile photos cannot be saved'))
+        ->and($withoutWebp->fix)->toBe(__('Install GD with WebP (libwebp)'))
+        // Without GD at all the missing extension is the one finding.
+        ->and(new GdCheck(loaded: false, webp: false)->run($this->context)->status)->toBe(CheckStatus::Fail)
+        // This PHP's own answer, as the doctor and the System page ask it.
+        ->and(new GdCheck()->run($this->context)->status)->toBe((imagetypes() & IMG_WEBP) !== 0 ? CheckStatus::Pass : CheckStatus::Warn);
 });
 
 it('fails without an APP_KEY and names the command (§5.4)', function (): void {
@@ -580,6 +592,13 @@ it('probes the SMTP port and accepts the log mailer (§5.4)', function (): void 
         ->and($closed->fix)->toBe(__("Start Herd's mail service"));
 });
 
+it('names a mailer other than smtp or log without probing a port (§4.9.2)', function (): void {
+    // Port 1 on the loopback refuses every connection: a probe there would fail the check.
+    new EnvFile($this->sandbox->path('.env'))->set(['MAIL_MAILER' => 'postmark', 'MAIL_HOST' => '127.0.0.1', 'MAIL_PORT' => '1']);
+
+    expect(new MailCheck()->run($this->context))->toEqual(CheckResult::pass(__('Mail uses the :mailer mailer', ['mailer' => 'postmark'])));
+});
+
 it('looks for pg_dump only while the backups module is on (§5.4, RL-11)', function () use ($stub): void {
     // Herd's layout: the trust rule walks up to the root two levels above the services (CD-6).
     $herdServices = $this->sandbox->path('herd/services/postgresql');
@@ -788,6 +807,42 @@ it('warns without public/storage and runs storage:link with --fix (§5.4)', func
         ->and($missing->fix)->toBe('php artisan storage:link')
         ->and(new StorageLinkCheck()->run($this->context)->status)->toBe(CheckStatus::Pass);
     Process::assertRan(fn ($process): bool => str_contains(implode(' ', (array) $process->command), 'artisan storage:link') && $process->path === $this->sandbox->basePath);
+});
+
+it('fails while public/storage is not a link to storage/app/public, and forces storage:link only over a link (D63)', function (string $kind, string $fix, bool $forced): void {
+    $link = $this->sandbox->path('public/storage');
+    unlink($link);
+
+    match ($kind) {
+        // /storage would serve the project's .env.
+        'a link to the project root' => symlink($this->sandbox->basePath, $link),
+        'a dangling link' => symlink($this->sandbox->path('storage/app/gone'), $link),
+        default => File::ensureDirectoryExists($link), // 'a directory'
+    };
+
+    Process::fake(["*'artisan' 'storage:link'*" => Process::result('')]);
+    $wrong = new StorageLinkCheck()->run($this->context);
+    $fixed = new StorageLinkCheck()->fix($this->context);
+
+    expect($wrong->status)->toBe(CheckStatus::Fail)
+        ->and($wrong->message)->toBe(__('public/storage is not a link to storage/app/public'))
+        ->and($wrong->fix)->toBe($fix === 'move' ? __('Move public/storage aside, then run php artisan storage:link') : $fix)
+        ->and($fixed->status)->toBe(CheckStatus::Fail)
+        ->and(is_link($link) || is_dir($link))->toBeTrue();
+    Process::assertRan(fn ($process): bool => array_slice((array) $process->command, 1) === ['artisan', 'storage:link', '--no-interaction', ...($forced ? ['--force'] : [])]);
+})->with([
+    'a link to the project root' => ['a link to the project root', 'php artisan storage:link --force', true],
+    'a dangling link' => ['a dangling link', 'php artisan storage:link --force', true],
+    'a directory' => ['a directory', 'move', false],
+]);
+
+it('passes a storage link that reaches storage/app/public through another link (D63)', function (): void {
+    // A deployment that links storage/ itself to a shared directory, with a relative public/storage.
+    $link = $this->sandbox->path('public/storage');
+    unlink($link);
+    symlink('../storage/app/public', $link);
+
+    expect(new StorageLinkCheck()->run($this->context)->status)->toBe(CheckStatus::Pass);
 });
 
 it('runs the doctor as setup step 8 (§5.3.3)', function (CheckStatus $status, string $expected): void {

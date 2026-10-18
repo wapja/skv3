@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §4.6 */
+/** covers §4.4.3, §4.4.4, §4.6.11, §4.10.3 */
 
 use App\Actions\Users\DeleteUser;
 use App\Actions\Users\RestoreUser;
@@ -128,6 +128,28 @@ it('decides again on the locked row that an organisation admin may still disable
         ->and(recordedActivity(ActivityEvent::UserStatusChanged))->toBeEmpty()
         ->and(recordedActivity(ActivityEvent::UserDeleted))->toBeEmpty();
 })->with(['promoted', 'moved'])->with(['disable', 'delete']);
+
+it('decides on the locked row that a stale target is now the only active super admin, for a super admin actor (FU2-5)', function (string $action) use ($errorsOf): void {
+    // Both models were read before another request promoted the target and revoked the actor's flag: the models still
+    // say "member" and "super admin", the rows say the target is the only super admin left.
+    $organisation = Organisation::factory()->create();
+    $target = User::factory()->for($organisation)->create();
+    $superAdmin = asSuperAdmin();
+    DB::table('users')->where('id', $target->id)->update(['is_super_admin' => true]);
+    DB::table('users')->where('id', $superAdmin->id)->update(['is_super_admin' => false]);
+    $before = (array) DB::table('users')->where('id', $target->id)->first();
+
+    $errors = $errorsOf(fn () => match ($action) {
+        'disable' => app(UpdateUserStatus::class)->handle($superAdmin, $target, UserStatus::Disabled),
+        'delete' => app(DeleteUser::class)->handle($superAdmin, $target),
+        default => throw new LogicException("Unknown action [{$action}]."),
+    });
+
+    expect($errors)->toBe([$action === 'disable' ? 'status' : 'user' => [__('At least one active super admin must remain.')]])
+        ->and((array) DB::table('users')->where('id', $target->id)->first())->toBe($before)
+        ->and(recordedActivity(ActivityEvent::UserStatusChanged))->toBeEmpty()
+        ->and(recordedActivity(ActivityEvent::UserDeleted))->toBeEmpty();
+})->with(['disable', 'delete']);
 
 it('refuses to disable or delete yourself (W2, W12)', function () use ($adminOf): void {
     $organisation = Organisation::factory()->create();

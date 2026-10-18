@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.1, §4.2.5 */
 
 use App\Authorization\SetSuperAdmin;
 use App\Enums\ActivityEvent;
@@ -44,13 +44,14 @@ function registerPasskeyFor(User $user, SoftwareAuthenticator $authenticator, st
     Auth::guard('web')->logout();
 }
 
-/** Switch to a test host ('tenant', 'apex' or 'admin') and return its browser origin. */
+/** Switch to a test host ('tenant', 'apex' or 'admin') and return its browser origin; another name is a typo. */
 function passkeyHost(string $host, Organisation $organisation): string
 {
     match ($host) {
         'tenant' => onTenant($organisation),
         'apex' => onApex(),
-        default => onAdminHost(),
+        'admin' => onAdminHost(),
+        default => throw new LogicException("Unknown host kind [{$host}]."),
     };
 
     return Hosts::origin(match ($host) {
@@ -181,6 +182,55 @@ it('refuses a passkey sign-in on a host the user does not belong to', function (
     $this->assertGuest();
 });
 
+it('refuses a passkey on the host of another organisation, with that host\'s own origin (§4.2, P2)', function (): void {
+    $acme = Organisation::factory()->create(['slug' => 'acme']);
+    $beta = Organisation::factory()->create(['slug' => 'beta']);
+    $member = User::factory()->for($acme)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $acme));
+
+    // beta's origin is the one its host allows, so only the host rule can refuse.
+    signInWithPasskey($authenticator, passkeyHost('tenant', $beta))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('credential');
+    $this->assertGuest();
+
+    signInWithPasskey($authenticator, passkeyHost('tenant', $acme))->assertOk();
+    $this->assertAuthenticatedAs($member);
+});
+
+it('does not count successful passkey sign-ins against the passkeys limit (FU3-16)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $organisation));
+    $this->freezeTime();
+
+    // Eleven sign-ins, 22 requests from one IP: past the failure limit's ten a minute, under the backstop's 30.
+    foreach (range(1, 11) as $signIn) {
+        signInWithPasskey($authenticator, 'http://acme.localhost')->assertOk();
+        $this->assertAuthenticatedAs($member);
+        Auth::guard('web')->logout();
+    }
+});
+
+it('does not count successful passkey confirmations against the passkeys limit (FU3-16)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = User::factory()->for($organisation)->create();
+    $authenticator = new SoftwareAuthenticator;
+    registerPasskeyFor($member, $authenticator, passkeyHost('tenant', $organisation));
+    $this->freezeTime();
+    actingAs($member);
+
+    // Eleven confirmations, 22 requests by one user: past the failure limit's ten a minute, under the backstop's 30.
+    foreach (range(1, 11) as $confirmation) {
+        /** @var array<string, mixed> $options */
+        $options = getJson(route('passkey.confirm-options'))->assertOk()->json('options');
+
+        postJson(route('passkey.confirm'), ['credential' => $authenticator->assert($options, 'http://acme.localhost')])->assertSuccessful();
+    }
+});
+
 it('signs a super admin in with a passkey on central and tenant hosts (P2)', function (string $host): void {
     $organisation = Organisation::factory()->create(['slug' => 'acme']);
     $superAdmin = User::factory()->superAdmin()->create();
@@ -201,7 +251,8 @@ it('refuses a passkey of a user who is no longer active or was deleted', functio
 
     match ($change) {
         'disabled' => DB::table('users')->where('id', $member->id)->update(['status' => 'disabled']),
-        default => $member->delete(),
+        'deleted' => $member->delete(),
+        default => throw new LogicException("Unknown change [{$change}]."),
     };
 
     signInWithPasskey($authenticator, 'http://acme.localhost')->assertUnprocessable();
@@ -299,7 +350,8 @@ it('records a failed passkey sign-in without a user when the passkey names nobod
             $authenticator,
             passkeyHost('admin', $acme),
         ),
-        default => null, // 'an unknown passkey': nothing is registered
+        'an unknown passkey' => null, // nothing is registered
+        default => throw new LogicException("Unknown owner [{$owner}]."),
     };
     onTenant($acme);
 

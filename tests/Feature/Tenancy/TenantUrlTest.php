@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1, §6.2 */
+/** covers §4.1.2, §4.1.7, §4.1.8, §6.2 */
 
 use App\Models\Organisation;
 use App\Tenancy\Hosts;

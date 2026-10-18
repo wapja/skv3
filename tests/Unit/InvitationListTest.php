@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6 */
+/** covers §4.2.8, §6.6 */
 
 use App\Support\Invitations\InvitationList;
 

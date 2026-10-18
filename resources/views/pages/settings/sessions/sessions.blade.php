@@ -18,7 +18,7 @@
                         </div>
                         <div class="space-y-1">
                             <div class="flex items-center gap-2.5">
-                                <p class="font-medium tracking-tight">{{ __(':browser on :platform', ['browser' => $session['browser'] ?? __('Unknown browser'), 'platform' => $session['platform'] ?? __('Unknown platform')]) }}</p>
+                                <p class="font-medium tracking-tight">{{ __(':browser on :platform', ['browser' => $session['browser'] ?? __('Unknown browser'), 'platform' => $session['platform'] ?? __('unknown platform')]) }}</p>
                                 @if ($session['current'])
                                     <flux:badge size="sm" color="green">{{ __('This device') }}</flux:badge>
                                 @endif

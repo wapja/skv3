@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.4 */
 
 use App\Models\User;
 use Illuminate\Encryption\Encrypter;
+use Illuminate\Support\Facades\Crypt;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Livewire\Livewire;
 
@@ -98,14 +99,23 @@ it('refuses to download stored codes it cannot read instead of failing with a se
 })->with([
     'encrypted with another key' => [fn (): string => new Encrypter(random_bytes(32), (string) config('app.cipher'))->encrypt(json_encode(['recovery-code-1']))],
     'not a list of codes' => [fn (): string => encrypt('not json')],
+    'a JSON object' => [fn (): string => encrypt(json_encode(['first' => 'recovery-code-1']))],
+    'a list of numbers' => [fn (): string => encrypt(json_encode([1, 2]))],
+    'a list with a number in it' => [fn (): string => encrypt(json_encode(['recovery-code-1', 2]))],
+    'an empty list' => [fn (): string => encrypt(json_encode([]))],
 ]);
 
-it('renders the security page with an error when the stored codes are not a list (G2-07)', function (): void {
+it('renders the security page with an error when the stored codes cannot be read (G2-07)', function (Closure $stored): void {
     $user = memberWithRecoveryCodes();
-    $user->forceFill(['two_factor_recovery_codes' => encrypt('not json')])->save();
+    $user->forceFill(['two_factor_recovery_codes' => $stored()])->save();
 
     $this->get(route('security.edit'))->assertOk()->assertSee(__('Failed to load recovery codes'));
-});
+})->with([
+    'not a list of codes' => [fn (): string => encrypt('not json')],
+    // Fortify serialises before it encrypts; unserialize() warns about this value, which is a 500 without the catch.
+    'encrypted without serialising' => [fn (): string => Crypt::encryptString((string) json_encode(['recovery-code-1']))],
+    'a list of numbers' => [fn (): string => encrypt(json_encode([1, 2]))],
+]);
 
 it('offers to regenerate codes it cannot read (G2-07)', function (): void {
     $user = memberWithRecoveryCodes();

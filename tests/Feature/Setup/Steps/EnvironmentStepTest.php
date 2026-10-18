@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use App\Setup\Answers;
 use App\Setup\Detection;
+use App\Setup\SetupContext;
 use App\Setup\Steps\EnvironmentStep;
 use App\Setup\Support\EnvFile;
 use App\Setup\Support\Toolchain;
@@ -222,6 +223,77 @@ it('leaves php artisan storage:link to run when the link does not appear, after 
         ->and($result->message)->toContain(__('public/storage is missing'))
         ->and($result->message)->toContain(__('Mail is written to the log (storage/logs/laravel.log).'))
         ->and(strlen((string) new EnvFile($context->path('.env'))->get('HEALTH_CHECK_KEY')))->toBe(40);
+});
+
+/** Puts $kind in place of public/storage: a link to the project root, a dangling link or a directory (D63). */
+$replaceStorageLink = function (SetupContext $context, string $kind): void {
+    unlink($context->path('public/storage'));
+
+    match ($kind) {
+        'a link to the project root' => symlink($context->basePath, $context->path('public/storage')),
+        'a dangling link' => symlink($context->path('storage/app/gone'), $context->path('public/storage')),
+        default => File::ensureDirectoryExists($context->path('public/storage')), // 'a directory'
+    };
+};
+
+it('is incomplete while public/storage is not a link to storage/app/public (D63)', function (string $kind) use ($replaceStorageLink): void {
+    $context = setupSandbox();
+    new EnvironmentStep()->run($context);
+    $complete = new EnvironmentStep()->isComplete($context);
+
+    $replaceStorageLink($context, $kind);
+
+    expect($complete)->toBeTrue()
+        ->and(new EnvironmentStep()->isComplete($context))->toBeFalse();
+})->with(['a link to the project root', 'a dangling link', 'a directory']);
+
+it('replaces a wrong or dangling link with storage:link --force (D63)', function (string $kind) use ($replaceStorageLink): void {
+    $context = setupSandbox();
+    $replaceStorageLink($context, $kind);
+    Process::fake(["*'artisan' 'storage:link' '--no-interaction' '--force'*" => function () use ($context): ProcessResult {
+        unlink($context->path('public/storage'));
+        symlink($context->path('storage/app/public'), $context->path('public/storage'));
+
+        return Process::result('The [public/storage] link has been connected to [storage/app/public].');
+    }]);
+
+    $result = new EnvironmentStep()->run($context);
+
+    expect($result->status)->toBe('done')
+        ->and(realpath($context->path('public/storage')))->toBe(realpath($context->path('storage/app/public')))
+        ->and(new EnvironmentStep()->isComplete($context))->toBeTrue();
+    Process::assertRan(fn (PendingProcess $process): bool => array_slice((array) $process->command, 1) === ['artisan', 'storage:link', '--no-interaction', '--force']);
+})->with(['a link to the project root', 'a dangling link']);
+
+it('never forces storage:link over a directory, and names what is in the way (D63)', function () use ($replaceStorageLink): void {
+    $context = setupSandbox();
+    $replaceStorageLink($context, 'a directory');
+    File::put($context->path('public/storage/kept.txt'), 'a file someone put there');
+    // storage:link refuses an existing directory: "The [public/storage] link already exists."
+    Process::fake(["*'artisan' 'storage:link' '--no-interaction'*" => Process::result('The [public/storage] link already exists.')]);
+
+    $result = new EnvironmentStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe('php artisan storage:link')
+        ->and($result->message)->toContain(__('public/storage is not a link to storage/app/public'))
+        ->and($result->message)->toContain(__('Move public/storage aside, then run php artisan storage:link'))
+        ->and(is_file($context->path('public/storage/kept.txt')))->toBeTrue();
+    Process::assertRan(fn (PendingProcess $process): bool => array_slice((array) $process->command, 1) === ['artisan', 'storage:link', '--no-interaction']);
+    Process::assertDidntRun(fn (PendingProcess $process): bool => in_array('--force', (array) $process->command, true));
+});
+
+it('leaves storage:link --force to run when a wrong link stays (D63)', function () use ($replaceStorageLink): void {
+    $context = setupSandbox();
+    $replaceStorageLink($context, 'a link to the project root');
+    Process::fake(["*'artisan' 'storage:link'*" => Process::result('', exitCode: 1)]);
+
+    $result = new EnvironmentStep()->run($context);
+
+    expect($result->status)->toBe('manual')
+        ->and($result->command)->toBe('php artisan storage:link --force')
+        ->and($result->message)->toContain(__('public/storage is not a link to storage/app/public'))
+        ->and($result->message)->not->toContain(__('Move public/storage aside, then run php artisan storage:link'));
 });
 
 it('starts no storage:link when public/storage already exists (G6-09)', function (): void {

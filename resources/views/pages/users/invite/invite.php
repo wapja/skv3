@@ -7,6 +7,7 @@ use App\Concerns\ChoosesInvitationOrganisation;
 use App\Enums\Locale;
 use App\Models\Invitation;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
@@ -51,6 +52,10 @@ new #[Title('Invite user')] class extends Component
         $email = trim($this->email);
         // Components authorise before calling an action: organisationToInvite() authorises the organisation it returns.
         $organisation = $this->organisationToInvite();
+
+        // FM-18: InviteUser looks the address up, so the lookup counts first and is never given back, also when the
+        // invitation is refused (CD-2). The person behind the session pays: during an impersonation the impersonator.
+        UserActionLimit::addressLookup()->attempt(Impersonation::impersonator() ?? $this->currentUser(), 'email');
 
         // CD-3: a per-user limit on sent invitations, here and not in InviteUser, so a bulk caller counts its own way.
         // The slot is reserved before the send and given back when InviteUser refuses (DEC-27 (2)).

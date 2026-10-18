@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §5.3.3, §5.3.2 */
+/** covers §4.12.2, §5.3.3, §5.3.2 */
 
 use App\Models\User;
 use App\Setup\Marker;
@@ -390,6 +390,11 @@ it('refuses a folder name that can be no Herd address before anything runs (g3-1
     chmod($herd, 0755);
     app()->instance(Toolchain::class, new Toolchain($sandbox->path('home')));
     app()->instance(SetupContext::class, $sandbox);
+    // Detection asks the Herd stub before the folder check; Detector catches a stray, so both are faked (L7b-78).
+    Process::fake([
+        "*herd' 'services:list' '--json'*" => Process::result('Herd Pro is required'),
+        "*herd' 'tld'*" => Process::result('test'),
+    ]);
     $before = (string) file_get_contents($sandbox->path('.env'));
 
     [$exitCode, $output] = $install(['--answers' => (string) file_get_contents(base_path('tests/Fixtures/e2e-answers.json')), '--no-interaction' => true]);

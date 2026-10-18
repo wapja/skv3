@@ -103,12 +103,16 @@ final class HandoffController extends Controller
             ->first();
     }
 
-    /** The token's user, read without the tenant scope, when the host login rule lets them in here. */
+    /**
+     * The token's user, read without the tenant scope, when the link was issued under their current password and the
+     * host login rule lets them in here. A password changed or reset since the link was issued, by any path, ends it,
+     * as does a link issued before links were bound to the password (CD-3).
+     */
     private function userOf(HandoffToken $handoff, HostLoginRule $rule): ?User
     {
         $user = Auth::createUserProvider('users')?->retrieveById($handoff->user_id);
 
-        return $user instanceof User && $rule->allows($user) ? $user : null;
+        return $user instanceof User && $handoff->isBoundTo($user) && $rule->allows($user) ? $user : null;
     }
 
     /** Atomic: only one request can mark the token as consumed, and only before it expires. */

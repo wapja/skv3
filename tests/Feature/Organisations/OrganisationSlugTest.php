@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §6.2 */
+/** covers §4.1.8, §4.3.8, §6.2 */
 
 use App\Rules\OrganisationSlug;
 use App\Tenancy\Hosts;

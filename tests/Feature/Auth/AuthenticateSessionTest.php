@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.10 */
 
 use App\Models\Organisation;
 use App\Models\User;
@@ -23,6 +23,20 @@ it('signs a session out once the password changed elsewhere', function (): void 
     Auth::guard('web')->forgetUser();
 
     $this->get(route('dashboard'))->assertRedirect(route('login'));
+    $this->assertGuest();
+});
+
+it('signs a session out on its next Livewire update once the password changed elsewhere (DEC-27 (6))', function (): void {
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->create();
+    onTenant($organisation);
+    $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password']);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+
+    DB::table('users')->where('id', $member->id)->update(['password' => Hash::make('changed-elsewhere')]);
+    Auth::guard('web')->forgetUser();
+
+    callPageAction($snapshot, '$refresh')->assertUnauthorized();
     $this->assertGuest();
 });
 

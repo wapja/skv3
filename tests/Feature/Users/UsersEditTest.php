@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §6.2, §6.3 */
+/** covers §4.4.4, §4.6.10, §6.2, §6.3 */
 
 use App\Actions\Users\UpdateSuperAdmin;
 use App\Actions\Users\UpdateUserRoles;

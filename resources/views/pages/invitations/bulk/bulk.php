@@ -8,6 +8,7 @@ use App\Enums\Locale;
 use App\Models\Organisation;
 use App\Support\Invitations\InvitationList;
 use App\Support\RateLimits\UserActionLimit;
+use App\Tenancy\Auth\Impersonation;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -29,6 +30,8 @@ use Livewire\WithFileUploads;
  * whatever the reason, so the list never tells which addresses exist elsewhere (§4.5). The preview is #[Locked]:
  * "Send" sends only the rows the server checked, and reviews them again first. Each ready row reserves one attempt of
  * the bulk limit before the first send (UserActionLimit::bulkInvite()); the rows InviteUser refuses are given back.
+ * An unexpected failure halfway (E12) is reported and stops the list: the summary still shows what was sent, and the
+ * rows it did not reach are skipped with a generic reason and give their attempts back.
  */
 new #[Title('Invite several people')] class extends Component
 {
@@ -90,18 +93,19 @@ new #[Title('Invite several people')] class extends Component
         $this->rows = [];
     }
 
-    /** Parses the input and reviews every row; nothing is written or sent. */
+    /** Parses the input and reviews every row, one address lookup each (FM-18); nothing is written or sent. */
     public function check(InviteUser $inviteUser): void
     {
         $this->summary = null;
         $this->rows = [];
+        // E11: on a central host the organisation comes first, so the page never asks for a role of no organisation.
+        $organisation = $this->organisationToInvite();
         $this->validateBatch();
         $this->validate([
             'addresses' => ['nullable', 'string', 'max:30000'],
             'csv' => ['nullable', 'file', 'mimes:csv,txt', 'max:512'],
         ]);
 
-        $organisation = $this->organisationToInvite();
         $entries = [
             ...InvitationList::fromText($this->addresses),
             ...($this->csv instanceof TemporaryUploadedFile ? InvitationList::fromCsv((string) $this->csv->get()) : []),
@@ -114,6 +118,14 @@ new #[Title('Invite several people')] class extends Component
         if (count($entries) > InvitationList::MAX_ROWS) {
             throw ValidationException::withMessages(['addresses' => __('Add at most :max addresses at a time.', ['max' => InvitationList::MAX_ROWS])]);
         }
+
+        // FM-18: review() looks every row up with InviteUser's address rules, so each row counts, an invalid or a
+        // repeated one included, and is never given back (CD-2); during an impersonation the impersonator pays.
+        // A list the limit refuses is refused first by ensureAvailable() and costs nothing, because nothing was looked
+        // up; attempt() stays the atomic check. send() re-reviews only these #[Locked] rows.
+        $payer = Impersonation::impersonator() ?? $this->currentUser();
+        UserActionLimit::addressLookup()->ensureAvailable($payer, 'addresses', count($entries));
+        UserActionLimit::addressLookup()->attempt($payer, 'addresses', count($entries));
 
         $this->rows = $this->review($entries, $organisation, $inviteUser);
     }
@@ -128,8 +140,8 @@ new #[Title('Invite several people')] class extends Component
             throw ValidationException::withMessages(['addresses' => __('Check the list first.')]);
         }
 
-        $this->validateBatch();
         $organisation = $this->organisationToInvite();
+        $this->validateBatch();
         $actor = $this->currentUser();
         $roleIds = array_map(fn (int|string $roleId): int => (int) $roleId, $this->roles);
 
@@ -167,6 +179,7 @@ new #[Title('Invite several people')] class extends Component
         }
 
         $sent = [];
+        $handled = 0;
 
         try {
             foreach ($ready as $row) {
@@ -176,6 +189,17 @@ new #[Title('Invite several people')] class extends Component
                 } catch (ValidationException $exception) {
                     $skipped[] = ['email' => $row['email'], 'reason' => $this->reasonFor($exception)];
                 }
+
+                $handled++;
+            }
+        } catch (Throwable $exception) {
+            // E12: a failure that is not the row's fault (a queue that refuses the mail, an authorisation lost
+            // halfway) stops the list. It is reported, and the summary still says what was sent; the row that
+            // failed and the rows after it are not sent.
+            report($exception);
+
+            foreach (array_slice($ready, $handled) as $row) {
+                $skipped[] = ['email' => $row['email'], 'reason' => __('Not sent: something went wrong.')];
             }
         } finally {
             // Refused rows, and the rows a failure stopped before they were sent, give their attempts back.

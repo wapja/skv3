@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.1, §6.5 */
+/** covers §4.1.11, §6.5 */
 
 use App\Models\Organisation;
 use App\Support\Branding;

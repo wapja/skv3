@@ -18,7 +18,12 @@ it('keeps a super admin\'s dark choice when they open an organisation on its own
     $page->navigate(sameOrigin($page->url(), '/settings/appearance'))
         // The user menu also lists "Dark"; target the settings page's segmented switch.
         ->click('[data-flux-radio-segmented][value="dark"]')
-        ->wait(1);
+        ->assertScript('document.documentElement.classList.contains("dark")', true);
+
+    // The user menu saves the choice in a Livewire request of its own: wait for it, at most five seconds (A78).
+    for ($tries = 0; $admin->fresh()?->appearance !== Appearance::Dark && $tries < 50; $tries++) {
+        $page->wait(0.1);
+    }
 
     expect($admin->fresh()?->appearance)->toBe(Appearance::Dark);
 

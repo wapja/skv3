@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.5 */
+/** covers §4.10.1, §4.10.5, §6.5 */
 
 use App\Enums\Appearance;
 use App\Enums\Locale;
@@ -65,3 +65,15 @@ it('saves each appearance change from one place on the page', function (string $
 
     expect(substr_count($content, '$wire.saveAppearance'))->toBe(1);
 })->with(['dashboard', 'appearance.edit']);
+
+it('gives small screens a header with the sidebar toggle and the user menu (§4.10.1)', function (): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    $html = (string) $this->get(route('dashboard'))->assertOk()->getContent();
+    preg_match('/<header\b[^>]*\blg:hidden\b.*?<\/header>/s', $html, $header);
+
+    expect($header)->not->toBeEmpty()
+        ->and($header[0] ?? '')->toContain('data-flux-sidebar-toggle')
+        ->and($header[0] ?? '')->toContain('aria-label="'.e(__('Toggle sidebar')).'"')
+        ->and($header[0] ?? '')->toContain('data-test="logout-button"');
+});

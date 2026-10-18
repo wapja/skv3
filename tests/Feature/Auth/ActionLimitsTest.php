@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2, §4.5 */
+/** covers §4.2, §4.5, §4.5.12 */
 
 use App\Authorization\Role;
 use App\Models\Invitation;
@@ -200,3 +200,129 @@ it('limits the account-security routes to ten requests a minute per user, not pe
     'regenerate recovery codes' => ['POST', 'two-factor.regenerate-recovery-codes'],
     'delete a passkey' => ['DELETE', 'passkey.destroy'],
 ]);
+
+it('counts every address a profile save looks up, a refused one too, and refuses the lookup past 500 a day (FM-18, CD-2)', function () use ($errorsOf, $throttled): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    User::factory()->for(Organisation::factory())->create(['email' => 'taken@example.com']);
+    $member = User::factory()->for($organisation)->create(['name' => 'Ada', 'email' => 'old@example.com']);
+    onTenant($organisation);
+    $this->actingAs($member);
+    $key = UserActionLimit::addressLookup()->key($member);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+    UserActionLimit::addressLookup()->hit($member, cost: 498);
+
+    // An address held elsewhere is refused, and its lookup still counts: attempt() never gives it back.
+    expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['email' => 'taken@example.com'])))
+        ->toBe(['email' => [__('This address can\'t be used.')]])
+        ->and(RateLimiter::attempts($key))->toBe(499);
+
+    // The stored address, in other letters, is no lookup.
+    expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['name' => 'Eve', 'email' => 'OLD@example.com'])))->toBe([])
+        ->and($member->fresh()?->name)->toBe('Eve')
+        ->and(RateLimiter::attempts($key))->toBe(499);
+
+    expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['name' => 'Eve', 'email' => 'new@example.com'])))->toBe([])
+        ->and(RateLimiter::attempts($key))->toBe(500);
+    Notification::assertSentOnDemandTimes(ConfirmEmailChange::class, 1);
+
+    $this->travel(1)->hour();
+
+    // Past the limit no address is looked up: a taken and a free one get the same answer, and nothing is saved.
+    foreach (['taken@example.com', 'free@example.com'] as $address) {
+        expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['name' => 'Zed', 'email' => $address])))
+            ->toBe(['email' => [$throttled(82800)]]);
+    }
+
+    expect($member->fresh()?->name)->toBe('Eve')
+        ->and(UserActionLimit::addressLookup())->toEqual(new UserActionLimit('address-lookup', 500, 86400));
+    Notification::assertSentOnDemandTimes(ConfirmEmailChange::class, 1);
+});
+
+it('counts the address the invite page looks up, also when InviteUser refuses it, before the invitation limit (FM-18, CD-2)', function () use ($errorsOf, $throttled): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    User::factory()->for(Organisation::factory())->create(['email' => 'taken@example.com']);
+    $admin = asOrgAdmin($organisation);
+    $templateId = (string) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+    $snapshot = pageSnapshot(route('users.invite'), 'pages::users.invite');
+    $invite = fn (string $email): TestResponse => callPageAction($snapshot, 'invite', updates: ['email' => $email, 'roles' => [$templateId]]);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    UserActionLimit::addressLookup()->hit($admin, cost: 499);
+
+    // InviteUser refuses the address and the invite slot is given back; the lookup is not.
+    expect($errorsOf($invite('taken@example.com')))->toBe(['email' => [__('This address can\'t be used.')]])
+        ->and(RateLimiter::attempts($lookups))->toBe(500)
+        ->and(RateLimiter::attempts(UserActionLimit::invite()->key($admin)))->toBe(0);
+
+    expect($errorsOf($invite('new@example.com')))->toBe(['email' => [$throttled(86400)]])
+        ->and(RateLimiter::attempts(UserActionLimit::invite()->key($admin)))->toBe(0)
+        ->and(User::query()->where('email', 'new@example.com')->exists())->toBeFalse();
+});
+
+it('counts the address an administrator types on users.edit before the confirmation and the address-change limit (FM-18, CD-2)', function () use ($errorsOf, $throttled): void {
+    Notification::fake();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    User::factory()->for(Organisation::factory())->create(['email' => 'taken@example.com']);
+    $member = User::factory()->for($organisation)->create(['name' => 'Mila', 'email' => 'mila@acme.test']);
+    $admin = asOrgAdmin($organisation);
+    $lookups = UserActionLimit::addressLookup()->key($admin);
+    withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('users.edit', ['user' => $member->id]), 'pages::users.edit');
+    UserActionLimit::addressLookup()->hit($admin, cost: 499);
+
+    expect($errorsOf(callPageAction($snapshot, 'saveAccount', updates: ['email' => 'taken@example.com'])))->toBe(['email' => [__('This address can\'t be used.')]])
+        ->and(RateLimiter::attempts($lookups))->toBe(500);
+
+    expect($errorsOf(callPageAction($snapshot, 'saveAccount', updates: ['name' => 'Mila de Vries', 'email' => 'mila.new@acme.test'])))->toBe(['email' => [$throttled(86400)]])
+        ->and($member->fresh()?->only(['name', 'email']))->toBe(['name' => 'Mila', 'email' => 'mila@acme.test'])
+        ->and(RateLimiter::attempts(UserActionLimit::addressChange()->key($admin)))->toBe(0);
+
+    // A save that keeps the address, here in other letters, looks nothing up.
+    expect($errorsOf(callPageAction($snapshot, 'saveAccount', updates: ['name' => 'Mila de Vries', 'email' => 'MILA@acme.test'])))->toBe([])
+        ->and($member->fresh()?->name)->toBe('Mila de Vries')
+        ->and(RateLimiter::attempts($lookups))->toBe(501);
+});
+
+it('refuses a new address on the profile during an impersonation before any lookup, and charges nobody (FM-18, CD-2)', function () use ($errorsOf): void {
+    useImpersonationModule(true);
+    Notification::fake();
+    $organisation = onTenant(Organisation::factory()->create(['slug' => 'acme']));
+    User::factory()->for(Organisation::factory())->create(['email' => 'taken@example.com']);
+    $admin = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $admin->unsetRelation('roles');
+    $member = User::factory()->for($organisation)->create(['email' => 'mila@acme.test']);
+    startImpersonatingOverHttp($admin, $member);
+    $snapshot = pageSnapshot(route('profile.edit'), 'pages::settings.profile');
+
+    // A taken and a free address get the same answer: an impersonation never changes the address, so neither is
+    // looked up, and impersonating member after member adds no lookups to anyone's day.
+    foreach (['taken@example.com', 'free@example.com'] as $address) {
+        expect($errorsOf(callPageAction($snapshot, 'updateProfileInformation', updates: ['email' => $address])))
+            ->toBe(['email' => [__('The address can\'t be changed during an impersonation.')]]);
+    }
+
+    expect(RateLimiter::attempts(UserActionLimit::addressLookup()->key($member)))->toBe(0)
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($admin)))->toBe(0);
+    Notification::assertNothingSent();
+});
+
+it('charges the impersonator, not the impersonated administrator, for the lookups of the invite, edit and bulk pages (FM-18, CD-2)', function () use ($errorsOf): void {
+    useImpersonationModule(true);
+    Notification::fake();
+    $organisation = onTenant(Organisation::factory()->create(['slug' => 'acme']));
+    $superAdmin = User::factory()->superAdmin()->create();
+    $admin = User::factory()->for($organisation)->create();
+    withPermissionsTeam($organisation->id, fn (): User => $admin->assignRole(Role::OrganisationAdmin->value));
+    $admin->unsetRelation('roles');
+    $member = User::factory()->for($organisation)->create(['email' => 'mila@acme.test']);
+    $templateId = (string) RoleModel::query()->whereNull('team_id')->where('name', Role::OrganisationAdmin->value)->value('id');
+    startImpersonatingOverHttp($superAdmin, $admin);
+    withSession(['auth.password_confirmed_at' => time()]);
+
+    expect($errorsOf(callPageAction(pageSnapshot(route('users.invite'), 'pages::users.invite'), 'invite', updates: ['email' => 'new@example.com', 'roles' => [$templateId]])))->toBe([])
+        ->and($errorsOf(callPageAction(pageSnapshot(route('users.edit', ['user' => $member->id]), 'pages::users.edit'), 'saveAccount', updates: ['email' => 'mila.new@acme.test'])))->toBe([])
+        ->and($errorsOf(callPageAction(pageSnapshot(route('invitations.bulk'), 'pages::invitations.bulk'), 'check', updates: ['addresses' => 'ada@example.com, bob@example.com', 'roles' => [$templateId]])))->toBe([])
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($superAdmin)))->toBe(4)
+        ->and(RateLimiter::attempts(UserActionLimit::addressLookup()->key($admin)))->toBe(0);
+});

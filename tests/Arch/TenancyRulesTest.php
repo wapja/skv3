@@ -54,6 +54,25 @@ it('bypasses or removes the tenant scope only in the allowed places', function (
     expect(filesMatching($candidates, $pattern))->toBe([]);
 });
 
+it('enters the central context only in the tenancy layer (FU3-16, A25)', function (): void {
+    // CentralContext switches strict mode off for everything that runs while it is active (TenantScope), like a bypass
+    // that never ends. It is entered for Artisan commands (TenancyServiceProvider) and queued jobs (JobTenancy); any
+    // other mention of the class, an import included, is a way to enter it.
+    $allowed = ['app/Tenancy/', 'app/Providers/TenancyServiceProvider.php'];
+    $pattern = '/\bCentralContext\b/';
+
+    foreach (['app(CentralContext::class)->enter();', '$this->app->make(\App\Tenancy\CentralContext::class)->enter();', 'use App\Tenancy\CentralContext;', "resolve('App\\Tenancy\\CentralContext')->enter();"] as $form) {
+        expect(preg_match($pattern, $form))->toBe(1, "The central-context rule misses [{$form}].");
+    }
+
+    $candidates = array_values(array_filter(
+        kitSourceFiles('app', 'routes', 'resources/views', 'database', 'bootstrap', 'config'),
+        fn (string $path): bool => ! Str::startsWith($path, $allowed) && ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(filesMatching($candidates, $pattern))->toBe([]);
+});
+
 it('keeps driver-specific SQL out of the app', function (): void {
     expect(filesMatching(kitSourceFiles('app', 'resources/views'), '/\bilike\b/i'))->toBe([]);
 });

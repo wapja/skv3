@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.8 */
+/** covers §4.2.5, §6.8 */
 
 use App\Models\Organisation;
 use App\Tenancy\Events\TenantForgotten;

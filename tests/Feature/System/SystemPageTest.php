@@ -128,8 +128,9 @@ it('runs only the web-safe doctor checks on the sandbox, starting no process (RL
     ])
         ->and(array_filter($rows, fn (array $row): bool => str_starts_with($row['message'], $crashed)))->toBe([])
         ->and(array_column($rows, 'status', 'key')['health-check-key'])->toBe(CheckStatus::Fail->value)
-        // F12: the apex row reads the sandbox's .env, not the repository's.
-        ->and(array_column($rows, 'status', 'key')['apex'])->toBe(CheckStatus::Fail->value);
+        // F12: the apex row reads the sandbox's .env, not the repository's (L7b-50: its message names the sandbox's values).
+        ->and(array_column($rows, 'status', 'key')['apex'])->toBe(CheckStatus::Fail->value)
+        ->and(array_column($rows, 'message', 'key')['apex'])->toBe(__('TENANCY_APEX_DOMAIN (:apex) differs from the APP_URL host (:host)', ['apex' => 'other.test', 'host' => 'my-app.test']));
     expect(array_diff(SystemChecks::KEYS, array_map(fn (Check $check): string => $check->key(), new Doctor()->checks())))->toBe([]);
 
     config(['skv.health_check.key' => str_repeat('k', 40)]);
@@ -169,6 +170,7 @@ it('shows the health report and the heartbeat as unavailable while the ops store
     onAdminHost();
 
     $this->get(route('system.index'))->assertOk()
+        ->assertSeeHtml('data-test="system-health-unavailable"')
         ->assertSee(__('The health report is not available right now'))
         ->assertSee(__('The scheduler heartbeat is not available right now'))
         ->assertDontSee(__('The scheduler has not run yet'))

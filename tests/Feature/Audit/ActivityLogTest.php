@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.8, §6.2 */
+/** covers §4.8.1, §4.8.5, §4.8.6, §6.2 */
 
 use App\Actions\Audit\RecordActivity;
 use App\Authorization\SetSuperAdmin;
@@ -17,6 +17,7 @@ use Illuminate\Foundation\Console\ClosureCommand;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Role as RoleModel;
 
 use function Pest\Laravel\actingAs;
@@ -198,3 +199,11 @@ it('gives every activity event a Dutch label and a group', function (ActivityEve
         ->and($event->group())->toBeIn(['authentication', 'security', 'users', 'invitations', 'organisations', 'roles', 'impersonation', 'audit'])
         ->and($event->tagsByHost())->toBe(in_array($event->group(), ['authentication', 'security', 'impersonation', 'audit'], true));
 })->with(ActivityEvent::cases());
+
+it('indexes organisation_id and created_at and gives organisation_id no foreign key (§4.8.5)', function (): void {
+    $indexed = array_map(fn (array $index): array => $index['columns'], Schema::getIndexes('activity_log'));
+    $foreignKeys = array_map(fn (array $foreignKey): array => $foreignKey['columns'], Schema::getForeignKeys('activity_log'));
+
+    expect($indexed)->toContain(['organisation_id'], ['created_at'], ['organisation_id', 'created_at'])
+        ->and($foreignKeys)->not->toContain(['organisation_id']);
+});

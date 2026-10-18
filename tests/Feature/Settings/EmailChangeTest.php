@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.9 */
 
 use App\Actions\Settings\ConfirmEmailChange;
 use App\Actions\Settings\RequestEmailChange;

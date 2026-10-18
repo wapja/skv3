@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9 */
+/** covers §4.9.2 */
 
 use App\Enums\CheckStatus;
 use App\Setup\Detection;
@@ -166,7 +166,9 @@ it('skips the queue and failed-jobs checks while the default database is down, s
     expect($report['healthy'])->toBeFalse()
         ->and($report['checks']['database']['status'])->toBe(CheckStatus::Fail->value)
         ->and(Arr::only($report['checks']['queue'], ['status', 'message']))->toBe($skipped)
-        ->and(Arr::only($report['checks']['failed-jobs'], ['status', 'message']))->toBe($skipped);
+        ->and(Arr::only($report['checks']['failed-jobs'], ['status', 'message']))->toBe($skipped)
+        // L7b-49: every row of the report, so a check added later that fails with the database fails this test.
+        ->and(array_keys(array_filter($report['checks'], fn (array $row): bool => $row['status'] === CheckStatus::Fail->value)))->toBe(['database']);
 });
 
 it('gives the pgsql connection a connect timeout from DB_CONNECT_TIMEOUT, 5 seconds by default and never under 1 (F2)', function (): void {

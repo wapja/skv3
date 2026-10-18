@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2 */
+/** covers §4.2.6, §4.2.7 */
 
 use App\Enums\ActivityEvent;
 use App\Models\Organisation;
@@ -107,6 +107,24 @@ it('does not count successful sign-ins', function (): void {
 
     $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])
         ->assertRedirect(route('dashboard'));
+});
+
+it('does not count successful two-factor sign-ins (FU3-16)', function (): void {
+    // Six recovery codes, one per sign-in: a TOTP code cannot be used twice in its window, a recovery code only once.
+    $codes = array_map(fn (int $number): string => "recovery-code-{$number}", range(1, 6));
+    $organisation = Organisation::factory()->create();
+    $member = User::factory()->for($organisation)->withTwoFactor()->create([
+        'two_factor_recovery_codes' => encrypt(json_encode($codes, JSON_THROW_ON_ERROR)),
+    ]);
+    onTenant($organisation);
+
+    // One more than the two-factor limit's five a minute, all in the frozen minute.
+    foreach ($codes as $code) {
+        $this->post(route('login.store'), ['email' => $member->email, 'password' => 'password'])->assertRedirect(route('two-factor.login'));
+        $this->post(route('two-factor.login.store'), ['recovery_code' => $code])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($member);
+        $this->post(route('logout'));
+    }
 });
 
 it('clears an address\'s failures once it signs in (G1-03)', function (): void {

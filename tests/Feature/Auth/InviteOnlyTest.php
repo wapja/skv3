@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.2, §4.10 */
+/** covers §4.2.2, §4.4.6, §4.10.3 */
 
 use App\Http\Controllers\ImpersonationController;
 use App\Models\User;
@@ -69,4 +69,16 @@ it('sends guests from the root url to the login page', function (): void {
 
 it('sends guests from the dashboard to the login page', function (): void {
     $this->get(route('dashboard'))->assertRedirect(route('login'));
+});
+
+it('deletes users only from the users index, never the signed-in user (§4.10.3, D33)', function (): void {
+    $files = kitSourceFiles('app', 'resources/views', 'routes');
+    // The signed-in user, however a page reaches it, followed by a delete.
+    $deletesSelf = '/(?:auth\(\)->user\(\)|Auth::user\(\)|\$request->user\(\)|\$this->currentUser\(\)|\$this->user\(\))\??->(?:delete|forceDelete)\(/';
+
+    expect(preg_match($deletesSelf, '$this->currentUser()->delete()'))->toBe(1)
+        ->and(preg_match($deletesSelf, 'auth()->user()?->forceDelete()'))->toBe(1)
+        ->and(preg_match($deletesSelf, '$deleteUser->handle($this->currentUser(), $target)'))->toBe(0)
+        ->and(filesMatching($files, $deletesSelf))->toBe([])
+        ->and(filesMatching($files, '/\bDeleteUser\b/'))->toBe(['app/Actions/Users/DeleteUser.php', 'resources/views/pages/users/index/index.php']);
 });

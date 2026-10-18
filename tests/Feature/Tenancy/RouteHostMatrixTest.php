@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * covers §6.2
+ * covers §4.3.4, §4.6.7, §6.2
  *
  * Route × host × role matrix. Every milestone adds its named routes to matrixRoutes() and,
  * where the rule differs, to routeMatrixOutcome().

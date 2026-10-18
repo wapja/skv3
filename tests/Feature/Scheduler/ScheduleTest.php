@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.9 */
+/** covers §4.9.4 */
 
 use App\Support\Scheduler\Heartbeat;
 use App\Support\Scheduler\ScheduledTasks;
@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 
 beforeEach(function (): void {
     // Loads routes/console.php, as the console kernel does for schedule:run.
@@ -31,10 +32,10 @@ $identifiers = fn (): array => array_values(array_map(
     app(Schedule::class)->events(),
 ));
 
-it('schedules exactly the ops jobs of §4.9, each once (DEC-28, L-31, CD-10)', function () use ($identifiers): void {
-    expect($identifiers())->toHaveCount(9)->toEqualCanonicalizing([
-        'activitylog:clean --force', 'backup-temp-cleanup', 'backup:clean', 'backup:run --only-db', 'backup:monitor',
-        'queue:prune-failed', 'model:prune', 'auth:clear-resets', 'scheduler-heartbeat',
+it('schedules exactly the ops jobs of §4.9, each once (DEC-28, L-31, CD-10, CD-4)', function () use ($identifiers): void {
+    expect($identifiers())->toHaveCount(10)->toEqualCanonicalizing([
+        'activitylog:clean --force', 'backup-temp-cleanup', 'livewire-tmp-cleanup', 'backup:clean', 'backup:run --only-db',
+        'backup:monitor', 'queue:prune-failed', 'model:prune', 'auth:clear-resets', 'scheduler-heartbeat',
     ]);
 });
 
@@ -42,7 +43,7 @@ it('lists on the System page exactly what the scheduler runs, in its order (CD-8
     expect(array_column(ScheduledTasks::all(), 'task'))->toBe($identifiers());
 });
 
-it('runs each job at its time, on the right servers, never twice at once (§4.9, CD-10)', function (string $job, string $expression, bool $oneServer, bool $overlapGuard, int $lockMinutes) use ($events): void {
+it('runs each job at its time, on the right servers, never twice at once (§4.9, CD-10, CD-4)', function (string $job, string $expression, bool $oneServer, bool $overlapGuard, int $lockMinutes) use ($events): void {
     $event = $events()[$job];
 
     expect($event->expression)->toBe($expression)
@@ -53,6 +54,8 @@ it('runs each job at its time, on the right servers, never twice at once (§4.9,
     ['activitylog:clean --force', '0 1 * * *', true, true, 1440],
     // Each server empties its own temporary directory, every hour.
     ['backup-temp-cleanup', '15 * * * *', false, false, 1440],
+    // Livewire's temporary uploads sit on each server's own disk too; clear of backup-temp-cleanup's :15 (CD-4).
+    ['livewire-tmp-cleanup', '45 * * * *', false, false, 1440],
     // A killed backup's lock expires before the next night (F6).
     ['backup:clean', '30 1 * * *', true, true, 720],
     ['backup:run --only-db', '0 2 * * *', true, true, 720],
@@ -74,7 +77,8 @@ it('runs the backup jobs only while the backups module is on (§6.8)', function 
     expect($all['activitylog:clean --force']->filtersPass(app()))->toBeTrue();
 
     // F18: a dump left from before the module was switched off must still go.
-    expect($all['backup-temp-cleanup']->filtersPass(app()))->toBeTrue();
+    expect($all['backup-temp-cleanup']->filtersPass(app()))->toBeTrue()
+        ->and($all['livewire-tmp-cleanup']->filtersPass(app()))->toBeTrue();
 })->with(['module on' => true, 'module off' => false]);
 
 it('never runs an unencrypted backup, but keeps cleaning and monitoring (CD-10)', function (array $config) use ($events): void {
@@ -117,4 +121,20 @@ it('empties the stale files of the backup temp directory (CD-10, F18)', function
     $events()['backup-temp-cleanup']->run(app());
 
     expect(is_file($temp.'/temp/db-dumps/database.sql'))->toBeFalse();
+});
+
+it('empties the stale files of Livewire\'s temporary upload directory (E5, CD-4)', function () use ($events): void {
+    $disk = FileUploadConfiguration::storage();
+    $stale = FileUploadConfiguration::path('abandoned-photo.jpg');
+    $fresh = FileUploadConfiguration::path('open-tab.csv');
+    $disk->put($stale, 'a photo with its EXIF data');
+    $disk->put($fresh, 'a list of addresses');
+    touch($disk->path($stale), now()->subHours(25)->getTimestamp());
+
+    $events()['livewire-tmp-cleanup']->run(app());
+
+    expect($disk->exists($stale))->toBeFalse()
+        ->and($disk->exists($fresh))->toBeTrue();
+
+    $disk->delete($fresh);
 });

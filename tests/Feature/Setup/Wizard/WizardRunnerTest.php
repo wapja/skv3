@@ -456,6 +456,26 @@ it('stops trusting the pid four hours after the step started, so a reused pid ne
         ->and(app(WizardRunner::class)->state()?->results)->not->toHaveKey('frontend');
 });
 
+it('never takes a garbled pid in the started file for a live step process (RL-8, L7b-33)', function (Closure $pid) use ($beforeFrontend): void {
+    // Arrange: a quiet step whose started file holds something the launcher's shell never writes, past the stall bound.
+    $context = useSetupWizard();
+    $steps = $beforeFrontend($context);
+    File::put($steps.'/frontend.started', $pid()."\n");
+    File::put($steps.'/frontend.log', 'npm ci');
+    $this->travel(31)->minutes();
+
+    expect(app(WizardRunner::class)->advance())->toBe([
+        'key' => 'frontend',
+        'state' => 'done',
+        'message' => __('The step has not finished; see :log.', ['log' => WizardState::STEPS.'/frontend.log']),
+    ])->and(app(WizardRunner::class)->state()?->results['frontend']->status ?? null)->toBe('manual');
+})->with([
+    // posix_kill() narrows it to pid_t: -1, which signals every process this user owns, so kill() succeeds.
+    'a number past pid_t' => [fn (): string => '4294967295'],
+    // (int) would read this test's own, live pid.
+    'a live pid with trailing garbage' => [fn (): string => getmypid().'x'],
+]);
+
 it('detects the machine once per setup, not on every poll (CD-15, g3-29)', function (): void {
     // Arrange: count the Detector's PostgreSQL probes, one per detect().
     $context = useSetupWizard();
@@ -516,6 +536,22 @@ it('records what the Herd step did not do in the marker when the Herd stage cann
     expect($thrown)->toBeInstanceOf(Throwable::class)
         ->and(Marker::read($context)['answers']['https'] ?? null)->toBeFalse()
         ->and(new EnvFile($context->path('.env'))->get('MODULE_PASSKEYS'))->toBe('false');
+});
+
+it('throws the Herd stage\'s own failure and reports the stranding\'s when both fail after step 9 (g3-32, L7b-28)', function (): void {
+    // Arrange: steps 1–8 are done and HTTPS with passkeys was chosen; a directory stands where the Herd state goes, so
+    // HerdState::begin() fails after the marker, and .env is gone, so switching passkeys off while stranding fails too.
+    Exceptions::fake();
+    $context = useSetupWizard();
+    $answers = Answers::fromArray(['modules' => ['passkeys', 'impersonation'], 'https' => true], Detection::none(), $context->folderName());
+    new WizardState('localhost', $answers, Detection::none(), array_fill_keys(WizardRunner::PAGE_STEPS, StepResult::done('ok')))->save($context->basePath);
+    File::ensureDirectoryExists($context->path(HerdState::PATH));
+    File::delete($context->path('.env'));
+
+    expect(fn () => app(WizardRunner::class)->finish())
+        ->toThrow(RuntimeException::class, __('Could not write :file.', ['file' => basename(HerdState::PATH)]))
+        ->and(Marker::exists($context))->toBeTrue();
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === __('The environment file [:path] does not exist.', ['path' => $context->path('.env')]));
 });
 
 it('writes the port the wizard was opened on into APP_URL without Herd (CD-15, g1-17)', function (): void {

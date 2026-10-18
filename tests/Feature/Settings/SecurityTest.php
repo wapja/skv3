@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.10 */
+/** covers §4.2.5, §4.2.6, §4.10.2 */
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -121,4 +121,46 @@ test('correct password must be provided to update password', function (): void {
         ->call('updatePassword');
 
     $response->assertHasErrors(['current_password']);
+});
+
+it('lists the user\'s own passkeys and deletes one after the confirmation (§4.2.5)', function (): void {
+    usePasskeysModule(true);
+    $user = User::factory()->create();
+    $colleague = User::factory()->create(['organisation_id' => $user->organisation_id]);
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    $laptop = $user->passkeys()->create(['name' => 'Work laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    $colleague->passkeys()->create(['name' => 'Colleague key', 'credential_id' => 'credential-2', 'credential' => []]);
+    $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()]);
+
+    $this->get(route('security.edit'))->assertOk()
+        ->assertSee('Work laptop')
+        ->assertDontSee('Colleague key')
+        ->assertDontSee('No passkeys yet')
+        ->assertSeeHtml('wire:click="confirmDelete('.$laptop->id.')"');
+
+    $confirmation = callPageAction(pageSnapshot(route('security.edit'), 'pages::settings.security'), 'confirmDelete', [$laptop->id])->assertOk();
+    /** @var array<string, mixed> $snapshot */
+    $snapshot = json_decode((string) $confirmation->json('components.0.snapshot'), true, flags: JSON_THROW_ON_ERROR);
+    $deleted = callPageAction($snapshot, 'deletePasskey')->assertOk();
+
+    expect($user->passkeys()->count())->toBe(0)
+        ->and($colleague->passkeys()->count())->toBe(1)
+        ->and((string) $deleted->json('components.0.effects.html'))->toContain('No passkeys yet');
+});
+
+it('refuses a forged confirmation of a colleague\'s passkey and keeps it (§4.2.5)', function (): void {
+    usePasskeysModule(true);
+    $user = User::factory()->create();
+    $colleague = User::factory()->create(['organisation_id' => $user->organisation_id]);
+    onTenant($user->organisation ?? throw new LogicException('The user has no organisation.'));
+    $user->passkeys()->create(['name' => 'Work laptop', 'credential_id' => 'credential-1', 'credential' => []]);
+    $colleagueKey = $colleague->passkeys()->create(['name' => 'Colleague key', 'credential_id' => 'credential-2', 'credential' => []]);
+    $this->actingAs($user)->withSession(['auth.password_confirmed_at' => time()]);
+    $snapshot = pageSnapshot(route('security.edit'), 'pages::settings.security');
+
+    $forged = callPageAction($snapshot, 'confirmDelete', [$colleagueKey->id]);
+
+    $forged->assertNotFound();
+    expect($colleague->passkeys()->whereKey($colleagueKey->id)->exists())->toBeTrue()
+        ->and($user->passkeys()->count())->toBe(1);
 });

@@ -35,3 +35,13 @@ it('has a Dutch translation for every __() key in the app and its views (FU4-6)'
 
     expect($missing)->toBe([]);
 });
+
+it('never translates the copy inside the Flux components Blaze folds (G3-08, DEC-29)', function (string $locale): void {
+    // Blaze runs a folded component's __() once, when the view compiles, and memoises the result: a translation here
+    // would show the first language to compile to everyone. The labels stay English for every locale instead.
+    $folded = ['Toggle password visibility', 'Clear input', 'Copy to clipboard', 'Choose file', 'Choose files', 'No file chosen', 'Close modal', 'Character {current} of {total}'];
+    /** @var array<string, string> $translations */
+    $translations = json_decode((string) file_get_contents(lang_path("{$locale}.json")), true, flags: JSON_THROW_ON_ERROR);
+
+    expect(array_values(array_intersect($folded, array_keys($translations))))->toBe([]);
+})->with(['nl', 'en']);

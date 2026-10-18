@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §4.6, Appendix A W8, W9, W10, W11, W13, W14 */
+/** covers §4.5.1, §4.5.2, §4.5.4, §4.5.5, §4.5.8, §4.5.10, §4.5.12, §4.6, Appendix A W8, W9, W10, W11, W13, W14 */
 
 use App\Actions\Invitations\InviteUser;
 use App\Authorization\Permission;
@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role as RoleModel;
 use Symfony\Component\Mailer\SentMessage;
@@ -342,4 +343,25 @@ it('records exactly user.roles_changed and invitation.sent, with no token or lin
 it('refuses to mass-assign organisation_id on invitations (CV-15)', function (): void {
     expect(fn (): Invitation => new Invitation(['organisation_id' => Organisation::factory()->create()->id]))
         ->toThrow(MassAssignmentException::class);
+});
+
+it('takes the expiry from the configured number of days (§4.5.2)', function (): void {
+    config(['skv.invitations.expires_in_days' => 14]);
+    // Whole seconds: the datetime columns store no microseconds.
+    $this->freezeSecond();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+
+    $invitation = inviteMember($organisation, asOrgAdmin($organisation));
+
+    expect($invitation->expires_at->equalTo(now()->addDays(14)))->toBeTrue();
+});
+
+it('keeps no activation columns on users: the invitation is the only token store (§4.5.10, W13)', function (): void {
+    $activationColumns = array_values(array_filter(
+        Schema::getColumnListing('users'),
+        fn (string $column): bool => str_starts_with($column, 'activation'),
+    ));
+
+    expect($activationColumns)->toBe([])
+        ->and(Schema::hasColumns('invitations', ['token_hash', 'token', 'expires_at', 'reminder_sent_at', 'accepted_at', 'invited_by']))->toBeTrue();
 });

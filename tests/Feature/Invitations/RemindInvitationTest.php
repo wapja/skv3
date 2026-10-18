@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.5, §6.2, Appendix A W5, X11 */
+/** covers §4.5.2, §4.5.6, §4.5.8, §6.2, Appendix A W5, X11 */
 
 use App\Actions\Invitations\RemindInvitation;
 use App\Enums\ActivityEvent;
@@ -230,4 +230,17 @@ it('records invitation.reminder_sent', function (): void {
         ->and($reminded->causer_id)->toBe($admin->id)
         ->and($reminded->organisation_id)->toBe($organisation->id)
         ->and($reminded->properties?->get('invitation_id'))->toBe($invitation->id);
+});
+
+it('renews the expiry by the configured number of days (§4.5.2)', function (): void {
+    $this->freezeSecond();
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $admin = asOrgAdmin($organisation);
+    $invitation = inviteMember($organisation, $admin);
+    config(['skv.invitations.expires_in_days' => 3]);
+    $this->travel(1)->days();
+
+    app(RemindInvitation::class)->handle($admin, $invitation);
+
+    expect($invitation->expires_at->equalTo(now()->addDays(3)))->toBeTrue();
 });

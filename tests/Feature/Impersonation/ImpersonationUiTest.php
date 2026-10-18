@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §4.7, §6.2 */
+/** covers §4.4, §4.7.2, §4.7.4, §6.2 */
 
 use App\Authorization\Role;
 use App\Enums\ActivityEvent;
@@ -141,6 +141,27 @@ it('answers 404 to a forged impersonation start while the module is off (FU4-3)'
 
     expect(Impersonation::isActive())->toBeFalse()
         ->and(recordedActivity(ActivityEvent::ImpersonationStarted))->toHaveCount(0);
+});
+
+it('starts impersonating a member with two-factor authentication and lands on the dashboard without a challenge (DEC-28 (20))', function () use ($organisationAdmin, $confirmedSnapshot): void {
+    $organisation = Organisation::factory()->create();
+    $admin = $organisationAdmin($organisation);
+    $member = User::factory()->for($organisation)->withTwoFactor()->create();
+    onTenant($organisation);
+    $this->post(route('login.store'), ['email' => $admin->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+    Auth::guard('web')->forgetUser();
+    $afterConfirm = $confirmedSnapshot($member);
+
+    Auth::guard('web')->forgetUser();
+    callPageAction($afterConfirm, 'startImpersonation', [], ['impersonationReason' => 'Ticket 42'])
+        ->assertOk()
+        ->assertJsonPath('components.0.effects.redirect', route('dashboard'));
+
+    Auth::guard('web')->forgetUser();
+    $this->get(route('dashboard'))->assertOk();
+    $this->assertAuthenticatedAs($member);
+    expect(Impersonation::isActive())->toBeTrue()
+        ->and(session()->has('login.id'))->toBeFalse();
 });
 
 it('shows the sticky banner with a stop button while impersonating', function () use ($organisationAdmin): void {

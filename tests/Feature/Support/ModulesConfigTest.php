@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.8 */
+/** covers §4.9.3, §6.8 */
 
 use App\Support\Skv;
 

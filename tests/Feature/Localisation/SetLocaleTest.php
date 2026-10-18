@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.11, §6.5 */
+/** covers §4.11.1, §4.11.2, §6.5 */
 
 use App\Actions\Settings\UpdateLocale;
 use App\Enums\Locale;
@@ -18,6 +18,16 @@ it('uses the signed-in user\'s language', function (): void {
     $this->actingAs(User::factory()->for($this->organisation)->create(['locale' => Locale::Dutch]));
 
     $this->get(route('dashboard'))->assertOk()->assertSee('<html lang="nl"', false);
+});
+
+it('puts the signed-in user\'s language before a language the session holds from a guest choice (RL-8)', function (): void {
+    config(['skv.locale.default' => 'en']);
+    $this->actingAs(User::factory()->for($this->organisation)->create(['locale' => Locale::Dutch]));
+
+    $this->withSession(['locale' => 'en'])
+        ->get(route('dashboard'), ['Accept-Language' => 'en-GB,en;q=0.9'])
+        ->assertOk()
+        ->assertSee('<html lang="nl"', false);
 });
 
 it('gives guests the language their browser prefers, else the default (§4.11)', function (?string $header, string $expected): void {

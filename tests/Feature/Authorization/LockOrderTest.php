@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.4, §4.5, §4.6, §6.3 */
+/** covers §4.3, §4.4, §4.5, §4.6, §6.3, §6.6 */
 
+use App\Actions\Auth\IssueHandoff;
 use App\Actions\Invitations\AcceptInvitation;
 use App\Actions\Invitations\CancelInvitation;
 use App\Actions\Invitations\InviteUser;
@@ -30,6 +31,7 @@ use App\Enums\Locale;
 use App\Enums\UserStatus;
 use App\Models\Organisation;
 use App\Models\User;
+use App\Tenancy\Hosts;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -95,7 +97,7 @@ it('takes its row locks in the one order of CD-5', function (Closure $arrange, a
     // A write takes an implicit row lock: none may come before the organisation lock (an invitation updated before
     // lockForWrite() ran would put invitations ahead of organisations). Inserts of new rows take no lock another
     // transaction waits on, so CreateOrganisation's own organisation row is not counted.
-    $cd5Tables = ['organisations', 'roles', 'users', 'model_has_roles', 'invitations', 'sessions', 'password_reset_tokens'];
+    $cd5Tables = ['organisations', 'roles', 'users', 'model_has_roles', 'invitations', 'sessions', 'handoff_tokens', 'password_reset_tokens'];
     $first = array_values(array_filter($statements, fn (array $entry): bool => in_array($entry['table'], $cd5Tables, true) && $entry['statement'] !== 'insert'))[0] ?? null;
 
     if (($expected[0] ?? null) === 'organisations') {
@@ -317,4 +319,37 @@ it('saves the status before the name, after the organisation and users locks, in
         ->and($firstLockOrWrite['table'] ?? null)->toBe('organisations')
         ->and($firstIndex($statements, 'for update', 'users'))->toBeLessThan($firstIndex($statements, 'update', 'users'))
         ->and($member->fresh()?->only(['name', 'status']))->toEqual(['name' => 'Mila de Vries', 'status' => UserStatus::Disabled]);
+})->skip(fn (): bool => DB::getDriverName() !== 'pgsql', 'needs PostgreSQL row locks');
+
+it('rehashes the password, then moves and ends the sessions, then deletes the handoff links, then records ("log out other devices", §6.6)', function (): void {
+    // The kit's session driver, so the update moves and deletes real rows. No explicit lock: each write takes its
+    // row lock, so the order of the writes is the lock order. The lottery is off, so no garbage collection deletes
+    // the inserted row.
+    config(['session.driver' => 'database']);
+    config(['session.lottery' => [0, 100]]);
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = asMember($organisation);
+    sessionRowFor($member);
+    app(IssueHandoff::class)->handle($member, Hosts::tenant('acme'));
+    $page = Livewire::test('pages::settings.sessions')->set('password', 'password');
+
+    $statements = lockStatements(fn () => $page->call('logoutOtherDevices')->assertHasNoErrors());
+    $phases = [];
+
+    foreach ($statements as $entry) {
+        $phase = match ($entry['statement'].' '.$entry['table']) {
+            'update users' => 'users',
+            'update sessions', 'delete sessions' => 'sessions',
+            'delete handoff_tokens' => 'handoff_tokens',
+            'insert activity_log' => 'activity_log',
+            default => null,
+        };
+
+        // Consecutive writes of one phase count once: this device's row moves, then the other rows go.
+        if ($phase !== null && end($phases) !== $phase) {
+            $phases[] = $phase;
+        }
+    }
+
+    expect($phases)->toBe(['users', 'sessions', 'handoff_tokens', 'activity_log']);
 })->skip(fn (): bool => DB::getDriverName() !== 'pgsql', 'needs PostgreSQL row locks');

@@ -35,6 +35,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\Fixtures\FixedStatusCheck;
 use Tests\Fixtures\InlineStepLauncher;
+use Tests\Fixtures\RequiredPostgres;
 
 use function Pest\Laravel\get;
 use function Pest\Laravel\withHeader;
@@ -209,7 +210,7 @@ it('completes on PostgreSQL without a 500 or 419 (§7.2)', function () use ($ope
     expect($html)->toContain('data-test="setup-herd-stage"')
         ->and(Marker::exists($context))->toBeTrue()
         ->and(new EnvFile($context->path('.env'))->get('DB_DATABASE'))->toBe($name);
-})->skip(fn (): bool => ! new Detector(new Toolchain)->postgresReachable(), 'PostgreSQL is not reachable');
+})->skip(fn (): bool => RequiredPostgres::skips(fn (): bool => new Detector(new Toolchain)->postgresReachable()), 'PostgreSQL is not reachable');
 
 it('shows a manual command with a re-check (§5.3.1)', function () use ($open, $next, $until, $answers, $wizardCommands): void {
     $context = useSetupWizard();

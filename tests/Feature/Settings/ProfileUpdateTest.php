@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.10 */
+/** covers §4.2.8, §4.10.2, §4.11 */
 
 use App\Authorization\SetSuperAdmin;
 use App\Enums\Locale;
@@ -131,6 +131,22 @@ it('changes the language from the profile page (§4.10)', function (): void {
         ->assertRedirect(route('profile.edit'));
 
     expect($user->fresh()?->locale)->toBe(Locale::Dutch);
+});
+
+it('refuses a language the kit does not support and saves nothing (§4.11)', function (): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $user = User::factory()->for($organisation)->create(['name' => 'Old Name', 'locale' => Locale::English]);
+    $this->actingAs($user);
+    onTenant($organisation);
+
+    Livewire::test('pages::settings.profile')
+        ->set('name', 'New Name')
+        ->set('locale', 'fr')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('locale')
+        ->assertNoRedirect();
+
+    expect($user->fresh()?->only(['name', 'locale']))->toBe(['name' => 'Old Name', 'locale' => Locale::English]);
 });
 
 it('flashes the result in the new language when a language change reloads the page (G3-06)', function (string $email, string $status): void {

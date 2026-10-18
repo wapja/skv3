@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §6.6, §4.3, §4.8, §6.7 */
+/** covers §6.6, §4.3.3, §4.4.8, §4.8, §6.7 */
 
 use App\Actions\Organisations\ArchiveOrganisation;
 use App\Actions\Organisations\PurgeOrganisation;
@@ -113,7 +113,7 @@ it('stores a super admin\'s photo under avatars/platform', function (): void {
     expect((string) $superAdmin->fresh()?->avatar_path)->toStartWith('avatars/platform/'.$superAdmin->id.'-');
 });
 
-it('turns the photo by its EXIF orientation before the square crop and drops the metadata (§6.6)', function () use ($orientedJpeg, $pixel): void {
+it('turns the photo by its EXIF orientation before the square crop (§6.6)', function () use ($orientedJpeg, $pixel): void {
     $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
 
     Livewire::test('pages::settings.profile')
@@ -126,10 +126,26 @@ it('turns the photo by its EXIF orientation before the square crop and drops the
 
     // Turned 90° clockwise, the red left half is on top and the blue right half below; unturned it would be the reverse.
     expect($topRight[0])->toBeGreaterThan(200)->and($topRight[2])->toBeLessThan(60)
-        ->and($bottomLeft[2])->toBeGreaterThan(200)->and($bottomLeft[0])->toBeLessThan(60)
+        ->and($bottomLeft[2])->toBeGreaterThan(200)->and($bottomLeft[0])->toBeLessThan(60);
+})->skip(fn (): bool => ! function_exists('exif_read_data'), 'reading the orientation needs ext-exif');
+
+it('drops the photo\'s metadata, also without ext-exif (§6.6, E59)', function () use ($orientedJpeg): void {
+    $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
+    $upload = $orientedJpeg(6);
+
+    Livewire::test('pages::settings.profile')
+        ->set('avatar', UploadedFile::fake()->createWithContent('phone.jpg', $upload))
+        ->call('saveAvatar')
+        ->assertHasNoErrors();
+
+    $stored = (string) Storage::disk('public')->get((string) $member->fresh()?->avatar_path);
+
+    // The upload carries an EXIF APP1 segment; the stored WebP carries none, and no EXIF chunk either.
+    expect(str_contains($upload, "Exif\x00\x00"))->toBeTrue()
+        ->and(getimagesizefromstring($stored)['mime'] ?? null)->toBe('image/webp')
         ->and(str_contains($stored, 'Exif'))->toBeFalse()
         ->and(str_contains($stored, 'EXIF'))->toBeFalse();
-})->skip(fn (): bool => ! function_exists('exif_read_data'), 'reading the orientation needs ext-exif');
+});
 
 it('refuses a photo that is too large, of another type or with too many pixels, and stores nothing (§6.6)', function (Closure $file, string $rule): void {
     $member = asMember(Organisation::factory()->create(['slug' => 'acme']));
@@ -240,6 +256,33 @@ it('refuses an image it cannot read with "This image could not be processed." (�
         ->and(Storage::disk('public')->allFiles())->toBe([]);
 });
 
+it('refuses a type other than JPEG, PNG or WebP in the action itself, before decoding it (E56)', function (): void {
+    $member = User::factory()->for(Organisation::factory())->create();
+    // A future caller without the page's mimes rule: an animated GIF would have every frame decoded.
+    $processed = 0;
+    app(ImageManager::class)->transformUsing('gd', Cover::class, function () use (&$processed): never {
+        $processed++;
+
+        throw new LogicException('The GIF reached the image pipeline.');
+    });
+
+    expect(fn () => app(UpdateAvatar::class)->handle($member, UploadedFile::fake()->image('photo.gif', 64, 64)))
+        ->toThrow(ValidationException::class, __('This image could not be processed.'));
+
+    expect($processed)->toBe(0)
+        ->and($member->fresh()?->avatar_path)->toBeNull()
+        ->and(Storage::disk('public')->allFiles())->toBe([]);
+});
+
+it('accepts the three types the page allows in the action itself (E56)', function (string $name): void {
+    $member = User::factory()->for(Organisation::factory())->create();
+
+    app(UpdateAvatar::class)->handle($member, UploadedFile::fake()->image($name, 64, 64));
+
+    expect((string) $member->fresh()?->avatar_path)->toEndWith('.webp')
+        ->and(Storage::disk('public')->allFiles())->toHaveCount(1);
+})->with(['photo.jpg', 'photo.png', 'photo.webp']);
+
 it('refuses an image wider than 4096 pixels in the action itself, before decoding it', function (): void {
     $member = User::factory()->for(Organisation::factory())->create();
 
@@ -349,6 +392,27 @@ it('removes the photo and its file and falls back to the initials (§6.6)', func
         ->assertSee('data-test="profile-photo-preview"', false)
         ->assertSee('<span class="select-none">MM</span>', false)
         ->assertDontSee('data-test="remove-avatar-button"', false);
+});
+
+it('says nothing and tells the user menu nothing when there was no photo to remove (E55)', function (): void {
+    asMember(Organisation::factory()->create(['slug' => 'acme']));
+
+    Livewire::test('pages::settings.profile')
+        ->call('removeAvatar')
+        ->assertHasNoErrors()
+        ->assertNotDispatched('avatar-updated')
+        ->assertNotDispatched('toast-show');
+
+    expect(recordedActivity(ActivityEvent::UserUpdated))->toBeEmpty();
+});
+
+it('tells whether it removed a photo (E55)', function () use ($memberWithPhoto): void {
+    $organisation = Organisation::factory()->create(['slug' => 'acme']);
+    $member = $memberWithPhoto($organisation);
+    onTenant($organisation);
+
+    expect(app(RemoveAvatar::class)->handle($member))->toBeTrue()
+        ->and(app(RemoveAvatar::class)->handle($member))->toBeFalse();
 });
 
 it('deletes the removed photo only once the removal commits (CD-7)', function () use ($memberWithPhoto): void {

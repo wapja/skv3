@@ -223,7 +223,12 @@ final readonly class WizardRunner
                     $this->launchFailed($herd, $context, $root);
                 }
             } catch (Throwable $exception) {
-                $this->strand($context, $exception);
+                // L7b-28: a failing strand() is reported, never thrown, so the page shows why the Herd stage failed.
+                try {
+                    $this->strand($context, $exception);
+                } catch (Throwable $strandFailure) {
+                    report($strandFailure);
+                }
 
                 throw $exception;
             }
@@ -462,7 +467,8 @@ final readonly class WizardRunner
 
     /**
      * RL-8: whether the process the launcher's shell wrote into `<step>.started` still runs. It does not once the exit
-     * file exists, when the file holds no pid (the inline launcher, or a shell that never started), or without posix.
+     * file exists, when the file holds no pid (the inline launcher, or a shell that never started) or anything but one
+     * (L7b-33), or without posix.
      * Nor once the step started LIVE_PID_SECONDS ago: a shell that died without writing the exit file (a reboot, an
      * OOM kill) leaves its pid behind, and another process of this user can get that pid later. The shell's `echo $$`
      * refreshes the file's mtime at launch, so the bound counts from the step's start.
@@ -479,10 +485,15 @@ final readonly class WizardRunner
             return false;
         }
 
-        $pid = (int) strtok((string) @file_get_contents($started), "\n");
+        $line = strtok((string) @file_get_contents($started), "\n");
 
-        // 0 would signal this process group, and 1 is launchd or init: neither is a step.
-        return $pid > 1 && posix_kill($pid, 0);
+        // Digits only, as the shell's `echo $$` writes them (L7b-33). 0 would signal this process group, 1 is launchd
+        // or init, and a number past pid_t wraps in posix_kill(): 4294967295 becomes kill(-1, 0), which succeeds.
+        if (! is_string($line) || ! ctype_digit($line) || (int) $line <= 1 || (int) $line > 2147483647) {
+            return false;
+        }
+
+        return posix_kill((int) $line, 0);
     }
 
     /** @return array{key: string, state: 'done', message: string} */

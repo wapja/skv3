@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.3, §4.6 */
+/** covers §4.3.4, §4.6.2 */
 
 use App\Models\Organisation;
 use Illuminate\Support\Facades\Gate;

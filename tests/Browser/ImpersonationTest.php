@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.7, §7.2 */
+/** covers §4.7.4, §7.2 */
 
 use App\Authorization\Role;
 use App\Models\Organisation;

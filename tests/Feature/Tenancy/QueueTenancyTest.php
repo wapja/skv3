@@ -65,6 +65,23 @@ it('binds the tenant and the team while the worker runs the job', function (): v
         ->and(Tenant::check())->toBeFalse();
 });
 
+it('restores the worker\'s context after a tenant job that throws and is released for a retry (§6.2)', function (): void {
+    // A worker job that throws raises JobExceptionOccurred and is released (tries 3): no JobFailed follows, so the
+    // context must be restored on that event, the SyncJob exception aside.
+    $organisation = Organisation::factory()->create();
+    Tenant::run($organisation, function (): void {
+        Bus::dispatch(new FailingCountUsersJob);
+    });
+
+    workOneJob();
+
+    expect(Tenant::check())->toBeFalse()
+        ->and(getPermissionsTeamId())->toBeNull()
+        ->and(DB::table('jobs')->count())->toBe(1)
+        ->and(DB::table('failed_jobs')->count())->toBe(0)
+        ->and(Cache::has('failed-hook.users'))->toBeFalse();
+});
+
 it('fails the job without retry when the organisation is gone', function (): void {
     $organisation = Organisation::factory()->create();
     Tenant::run($organisation, function (): void {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.4, §6.2 */
+/** covers §4.4.3, §4.10.3, §6.2 */
 
 use App\Actions\Invitations\InviteUser;
 use App\Authorization\Permission;

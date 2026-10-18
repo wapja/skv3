@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** covers §4.6, §6.3, §7.2 */
+/** covers §4.6.8, §4.6.10, §6.3, §7.2 */
 
 use App\Actions\Users\UpdateSuperAdmin;
 use App\Authorization\Permission;
@@ -68,4 +68,60 @@ it('never calls SetSuperAdmin from a page, a component, a route file, the bootst
     ));
 
     expect(filesMatching($files, '/\bSetSuperAdmin\b/'))->toBe([]);
+});
+
+it('writes users.is_super_admin only in SetSuperAdmin (§6.3, M7c T13 #6)', function (): void {
+    // L7b-39 pins who calls SetSuperAdmin; this pins that nothing else writes the flag: no `true` for it, no property
+    // assignment, and no value other than `false` in a write (InviteUser creates invitees with false). Factories are
+    // test data and exempt.
+    $pattern = '/[\'"]is_super_admin[\'"]\s*=>\s*(?:true|1)\b'
+        .'|->is_super_admin\s*=(?!=)'
+        .'|\b(?:update|forceFill|fill|insert|insertGetId|insertOrIgnore|upsert|updateOrInsert|updateOrCreate|firstOrCreate|forceCreate)\s*\([^;]*?[\'"]is_super_admin[\'"]\s*=>\s*+(?!false\b)'
+        .'|setAttribute\s*\(\s*[\'"]is_super_admin[\'"]\s*,\s*+(?!false\b)/s';
+
+    foreach ([
+        '$user->forceFill([\'is_super_admin\' => true])->save();',
+        'DB::table(\'users\')->where(\'id\', $id)->update([\'is_super_admin\' => $flag]);',
+        "User::query()->whereKey(\$id)->update([\n    'name' => \$name,\n    'is_super_admin' => \$flag,\n]);",
+        '$user->is_super_admin = true;',
+        '$user->setAttribute(\'is_super_admin\', $flag);',
+        '$user->fill([\'is_super_admin\' => 1]);',
+        'User::forceCreate([\'email\' => $email, \'is_super_admin\' => $flag]);',
+    ] as $form) {
+        expect(preg_match($pattern, $form))->toBe(1, "The super-admin write rule misses [{$form}].");
+    }
+
+    foreach ([
+        '$invitee->forceFill([\'organisation_id\' => $id, \'is_super_admin\' => false, \'status\' => $status])->save();',
+        'return $this->is_super_admin === true;',
+        'User::query()->where(\'is_super_admin\', true)->exists();',
+        '\'is_super_admin\' => __(\'Cancel the invitation and invite again with the new roles.\'),',
+        '->lockForUpdate()->get([\'id\', \'email\', \'is_super_admin\']);',
+        '$table->boolean(\'is_super_admin\')->default(false)->index();',
+        '\'is_super_admin\' => \'boolean\',',
+    ] as $form) {
+        expect(preg_match($pattern, $form))->toBe(0, "The super-admin write rule flags [{$form}].");
+    }
+
+    $files = array_values(array_filter(
+        kitSourceFiles('app', 'routes', 'bootstrap', 'config', 'database/migrations', 'database/seeders', 'resources/views'),
+        fn (string $path): bool => $path !== 'app/Authorization/SetSuperAdmin.php' && ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(filesMatching($files, $pattern))->toBe([]);
+});
+
+it('assigns and removes roles only in UpdateUserRoles and, for the super admin badge, SetSuperAdmin (§4.6.10, W1)', function (): void {
+    // Spatie's role methods on a user; everything else goes through these two classes (AGENTS.md › Super admin).
+    $pattern = '/->\s*(?:assignRole|syncRoles|removeRole)\s*\(/';
+    $files = array_values(array_filter(
+        kitSourceFiles('app', 'routes', 'resources/views', 'database', 'bootstrap', 'config'),
+        fn (string $path): bool => ! str_starts_with($path, 'bootstrap/cache/'),
+    ));
+
+    expect(preg_match($pattern, '$user->assignRole($role)'))->toBe(1)
+        ->and(preg_match($pattern, '$target->syncRoles([])'))->toBe(1)
+        ->and(preg_match($pattern, "\$user\n    ->removeRole(\$role)"))->toBe(1)
+        ->and(preg_match($pattern, '$user->hasRole($role)'))->toBe(0)
+        ->and(filesMatching($files, $pattern))->toBe(['app/Actions/Users/UpdateUserRoles.php', 'app/Authorization/SetSuperAdmin.php']);
 });
