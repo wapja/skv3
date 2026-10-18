@@ -34,7 +34,7 @@ it('refuses a deleted user\'s reset link once their address belongs to another a
     $organisation = Organisation::factory()->create();
     $leaver = User::factory()->for($organisation)->create(['email' => 'desk@example.com']);
     $successor = User::factory()->for($organisation)->create();
-    $token = Password::broker()->createToken($leaver);
+    $token = Password::createToken($leaver);
     $actor = $superAdmin();
     onTenant($organisation);
 
@@ -58,8 +58,8 @@ it('forgets the reset links of a user who is deleted, archived with the organisa
     onTenant($organisation);
     $invitation = $removal === 'cancelled invitation' ? inviteMember($organisation, $actor, 'leaver@example.com') : null;
     $leaver = $invitation instanceof Invitation ? $invitation->user : User::factory()->for($organisation)->create(['email' => 'leaver@example.com']);
-    Password::broker()->createToken($leaver);
-    Password::broker()->createToken($bystander);
+    Password::createToken($leaver);
+    Password::createToken($bystander);
 
     if ($invitation instanceof Invitation) {
         app(CancelInvitation::class)->handle($actor, $invitation);

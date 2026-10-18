@@ -135,7 +135,7 @@ it('throttles reset-link requests per address and per IP address', function (str
 it('refuses a reset token on a host the user does not belong to', function (): void {
     $organisation = Organisation::factory()->create();
     $member = User::factory()->for($organisation)->create();
-    $token = Password::broker()->createToken($member);
+    $token = Password::createToken($member);
     onApex();
 
     $this->post(route('password.update'), [
@@ -151,7 +151,7 @@ it('refuses a reset token on a host the user does not belong to', function (): v
 it('refuses a reset token for a user who may not sign in', function (string $state): void {
     $organisation = Organisation::factory()->create();
     $user = User::factory()->for($organisation)->{$state}()->create();
-    $token = Password::broker()->createToken($user);
+    $token = Password::createToken($user);
     onTenant($organisation);
 
     $this->post(route('password.update'), [

@@ -267,7 +267,7 @@ it('refuses a handoff link issued before a password change or reset, or before l
         auth()->logout();
     } elseif ($case === 'reset') {
         $this->post(route('password.update'), [
-            'token' => Password::broker()->createToken($member),
+            'token' => Password::createToken($member),
             'email' => $member->email,
             'password' => 'new-password-123',
             'password_confirmation' => 'new-password-123',

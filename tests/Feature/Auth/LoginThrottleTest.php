@@ -203,7 +203,7 @@ it('keeps another address\'s failures when an account signs in from the same IP 
 it('answers array input to the throttled auth routes with a validation error, not a server error (G1-02)', function (string $route, array $input, string $field): void {
     $organisation = Organisation::factory()->create();
     // A live reset record for the address, so an array token would reach the broker's token check.
-    Password::broker()->createToken(User::factory()->for($organisation)->create(['email' => 'member@example.com']));
+    Password::createToken(User::factory()->for($organisation)->create(['email' => 'member@example.com']));
     onTenant($organisation);
 
     $this->from(route('login'))->post(route($route), $input)->assertRedirect()->assertSessionHasErrors($field);

@@ -27,6 +27,12 @@ beforeEach(function (): void {
 
     $this->beforeApplicationDestroyed(fn () => File::deleteDirectory($this->home));
     app()->instance(Toolchain::class, new Toolchain($this->home));
+
+    // The kit's composer.json before the step: in a generated app the Claude step of skv:install already added boost:update.
+    /** @var array{scripts: array{post-update-cmd?: list<string>}} $composer */
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true, flags: JSON_THROW_ON_ERROR);
+    $composer['scripts']['post-update-cmd'] = array_values(array_filter($composer['scripts']['post-update-cmd'] ?? [], fn (string $line): bool => ! str_contains($line, 'boost:update')));
+    $this->composerJson = json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 });
 
 it('is skipped when Claude was not chosen', function (): void {
@@ -38,7 +44,7 @@ it('installs Boost, registers the Herd MCP server as herd and adds boost:update 
     $context = setupSandbox($detection);
     $context->answers = Answers::fromArray(['claude' => true], $detection, $context->folderName());
     new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://my-app.test']);
-    File::copy(base_path('composer.json'), $context->path('composer.json'));
+    File::put($context->path('composer.json'), $this->composerJson);
     File::put($context->path('.mcp.json'), json_encode(['mcpServers' => ['laravel-boost' => ['command' => 'php', 'args' => ['artisan', 'boost:mcp']]]], JSON_THROW_ON_ERROR));
 
     Process::fake([
@@ -95,7 +101,7 @@ it('is complete once Boost, the MCP servers and boost:update are in place (§5.3
     $detection = new Detection(herd: true, herdPro: false, herdMail: false, herdSmtpPort: null, postgres: false, fluxPro: false, claude: true, host: 'my-app.test', scheme: 'http');
     $context = setupSandbox($detection);
     $context->answers = Answers::fromArray(['claude' => true], $detection, $context->folderName());
-    File::copy(base_path('composer.json'), $context->path('composer.json'));
+    File::put($context->path('composer.json'), $this->composerJson);
     File::put($context->path('AGENTS.md'), '');
     File::put($context->path('.mcp.json'), json_encode(['mcpServers' => ['laravel-boost' => ['command' => 'php']]], JSON_THROW_ON_ERROR));
 
@@ -146,7 +152,7 @@ it('replaces symlinked project files instead of writing through them (RL-1, g2-0
     new EnvFile($context->path('.env'))->set(['APP_URL' => 'http://my-app.test']);
     $outside = $this->home.'/outside';
     File::ensureDirectoryExists($outside);
-    File::copy(base_path('composer.json'), $outside.'/composer.json');
+    File::put($outside.'/composer.json', $this->composerJson);
     File::put($outside.'/mcp.json', '{"mcpServers":{}}');
     File::ensureDirectoryExists($context->path('.claude'));
     symlink($outside.'/composer.json', $context->path('composer.json'));
