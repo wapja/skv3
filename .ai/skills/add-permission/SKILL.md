@@ -24,7 +24,7 @@ always-checked ability*); this skill is the checklist.
 - `php artisan permissions:sync` (`App\Authorization\SyncPermissions`) creates the permission, keeps the global
   `organisation_admin` template on the catalogue minus the super-only permissions, strips super-only permissions
   from custom roles and prunes permissions that left the catalogue. It is idempotent. Production runs it on every
-  deploy (README › production checklist), and `php artisan skv:doctor` reports drift
+  deploy (README › production checklist), and `composer doctor` reports drift
   (`App\Setup\Doctor\Checks\PermissionsCheck`).
 - The `super_admin` role is a display badge and holds no permissions; super admins pass through `Gate::before`
   (`App\Authorization\SuperAdminGate`).
@@ -40,8 +40,9 @@ always-checked ability*); this skill is the checklist.
 
 ## 4. Tests and docs
 
-- `tests/Feature/Authorization/PermissionCatalogueTest.php` pins the number of permissions and the super-only list:
-  update both, and the catalogue in the spec (§4.6).
+- `tests/Feature/Authorization/PermissionCatalogueTest.php` pins the number of permissions, the organisation-admin
+  template's count (`Permission::organisationAdmin()`) and the super-only list: update all three, and the catalogue in
+  the spec (§4.6).
 - Its dataset over `Permission::cases()` checks the Dutch label, description and group of the new case.
 - Test the gate for each role (`asMember()`, `asOrgAdmin()`, `asSuperAdmin()`) over HTTP, and the route's row in
   `tests/Feature/Tenancy/RouteHostMatrixTest.php` (`routeMatrixOutcome()`: the matrix member holds no permission).

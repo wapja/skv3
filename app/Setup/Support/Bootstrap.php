@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Process;
 
 /**
  * The non-interactive first run (§5.2, RL-1): .env, APP_KEY, the Herd APP_URL, the SQLite file plus migrate and the
- * one-time setup token (RL-10). In production (an APP_ENV outside local, testing and staging) it only creates
- * `.env`, `APP_KEY` and the blank `EnvironmentStep::GENERATED` secrets (CD-3, CD-9, CD-10).
+ * one-time setup token (RL-10). In production (an APP_ENV outside local, testing and staging, or none in any source,
+ * CD-12) it only creates `.env`, `APP_KEY` and the blank `EnvironmentStep::GENERATED` secrets (CD-3, CD-9, CD-10).
  * Never chooses a database, never prompts, never caches config or routes. skv:install runs it as its step 0.
  */
 final readonly class Bootstrap implements BootstrapRunner
