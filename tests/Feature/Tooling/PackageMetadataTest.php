@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 /** covers §10 */
 
+use Tests\Fixtures\KitRepository;
+
 /**
  * The patterns .gitattributes marks export-ignore: what a dist install from Packagist (a GitHub zipball, Composer's
  * default) leaves out (F50).
@@ -44,6 +46,12 @@ it('ships every file the app points its users to in a Packagist install (F50)', 
         ->and(array_values(array_filter($shipped, $ignored)))->toBe([]);
 });
 
+it('leaves only the kit-only files out of a Packagist install (M8b)', function () use ($exportIgnored): void {
+    // The release check runs in the kit's repository alone, and the milestone plans are its build history; the spec
+    // stays, because scripts/traceability.php and TraceabilityTest read it in every app.
+    expect($exportIgnored())->toBe(['.github/workflows/release-check.yml', 'docs/superpowers/plans']);
+});
+
 it('ships the MIT licence composer.json declares (F59, CD-20)', function () use ($composer): void {
     $license = is_file(base_path('LICENSE')) ? (string) file_get_contents(base_path('LICENSE')) : '';
 
@@ -52,7 +60,7 @@ it('ships the MIT licence composer.json declares (F59, CD-20)', function () use 
         ->toContain('Permission is hereby granted, free of charge, to any person obtaining a copy')
         ->toContain('The above copyright notice and this permission notice shall be included in all')
         ->toContain('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND');
-});
+})->skip(fn (): bool => ! KitRepository::isKit(), 'An app generated from the kit chooses its own licence.');
 
 it('describes the package for Packagist, with links built from its own name (F58)', function () use ($composer): void {
     $package = $composer();
@@ -64,4 +72,4 @@ it('describes the package for Packagist, with links built from its own name (F58
         ->and($package['keywords'] ?? null)->toBe(['laravel', 'starter-kit', 'multi-tenant', 'livewire', 'flux', 'saas'])
         ->and($package['homepage'] ?? null)->toBe($repository)
         ->and($package['support'] ?? null)->toBe(['issues' => $repository.'/issues', 'source' => $repository]);
-});
+})->skip(fn (): bool => ! KitRepository::isKit(), 'An app generated from the kit describes itself.');

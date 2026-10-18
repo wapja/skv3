@@ -95,6 +95,13 @@ jobs:
           fi
           git show HEAD:composer.json | php -r '$c = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR); exit(isset($c["extra"]["skv"]) ? 1 : 0);' || { echo "FAIL: the committed composer.json carries extra.skv"; exit 1; }
 
+      # M8b: a generated app has no release-check.yml (export-ignored), so the tests that read it skip there
+      # (Tests\Fixtures\KitRepository); in the kit's own repository a missing file fails here instead of skipping.
+      - name: Kit keeps its release check
+        if: github.repository == 'frankcornet/skv3'
+        run: |
+          test -f .github/workflows/release-check.yml || { echo "FAIL: .github/workflows/release-check.yml is missing"; exit 1; }
+
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

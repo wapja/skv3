@@ -7,3 +7,8 @@
 *.php diff=php
 
 resources/setup/setup.css linguist-generated=true -diff
+
+# Kit-only files a Packagist (dist) install leaves out (M8b): the release check runs in the kit's own repository only,
+# and the milestone plans are the kit's build history, not something an app reads.
+/.github/workflows/release-check.yml export-ignore
+/docs/superpowers/plans export-ignore
