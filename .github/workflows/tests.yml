@@ -86,7 +86,7 @@ jobs:
       # both on purpose (CD-13 of M7b), so this runs in the kit's own repository only. It reads the committed files,
       # which the Flux Pro step below never changes.
       - name: Kit commits no Flux Pro
-        if: github.repository == 'frankcornet/skv3'
+        if: github.repository == 'wapja/skv3'
         run: |
           committed="$(git show HEAD:composer.json HEAD:composer.lock)"
           if grep -nE 'flux-pro|composer\.fluxui\.dev' <<< "$committed"; then
@@ -98,7 +98,7 @@ jobs:
       # M8b: a generated app has no release-check.yml (export-ignored), so the tests that read it skip there
       # (Tests\Fixtures\KitRepository); in the kit's own repository a missing file fails here instead of skipping.
       - name: Kit keeps its release check
-        if: github.repository == 'frankcornet/skv3'
+        if: github.repository == 'wapja/skv3'
         run: |
           test -f .github/workflows/release-check.yml || { echo "FAIL: .github/workflows/release-check.yml is missing"; exit 1; }
 
@@ -474,7 +474,7 @@ jobs:
       - name: laravel new
         if: steps.changes.outputs.run == 'true'
         run: |
-          cd "$RUNNER_TEMP" && laravel new tmp --using=frankcornet/skv3:dev-ci --no-interaction --no-ansi --database=sqlite --npm ${{ matrix.flags }} 2>&1 | tee install.log
+          cd "$RUNNER_TEMP" && laravel new tmp --using=wapja/skv3:dev-ci --no-interaction --no-ansi --database=sqlite --npm ${{ matrix.flags }} 2>&1 | tee install.log
 
       # §5.2, §7.2, §8: bootstrap ran once (it prints the skv:install hint), the SQLite file is migrated, the build
       # exists, the installer left tests.yml, tests/Pest.php and tests/ alone on every row (g1-24: DEC-22's --phpunit

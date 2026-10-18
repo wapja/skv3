@@ -607,13 +607,13 @@ footer.colofon { font-size: var(--step--1); color: var(--ink-2); padding-top: 1r
 
   <h3 id="herd">Installeren via Herd (aanbevolen)</h3>
   <p>Herd serveert de site, dus je draait nooit <code>php artisan serve</code>. Herd serveert elke map in <code>~/Herd</code> als <code>&lt;map&gt;.test</code>, inclusief subdomeinen: de map <code>mijnapp</code> antwoordt op <code>mijnapp.test</code>, <code>admin.mijnapp.test</code> en <code>acme.mijnapp.test</code>, zonder extra instellingen (gecontroleerd in de smoke test van M4).</p>
-  <p>Met de Herd-app gaat het zonder terminal: <em>New site</em> &rarr; <em>Custom Starter Kit</em> &rarr; <code>frankcornet/skv3</code> &rarr; <em>Open site</em>, of je begint met de deeplink <a href="https://herd.laravel.com/new/frankcornet/skv3"><code>https://herd.laravel.com/new/frankcornet/skv3</code></a>. De startpagina van de nieuwe site opent de <a href="#wizard">setupwizard</a>. Die route installeert het pakket via Packagist. Wil je met de code zelf werken, bijvoorbeeld om aan de kit te bouwen, kloon dan de repository en open de wizard zo:</p>
+  <p>Met de Herd-app gaat het zonder terminal: <em>New site</em> &rarr; <em>Custom Starter Kit</em> &rarr; <code>wapja/skv3</code> &rarr; <em>Open site</em>, of je begint met de deeplink <a href="https://herd.laravel.com/new/wapja/skv3"><code>https://herd.laravel.com/new/wapja/skv3</code></a>. De startpagina van de nieuwe site opent de <a href="#wizard">setupwizard</a>. Die route installeert het pakket via Packagist. Wil je met de code zelf werken, bijvoorbeeld om aan de kit te bouwen, kloon dan de repository en open de wizard zo:</p>
 
   <ol class="steps">
     <li><div>
       <p><strong>Zet de code in een map die Herd serveert.</strong> De naam van de map wordt het adres.</p>
 <pre><code>cd ~/Herd
-git clone https://github.com/frankcornet/skv3.git mijnapp
+git clone https://github.com/wapja/skv3.git mijnapp
 cd mijnapp</code></pre>
     </div></li>
     <li><div>
@@ -662,7 +662,7 @@ php artisan skv:bootstrap</code></pre>
 
   <h3 id="cli">Via de terminal</h3>
   <p>Werk je zonder de Herd-app, dan blijven de stappen hetzelfde: <code>git clone</code>, <code>composer setup</code>, <code>composer dev</code>. Zonder Herd moet je zelf zorgen dat het apex, <code>admin.</code> en elke organisatie naar je machine wijzen. <code>php artisan skv:doctor</code> drukt de regels voor <code>/etc/hosts</code> af zodra <code>probe.&lt;apex&gt;</code> niet gevonden wordt; dnsmasq met een wildcard kan ook. Zet <code>TENANCY_APEX_DOMAIN</code> en <code>APP_URL</code> dan op dat apex. Namen onder <code>localhost</code> (bijvoorbeeld <code>mijnapp.localhost</code>) vindt je browser zelf.</p>
-  <p>Met <code>laravel new mijnapp --using=frankcornet/skv3</code> of <code>composer create-project frankcornet/skv3 mijnapp</code> installeer je het pakket via Packagist. Daarna open je het adres dat ze afdrukken, voor de wizard, of draai je <code>php artisan skv:install</code> in de nieuwe map.</p>
+  <p>Met <code>laravel new mijnapp --using=wapja/skv3</code> of <code>composer create-project wapja/skv3 mijnapp</code> installeer je het pakket via Packagist. Daarna open je het adres dat ze afdrukken, voor de wizard, of draai je <code>php artisan skv:install</code> in de nieuwe map.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Commando</th><th>Wat het doet</th></tr></thead>
@@ -1673,7 +1673,7 @@ composer test:browser <span class="cm"># de browsertests in Chromium</span></cod
     <table>
       <thead><tr><th>Milestone</th><th>Wat je gaat merken</th></tr></thead>
       <tbody>
-        <tr><td><strong>M8b · Publicatie</strong></td><td>Na akkoord van de eigenaar: de repository op GitHub, de eerste groene CI-run (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist als <code>frankcornet/skv3</code>, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td></tr>
+        <tr><td><strong>M8b · Publicatie</strong></td><td>Na akkoord van de eigenaar: de repository op GitHub, de eerste groene CI-run (ook <code>phase1</code> en <code>e2e</code>), de beveiliging van <code>main</code>, het pakket op Packagist als <code>wapja/skv3</code>, de Herd-deeplink gecontroleerd en de installatie in Herd gemeten, de release-check en de tag <code>v1.0.0</code></td></tr>
       </tbody>
     </table>
   </div>

@@ -13,11 +13,11 @@ An opinionated, multi-tenant Laravel starter kit: organisations by subdomain, in
 
 Every route ends in the same setup, in the browser or in the terminal. The setup wizard and `php artisan skv:install` run the same steps: they ask a few questions, then write `.env`, create and seed the database, write `herd.yml` and the branding, build the frontend, set the git hooks, set up Claude Code when you choose it, run the doctor, write the install marker, link the Herd site (and secure it when HTTPS is on) and show a summary with the addresses, the logins and the next steps.
 
-- **Herd** (no terminal needed): *New site* → *Custom Starter Kit* → `frankcornet/skv3` → *Open site*, or start from the deep link <https://herd.laravel.com/new/frankcornet/skv3>. The site's home page opens the [setup wizard](#the-setup-wizard).
+- **Herd** (no terminal needed): *New site* → *Custom Starter Kit* → `wapja/skv3` → *Open site*, or start from the deep link <https://herd.laravel.com/new/wapja/skv3>. The site's home page opens the [setup wizard](#the-setup-wizard).
 - **Laravel installer** (Herd's *Custom Starter Kit* runs the same command):
 
   ```bash
-  laravel new myapp --using=frankcornet/skv3
+  laravel new myapp --using=wapja/skv3
   ```
 
   Then open the address it prints, or run `cd myapp && php artisan skv:install` to set up in the terminal.
@@ -25,7 +25,7 @@ Every route ends in the same setup, in the browser or in the terminal. The setup
 - **Composer:**
 
   ```bash
-  composer create-project frankcornet/skv3 myapp
+  composer create-project wapja/skv3 myapp
   ```
 
   Then open the address it prints, or run `cd myapp && php artisan skv:install`.
@@ -33,7 +33,7 @@ Every route ends in the same setup, in the browser or in the terminal. The setup
 - **Clone:**
 
   ```bash
-  git clone https://github.com/frankcornet/skv3.git myapp && cd myapp && composer setup
+  git clone https://github.com/wapja/skv3.git myapp && cd myapp && composer setup
   ```
 
   `composer setup` runs `composer install`, copies `.env.example` when `.env` is missing, then `php artisan skv:bootstrap` and `php artisan skv:install`, so it ends in the terminal. To use the wizard on a clone instead, run those commands up to and including `skv:bootstrap` yourself and open the site.
